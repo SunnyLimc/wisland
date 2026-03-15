@@ -1,6 +1,6 @@
 using Microsoft.UI.Xaml;
 using System;
-using System.IO;
+using island.Helpers;
 
 namespace island
 {
@@ -16,7 +16,7 @@ namespace island
 
         private void App_UnhandledException(object sender, Microsoft.UI.Xaml.UnhandledExceptionEventArgs e)
         {
-            File.WriteAllText("app_crash_log.txt", $"Unhandled Exception: {e.Exception}\n{e.Message}");
+            Logger.Error(e.Exception, $"Unhandled exception: {e.Message}");
         }
 
         protected override void OnLaunched(Microsoft.UI.Xaml.LaunchActivatedEventArgs args)
@@ -28,7 +28,7 @@ namespace island
             }
             catch (Exception ex)
             {
-                File.WriteAllText("onlaunched_crash_log.txt", ex.ToString());
+                Logger.Error(ex, "Fatal error during OnLaunched");
                 throw;
             }
         }

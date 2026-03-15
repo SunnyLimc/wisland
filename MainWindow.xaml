@@ -48,9 +48,15 @@
                         <TextBlock x:Name="ArtistNameText" Text="Artist Name" Foreground="LightGray" FontSize="12" HorizontalAlignment="Center"/>
                         
                         <StackPanel Orientation="Horizontal" HorizontalAlignment="Center" Margin="0,10,0,0" Spacing="20">
-                            <SymbolIcon x:Name="IconBack" Symbol="Back" Foreground="White"/>
-                            <SymbolIcon x:Name="IconPause" Symbol="Pause" Foreground="White"/>
-                            <SymbolIcon x:Name="IconForward" Symbol="Forward" Foreground="White"/>
+                            <Button x:Name="BtnBack" Background="Transparent" BorderThickness="0" Padding="4" Click="SkipPrevious_Click">
+                                <SymbolIcon x:Name="IconBack" Symbol="Back" Foreground="White"/>
+                            </Button>
+                            <Button x:Name="BtnPlayPause" Background="Transparent" BorderThickness="0" Padding="4" Click="PlayPause_Click">
+                                <SymbolIcon x:Name="IconPlayPause" Symbol="Pause" Foreground="White"/>
+                            </Button>
+                            <Button x:Name="BtnForward" Background="Transparent" BorderThickness="0" Padding="4" Click="SkipNext_Click">
+                                <SymbolIcon x:Name="IconForward" Symbol="Forward" Foreground="White"/>
+                            </Button>
                         </StackPanel>
                     </StackPanel>
                 </Grid>
