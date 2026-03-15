@@ -62,17 +62,12 @@ namespace island
         [StructLayout(LayoutKind.Sequential)]
         public struct POINT { public int X; public int Y; }
 
-        // --- DWM API for Shadow Control ---
-        [DllImport("dwmapi.dll", PreserveSig = true)]
-        private static extern int DwmSetWindowAttribute(IntPtr hwnd, int attr, ref int attrValue, int attrSize);
-
-        private const int DWMWA_WINDOW_CORNER_PREFERENCE = 33;
+        // --- Context-Aware UX State ---
+        private readonly DispatcherTimer _foregroundCheckTimer;
+        private bool _isForegroundMaximized = false;
         
-        // Values for DWMWA_WINDOW_CORNER_PREFERENCE
-        private const int DWMWCP_DEFAULT = 0;       // Let the system decide
-        private const int DWMWCP_DONOTROUND = 1;    // No rounding, no shadow
-        private const int DWMWCP_ROUND = 2;         // Full rounded corners + large shadow
-        private const int DWMWCP_ROUNDSMALL = 3;    // Small rounded corners + small/light shadow
+        private readonly DispatcherTimer _dockedHoverDelayTimer;
+        private bool _isHoverPending = false;
 
         public MainWindow()
         {
@@ -89,12 +84,6 @@ namespace island
                 manager.IsMaximizable = false;
 
                 this.AppWindow.IsShownInSwitchers = false;
-
-                // Set DWM Drop Shadow & Corner Preference
-                var hwnd = WinRT.Interop.WindowNative.GetWindowHandle(this);
-                // DWMWCP_ROUND gives the maximum standard system corner radius
-                int preference = DWMWCP_ROUND;
-                DwmSetWindowAttribute(hwnd, DWMWA_WINDOW_CORNER_PREFERENCE, ref preference, sizeof(int));
 
                 _dpiScale = this.GetDpiForWindow() / 96.0;
 
@@ -121,6 +110,22 @@ namespace island
                 {
                     _hoverDebounceTimer.Stop();
                     _isHovered = false;
+                    _isHoverPending = false;
+                    UpdateState();
+                };
+
+                // Foreground window check loop
+                _foregroundCheckTimer = new DispatcherTimer { Interval = TimeSpan.FromMilliseconds(500) };
+                _foregroundCheckTimer.Tick += (s, e) => CheckForegroundWindow();
+                _foregroundCheckTimer.Start();
+
+                // Hover delay timer
+                _dockedHoverDelayTimer = new DispatcherTimer { Interval = TimeSpan.FromMilliseconds(IslandConfig.DockedHoverDelayMs) };
+                _dockedHoverDelayTimer.Tick += (s, e) =>
+                {
+                    _dockedHoverDelayTimer.Stop();
+                    _isHoverPending = false;
+                    _isHovered = true;
                     UpdateState();
                 };
 
@@ -137,6 +142,34 @@ namespace island
 
         #region State Machine
 
+        private void UpdateShadowState()
+        {
+            var hwnd = WinRT.Interop.WindowNative.GetWindowHandle(this);
+            // Completely remove shadow and rounding if docked and foreground is maximized
+            int preference = (_isDocked && _isForegroundMaximized) ? WindowInterop.DWMWCP_DONOTROUND : WindowInterop.DWMWCP_ROUND;
+            WindowInterop.DwmSetWindowAttribute(hwnd, WindowInterop.DWMWA_WINDOW_CORNER_PREFERENCE, ref preference, sizeof(int));
+        }
+
+        private void CheckForegroundWindow()
+        {
+            if (!_isDocked) return;
+
+            IntPtr hwnd = WindowInterop.GetForegroundWindow();
+            if (hwnd == IntPtr.Zero || hwnd == WinRT.Interop.WindowNative.GetWindowHandle(this))
+            {
+                // Do not change state if we are the foreground window or no foreground window
+                return;
+            }
+
+            bool isMaximized = WindowInterop.IsWindowMaximized(hwnd);
+            if (isMaximized != _isForegroundMaximized)
+            {
+                _isForegroundMaximized = isMaximized;
+                UpdateState();
+                UpdateShadowState();
+            }
+        }
+
         /// <summary>
         /// Recalculate animation targets based on current logical state.
         /// Priority: Notifying > Hovered (non-docked, non-dragging) > Default.
@@ -149,14 +182,29 @@ namespace island
                 _targetHeight = IslandConfig.ExpandedHeight;
                 _targetCompactOpacity = 0;
                 _targetExpandedOpacity = 1;
-                _targetY = IslandConfig.DefaultY;
+                
+                if (_isDocked)
+                {
+                    _targetY = 0;
+                }
+                else
+                {
+                    _targetY = IslandConfig.DefaultY;
+                }
             }
-            else if (_isHovered && !_isDocked && !_isDragging)
+            else if (_isHovered && !_isDragging)
             {
                 _targetWidth = IslandConfig.ExpandedWidth;
                 _targetHeight = IslandConfig.ExpandedHeight;
                 _targetCompactOpacity = 0;
                 _targetExpandedOpacity = 1;
+
+                if (_isDocked)
+                {
+                    // Snap the top edge perfectly to the screen top (Y=0). 
+                    // This ensures all UI content remains visible and it drops down from the bezel.
+                    _targetY = 0;
+                }
             }
             else
             {
@@ -167,7 +215,8 @@ namespace island
 
                 if (_isDocked && !_isDragging)
                 {
-                    _targetY = -_targetHeight + IslandConfig.DockPeekOffset;
+                    double peekOffset = _isForegroundMaximized ? IslandConfig.MaximizedDockPeekOffset : IslandConfig.DockPeekOffset;
+                    _targetY = -_targetHeight + peekOffset;
                 }
                 else if (!_isDragging)
                 {
@@ -271,6 +320,7 @@ namespace island
                 RootGrid.ReleasePointerCapture(e.Pointer);
                 _isDocked = _currentY <= IslandConfig.DockThreshold;
                 UpdateState();
+                UpdateShadowState();
                 SavePositionSettings();
             }
         }
@@ -282,13 +332,31 @@ namespace island
         private void RootGrid_PointerEntered(object sender, Microsoft.UI.Xaml.Input.PointerRoutedEventArgs e)
         {
             _hoverDebounceTimer.Stop();
-            _isHovered = true;
-            UpdateState();
+            
+            // Only apply the delay if docked AND foreground is maximized
+            if (_isDocked && !_isDragging && _isForegroundMaximized)
+            {
+                _isHoverPending = true;
+                _dockedHoverDelayTimer.Start();
+            }
+            else
+            {
+                _isHovered = true;
+                UpdateState();
+            }
         }
 
         private void RootGrid_PointerExited(object sender, Microsoft.UI.Xaml.Input.PointerRoutedEventArgs e)
         {
-            _hoverDebounceTimer.Start();
+            if (_isHoverPending)
+            {
+                _isHoverPending = false;
+                _dockedHoverDelayTimer.Stop();
+            }
+            else
+            {
+                _hoverDebounceTimer.Start();
+            }
         }
 
         #endregion

@@ -22,9 +22,11 @@ namespace island.Models
         public const double DefaultY = 10;
         public const double DockThreshold = 15;
         public const double DockPeekOffset = 6;
+        public const double MaximizedDockPeekOffset = 2; // Thin line when foreground is maximized
 
         // --- Timing ---
         public const int HoverDebounceMs = 100;
+        public const int DockedHoverDelayMs = 750; // 0.75s delay to trigger expansion when docked
         public const int DefaultNotificationDurationMs = 3000;
         public const int TrackChangeNotificationDurationMs = 4000;
 
