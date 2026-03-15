@@ -47,6 +47,7 @@ App.xaml.cs (entry + Logger-based exception handler)
     ├── Notification System  — ShowNotification() with async delay
     ├── Backdrop Manager     — Mica / Acrylic / None + auto-persist
     ├── Tray & Menu          — WinUIEx WindowManager
+    ├── DWM Shadow/Corner    — DwmSetWindowAttribute P/Invoke
     ├── MediaService         — GSMTC session lifecycle, playback control
     └── SettingsService      — JSON load/save (backdrop, position, dock state)
 ```
@@ -124,7 +125,7 @@ dotnet publish island.csproj -c Release -p:Platform=x64
 | Modify animations | `MainWindow.xaml.cs` #Animation region | Uses `IslandConfig.AnimationSpeed` |
 | Add new state | `UpdateState()` in #State Machine region | Follow existing priority logic |
 | Add menu item | `CreateTrayMenu()` + XAML ContextFlyout | Keep tray and context menu in sync |
-| Window properties | Constructor | WinUIEx WindowManager config |
+| Window properties | Constructor | WinUIEx config + DWM shadow/corner tweaks |
 | Media features | `Services/MediaService.cs` | GSMTC API, events fire on background thread |
 | Notifications | `ShowNotification()` in #Notifications region | async void + `Task.Delay` timing |
 | Backdrop | `SetBackdrop()` in #Backdrop region | Must sync text colors, auto-saves setting |
