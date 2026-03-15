@@ -1,0 +1,10 @@
+{
+  "profiles": {
+    "island (Package)": {
+      "commandName": "MsixPackage"
+    },
+    "island (Unpackaged)": {
+      "commandName": "Project"
+    }
+  }
+}
