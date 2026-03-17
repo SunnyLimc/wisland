@@ -26,6 +26,9 @@ namespace island.Services
         /// <summary>Whether the current session is actively playing.</summary>
         public bool IsPlaying { get; private set; }
 
+        /// <summary>Current media progress from 0.0 to 1.0.</summary>
+        public double Progress { get; private set; }
+
         /// <summary>Fired when media properties (title, artist, playback state) change.</summary>
         public event Action? MediaChanged;
 
@@ -117,6 +120,7 @@ namespace island.Services
             {
                 _currentSession.MediaPropertiesChanged -= OnMediaPropertiesChanged;
                 _currentSession.PlaybackInfoChanged -= OnPlaybackInfoChanged;
+                _currentSession.TimelinePropertiesChanged -= OnTimelinePropertiesChanged;
             }
 
             _currentSession = newSession;
@@ -125,8 +129,10 @@ namespace island.Services
             {
                 _currentSession.MediaPropertiesChanged += OnMediaPropertiesChanged;
                 _currentSession.PlaybackInfoChanged += OnPlaybackInfoChanged;
+                _currentSession.TimelinePropertiesChanged += OnTimelinePropertiesChanged;
                 UpdateUIFromSession(_currentSession);
                 UpdatePlaybackState(_currentSession);
+                UpdateTimelineState(_currentSession);
             }
             else
             {
@@ -139,6 +145,9 @@ namespace island.Services
 
         private void OnPlaybackInfoChanged(GlobalSystemMediaTransportControlsSession sender, PlaybackInfoChangedEventArgs args)
             => UpdatePlaybackState(sender);
+
+        private void OnTimelinePropertiesChanged(GlobalSystemMediaTransportControlsSession sender, TimelinePropertiesChangedEventArgs args)
+            => UpdateTimelineState(sender);
 
         private async void UpdateUIFromSession(GlobalSystemMediaTransportControlsSession session)
         {
@@ -181,12 +190,33 @@ namespace island.Services
             }
         }
 
+        private void UpdateTimelineState(GlobalSystemMediaTransportControlsSession session)
+        {
+            try
+            {
+                var timeline = session.GetTimelineProperties();
+                if (timeline != null && timeline.EndTime.TotalSeconds > 0)
+                {
+                    Progress = timeline.Position.TotalSeconds / timeline.EndTime.TotalSeconds;
+                }
+                else
+                {
+                    Progress = 0;
+                }
+            }
+            catch (Exception ex)
+            {
+                Logger.Error(ex, "Failed to update timeline state");
+            }
+        }
+
         private void SetNoMedia()
         {
             CurrentTitle = "No Media";
             CurrentArtist = "Waiting for music...";
             HeaderStatus = "Dynamic Island";
             IsPlaying = false;
+            Progress = 0;
             MediaChanged?.Invoke();
         }
     }

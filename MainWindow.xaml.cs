@@ -8,6 +8,7 @@ using System;
 using System.Runtime.InteropServices;
 using Windows.Graphics;
 using System.Threading.Tasks;
+using System.Numerics;
 using WinUIEx;
 using island.Helpers;
 using island.Models;
@@ -40,6 +41,10 @@ namespace island
         private double _targetY = IslandConfig.DefaultY;
         private double _currentY = IslandConfig.DefaultY;
         private double _centerX = 0;
+
+        // --- Progress State ---
+        private double? _taskProgress = null;
+        private double _currentProgressWidth = 0;
 
         // --- Logical States ---
         private bool _isHovered = false;
@@ -74,12 +79,20 @@ namespace island
         private readonly DispatcherTimer _cursorTrackerTimer;
         private int _hoverTicks = 0;
 
+        // --- Content Clipping ---
+        private readonly Microsoft.UI.Composition.RectangleClip _contentClip;
+        private readonly Microsoft.UI.Composition.Visual _contentVisual;
+
         public MainWindow()
         {
             try
             {
                 this.InitializeComponent();
                 this.ExtendsContentIntoTitleBar = true;
+
+                _contentVisual = Microsoft.UI.Xaml.Hosting.ElementCompositionPreview.GetElementVisual(ContentContainer);
+                _contentClip = _contentVisual.Compositor.CreateRectangleClip();
+                _contentVisual.Clip = _contentClip;
 
                 var manager = WindowManager.Get(this);
                 manager.IsTitleBarVisible = false;
@@ -345,10 +358,34 @@ namespace island
             if (!_isDragging)
                 _currentY += (_targetY - _currentY) * t;
 
+            // Progress Calculation
+            double targetProgress = _taskProgress ?? _mediaService.Progress;
+            if (double.IsNaN(targetProgress) || double.IsInfinity(targetProgress)) targetProgress = 0;
+            double targetProgressWidth = _currentWidth * targetProgress;
+            _currentProgressWidth += (targetProgressWidth - _currentProgressWidth) * t;
+
             // XAML Sync
             IslandBorder.Width = _currentWidth;
             IslandBorder.Height = _currentHeight;
-            IslandBorder.CornerRadius = new CornerRadius(_currentHeight / 2.0);
+            
+            // Dynamic radius: half-height for compact, but capped at 20px for expanded state
+            // to match the visual "squircle" look and ensure the clip covers the corners.
+            double radius = Math.Min(_currentHeight / 2.0, 20.0); 
+            IslandBorder.CornerRadius = new CornerRadius(radius);
+
+            // Update Composition Clip for ContentContainer
+            if (_contentClip != null)
+            {
+                var vecRadius = new Vector2((float)radius);
+                _contentClip.TopLeftRadius = vecRadius;
+                _contentClip.TopRightRadius = vecRadius;
+                _contentClip.BottomLeftRadius = vecRadius;
+                _contentClip.BottomRightRadius = vecRadius;
+                _contentClip.Right = (float)_currentWidth;
+                _contentClip.Bottom = (float)_currentHeight;
+            }
+
+            LiquidGlassProgressLayer.Width = _currentProgressWidth;
 
             CompactContent.Opacity = _currentCompactOpacity;
             ExpandedContent.Opacity = _currentExpandedOpacity;
@@ -494,6 +531,26 @@ namespace island
 
         #endregion
 
+        #region Task Progress
+
+        /// <summary>
+        /// Set a custom task progress (0.0 to 1.0) which overrides media progress.
+        /// </summary>
+        public void SetTaskProgress(double progress)
+        {
+            _taskProgress = Math.Clamp(progress, 0.0, 1.0);
+        }
+
+        /// <summary>
+        /// Clear the custom task progress and revert to tracking media progress.
+        /// </summary>
+        public void ClearTaskProgress()
+        {
+            _taskProgress = null;
+        }
+
+        #endregion
+
         #region Backdrop
 
         /// <summary>Supported backdrop effect types.</summary>
@@ -605,6 +662,9 @@ namespace island
             var testItem = new MenuFlyoutItem { Text = "Test Notification" };
             testItem.Click += TestNotification_Click;
             menu.Items.Add(testItem);
+            var testProgressItem = new MenuFlyoutItem { Text = "Test Task Progress" };
+            testProgressItem.Click += TestProgress_Click;
+            menu.Items.Add(testProgressItem);
             menu.Items.Add(new MenuFlyoutSeparator());
             var backdropSub = new MenuFlyoutSubItem { Text = "Backdrop Style" };
             var micaItem = new MenuFlyoutItem { Text = "Mica" };
@@ -626,6 +686,15 @@ namespace island
 
         private void ShowIsland_Click(object sender, RoutedEventArgs e) { this.Activate(); this.SetForegroundWindow(); }
         private void TestNotification_Click(object sender, RoutedEventArgs e) => ShowNotification("Dynamic Island", "Flawless Physics!");
+        private async void TestProgress_Click(object sender, RoutedEventArgs e)
+        {
+            for (int i = 0; i <= 100; i += 5)
+            {
+                SetTaskProgress(i / 100.0);
+                await Task.Delay(200);
+            }
+            ClearTaskProgress();
+        }
         private void Mica_Click(object sender, RoutedEventArgs e) => SetBackdrop(BackdropType.Mica);
         private void Acrylic_Click(object sender, RoutedEventArgs e) => SetBackdrop(BackdropType.Acrylic);
         private void None_Click(object sender, RoutedEventArgs e) => SetBackdrop(BackdropType.None);

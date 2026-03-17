@@ -23,6 +23,7 @@
             <Border.ContextFlyout>
                 <MenuFlyout>
                     <MenuFlyoutItem Text="Test Notification" Click="TestNotification_Click"/>
+                    <MenuFlyoutItem Text="Test Task Progress" Click="TestProgress_Click"/>
                     <MenuFlyoutSeparator/>
                     <MenuFlyoutSubItem Text="Backdrop Style">
                         <MenuFlyoutItem Text="Mica" Click="Mica_Click"/>
@@ -34,7 +35,27 @@
                 </MenuFlyout>
             </Border.ContextFlyout>
             
-            <Grid>
+            <Grid x:Name="ContentContainer">
+                <!-- Liquid Glass Progress Layer -->
+                <Grid x:Name="LiquidGlassProgressLayer" 
+                      Width="0" 
+                      HorizontalAlignment="Left">
+                    <!-- Solid translucent background for filled track -->
+                    <Border Background="#25FFFFFF" />
+                    
+                    <!-- Fixed-width moving head for a sharp glowing leading edge -->
+                    <!-- This prevents the gradient from stretching and blurring when expanded -->
+                    <Border Width="80" HorizontalAlignment="Right">
+                        <Border.Background>
+                            <LinearGradientBrush StartPoint="0,0.5" EndPoint="1,0.5">
+                                <GradientStop Color="#00FFFFFF" Offset="0.0"/>
+                                <GradientStop Color="#60FFFFFF" Offset="0.75"/>
+                                <GradientStop Color="#C0FFFFFF" Offset="1.0"/>
+                            </LinearGradientBrush>
+                        </Border.Background>
+                    </Border>
+                </Grid>
+
                 <!-- Compact State Content -->
                 <Grid x:Name="CompactContent" Opacity="1">
                     <TextBlock x:Name="CompactText" Text="Dynamic Island" Foreground="White" HorizontalAlignment="Center" VerticalAlignment="Center" FontSize="12"/>
