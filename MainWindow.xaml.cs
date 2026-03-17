@@ -69,6 +69,11 @@ namespace island
         private readonly DispatcherTimer _dockedHoverDelayTimer;
         private bool _isHoverPending = false;
 
+        // --- Line Mode State ---
+        private NativeLineWindow? _lineWindow;
+        private readonly DispatcherTimer _cursorTrackerTimer;
+        private int _hoverTicks = 0;
+
         public MainWindow()
         {
             try
@@ -129,7 +134,13 @@ namespace island
                     UpdateState();
                 };
 
+                _lineWindow = new NativeLineWindow();
+                _cursorTrackerTimer = new DispatcherTimer { Interval = TimeSpan.FromMilliseconds(50) };
+                _cursorTrackerTimer.Tick += CursorTrackerTimer_Tick;
+
                 CompositionTarget.Rendering += OnCompositionTargetRendering;
+
+                this.Closed += (s, e) => _lineWindow?.Dispose();
 
                 Logger.Info("MainWindow initialized successfully");
             }
@@ -145,8 +156,11 @@ namespace island
         private void UpdateShadowState()
         {
             var hwnd = WinRT.Interop.WindowNative.GetWindowHandle(this);
-            // Completely remove shadow and rounding if docked and foreground is maximized
-            int preference = (_isDocked && _isForegroundMaximized) ? WindowInterop.DWMWCP_DONOTROUND : WindowInterop.DWMWCP_ROUND;
+            // We ONLY want to disable rounding/shadows when the window is fully tucked away (-1000) and acting as a line.
+            // If it is animating in, hovering, docking, or anything else, it should have its normal rounded shape.
+            bool isCompletelyHiddenLine = _isDocked && _isForegroundMaximized && !_isHovered && !_isNotifying && !_isDragging && _targetY == -1000;
+            
+            int preference = isCompletelyHiddenLine ? WindowInterop.DWMWCP_DONOTROUND : WindowInterop.DWMWCP_ROUND;
             WindowInterop.DwmSetWindowAttribute(hwnd, WindowInterop.DWMWA_WINDOW_CORNER_PREFERENCE, ref preference, sizeof(int));
         }
 
@@ -166,8 +180,63 @@ namespace island
             {
                 _isForegroundMaximized = isMaximized;
                 UpdateState();
-                UpdateShadowState();
             }
+        }
+
+        private void CursorTrackerTimer_Tick(object? sender, object e)
+        {
+            if (!_isDocked || !_isForegroundMaximized || _isHovered)
+            {
+                _cursorTrackerTimer.Stop();
+                return;
+            }
+
+            GetCursorPos(out var pt);
+            
+            // Check if cursor is at the very top of the screen within the island's X bounds
+            double xRadius = IslandConfig.CompactWidth / 2.0;
+            if (pt.Y <= 1 && pt.X >= (_centerX - xRadius) * _dpiScale && pt.X <= (_centerX + xRadius) * _dpiScale)
+            {
+                _hoverTicks++;
+                if (_hoverTicks * 50 >= IslandConfig.DockedHoverDelayMs) // 0.75s
+                {
+                    _hoverTicks = 0;
+                    _cursorTrackerTimer.Stop();
+
+                    // Pre-sync animation values to make it "grow" from the line
+                    // instead of abruptly snapping from off-screen.
+                    _currentWidth = IslandConfig.CompactWidth;
+                    _currentHeight = 2; // Start from line height
+                    _currentY = 0;      // Start from the very top
+                    
+                    _isHovered = true;
+                    UpdateState();
+                    UpdateShadowState(); // Force DWM update immediately before next render frame
+                }
+            }
+            else
+            {
+                _hoverTicks = 0;
+            }
+        }
+
+        private void ShowLineWindow()
+        {
+            if (_lineWindow != null)
+            {
+                int w = (int)Math.Ceiling(IslandConfig.CompactWidth * _dpiScale);
+                int h = (int)Math.Max(2, 2 * _dpiScale); // 2px line
+                int x = (int)Math.Round((_centerX - IslandConfig.CompactWidth / 2.0) * _dpiScale);
+                int y = 0;
+                _lineWindow.Show(x, y, w, h);
+            }
+        }
+
+        private void HideLineWindow()
+        {
+            _hoverTicks = 0;
+            _cursorTrackerTimer.Stop();
+            _lineWindow?.Hide();
         }
 
         /// <summary>
@@ -191,6 +260,7 @@ namespace island
                 {
                     _targetY = IslandConfig.DefaultY;
                 }
+                HideLineWindow();
             }
             else if (_isHovered && !_isDragging)
             {
@@ -205,6 +275,7 @@ namespace island
                     // This ensures all UI content remains visible and it drops down from the bezel.
                     _targetY = 0;
                 }
+                HideLineWindow();
             }
             else
             {
@@ -215,14 +286,29 @@ namespace island
 
                 if (_isDocked && !_isDragging)
                 {
-                    double peekOffset = _isForegroundMaximized ? IslandConfig.MaximizedDockPeekOffset : IslandConfig.DockPeekOffset;
-                    _targetY = -_targetHeight + peekOffset;
+                    if (_isForegroundMaximized)
+                    {
+                        // Target moving off-screen upwards so the animation pulls it out of view
+                        _targetY = -_targetHeight;
+                        
+                        // Start tracking the mouse so we can trigger the native line window when it reaches the top
+                        _cursorTrackerTimer.Start();
+                    }
+                    else
+                    {
+                        _targetY = -_targetHeight + IslandConfig.DockPeekOffset;
+                        HideLineWindow();
+                    }
                 }
                 else if (!_isDragging)
                 {
                     _targetY = Math.Max(IslandConfig.DefaultY, _currentY);
+                    HideLineWindow();
                 }
             }
+            
+            // Unconditionally update shadow state. It checks _targetY and other flags to decide.
+            UpdateShadowState();
         }
 
         #endregion
@@ -274,6 +360,19 @@ namespace island
             int physH = (int)Math.Ceiling(_currentHeight * _dpiScale);
             int physX = (int)Math.Round((_centerX - _currentWidth / 2.0) * _dpiScale);
             int physY = (int)Math.Round(_currentY * _dpiScale);
+
+            // If it's animating off-screen (hiding), show the native line when it's almost gone
+            if (_isDocked && _isForegroundMaximized && !_isHovered && !_isNotifying && !_isDragging)
+            {
+                if (_currentY < -_targetHeight + 2) // Almost off-screen
+                {
+                    _targetY = -1000;
+                    _currentY = -1000;
+                    physY = -1000; // Snap immediately for this frame
+                    ShowLineWindow();
+                    UpdateShadowState();
+                }
+            }
 
             this.AppWindow.MoveAndResize(new RectInt32(physX, physY, physW, physH));
         }
@@ -333,7 +432,8 @@ namespace island
         {
             _hoverDebounceTimer.Stop();
             
-            // Only apply the delay if docked AND foreground is maximized
+            // Note: If docked and foreground is maximized, the window is offscreen,
+            // so we rely on CursorTrackerTimer. But if it does somehow trigger, we handle it.
             if (_isDocked && !_isDragging && _isForegroundMaximized)
             {
                 _isHoverPending = true;
