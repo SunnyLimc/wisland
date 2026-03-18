@@ -1,13 +1,13 @@
 # Island — Architecture & AI Planning Reference
 
-> Windows 桌面端 macOS Dynamic Island 复刻，支持媒体控制、通知弹出、物理动画、拖拽停靠和系统托盘。
+> Windows 桌面端 macOS Dynamic Island 复刻。基于组件化架构，支持液态物理动画、媒体控制、拖拽停靠和系统托盘。
 
 ## Tech Stack
 
 | Layer | Technology | Version |
 |---|---|---|
 | Framework | .NET 8 (`net8.0-windows10.0.19041.0`) | 8.0 |
-| UI | WinUI 3 (WinAppSDK) | 1.8.250906003 |
+| UI | WinUI 3 (WinAppSDK) | 1.8.250907003 |
 | Window Extensions | WinUIEx | 2.9.0 |
 | Deployment | Unpackaged + SelfContained | — |
 | DPI | PerMonitorV2 DPI Aware | — |
@@ -16,119 +16,101 @@
 
 ```
 island/
-├── island.slnx                  # Solution (XML slnx format)
-├── island.csproj                # Project file
-├── App.xaml / App.xaml.cs       # Application entry point + crash logging
-├── MainWindow.xaml              # Single window XAML layout
-├── MainWindow.xaml.cs           # Window logic (state, animation, drag, UI events)
-├── Helpers/
-│   └── Logger.cs                # Structured file logger → %LocalAppData%/Island/logs/
+├── Controls/
+│   └── LiquidProgressBar.xaml   # "Liquid" physics progress bar component
+├── Views/
+│   ├── CompactView.xaml         # UI for the collapsed state
+│   └── ExpandedMediaView.xaml   # UI for the expanded media controller
 ├── Models/
-│   └── IslandConfig.cs          # Centralized constants (sizes, timings, thresholds)
+│   ├── IslandConfig.cs          # Centralized constants (magic numbers)
+│   └── IslandState.cs           # Physical state data model (Width, Height, Opacity, etc.)
 ├── Services/
-│   ├── MediaService.cs          # GSMTC media session management + playback control
-│   └── SettingsService.cs       # JSON settings persistence → %LocalAppData%/Island/
-├── Package.appxmanifest         # App manifest (includes systemAI capability)
-├── app.manifest                 # OS compatibility + DPI declaration
-├── Assets/                      # 7 PNG icon assets
-└── Properties/
-    ├── launchSettings.json      # Debug profiles (Package / Unpackaged)
-    └── PublishProfiles/
+│   ├── IslandController.cs      # Core Logic: State machine + Physics (Exponential Decay)
+│   ├── MediaService.cs          # GSMTC media session management
+│   └── SettingsService.cs       # JSON settings persistence
+├── Helpers/
+│   ├── Logger.cs                # Structured file logger
+│   ├── NativeLineWindow.cs      # Transparent overlay for "docked line" mode
+│   └── WindowInterop.cs         # P/Invoke Win32 API wrappers
+├── MainWindow.xaml / .cs        # Execution Layer: OS Window sync + Event routing
+└── App.xaml / .cs               # Application entry point
 ```
 
 ## Architecture Overview
 
+项目采用 **Controller-View-Component** 模式，实现逻辑与表现的彻底分离：
+
 ```
-App.xaml.cs (entry + Logger-based exception handler)
-└── MainWindow.xaml.cs
-    ├── State Machine        — UpdateState() with 4 boolean flags
-    ├── Animation Loop       — CompositionTarget.Rendering + exponential decay
-    ├── Drag & Dock System   — P/Invoke GetCursorPos, center-based positioning
-    ├── Notification System  — ShowNotification() with async delay
-    ├── Backdrop Manager     — Mica / Acrylic / None + auto-persist
-    ├── Tray & Menu          — WinUIEx WindowManager
-    ├── DWM Shadow/Corner    — DwmSetWindowAttribute P/Invoke
-    ├── MediaService         — GSMTC session lifecycle, playback control
-    └── SettingsService      — JSON load/save (backdrop, position, dock state)
+Input (Mouse/Media/System)
+└── MainWindow.xaml.cs (Event Distributor)
+    └── IslandController.cs (The "Brain")
+        ├── State Machine (Hover/Dock/Notify/Maximized)
+        └── Physics Engine (Exponential Decay Calculation)
+            └── IslandState (Current Physics Values)
+                └── MainWindow.xaml.cs (Sync Layer)
+                    ├── LiquidProgressBar (Sub-component Physics)
+                    ├── CompactView / ExpandedMediaView (UI Sync)
+                    └── OS Window (MoveAndResize P/Invoke)
 ```
 
 ## Core Systems
 
-### State Machine (`UpdateState`)
+### 1. IslandController (Logic & Physics)
 
-| Flag | Meaning | Trigger |
-|---|---|---|
-| `_isNotifying` | Showing notification | `ShowNotification()` → async delay → reset |
-| `_isHovered` | Mouse hovering | `PointerEntered/Exited` + debounce |
-| `_isDragging` | Being dragged | `PointerPressed/Released` |
-| `_isDocked` | Docked to screen top | Release when Y ≤ `DockThreshold` |
+负责所有的“思考”过程。不包含任何 UI 引用，纯数学驱动。
 
-**Priority** (high → low): `_isNotifying` > `_isHovered` (+ !docked + !dragging) > default
+| Property | Meaning |
+|---|---|
+| `IsHovered` | Mouse is over the island |
+| `IsDragging` | Island is being moved by user |
+| `IsDocked` | Island is snapped to the screen top |
+| `IsNotifying` | Active notification is overriding the state |
+| `IsForegroundMaximized` | Focused window is maximized (triggers "line" mode) |
 
-### Animation System
+**Physics Engine**: 使用 `Tick(dt)` 驱动指数衰减（Exponential Decay）算法，实时更新 `IslandState`。
 
-Frame-synced exponential decay via `CompositionTarget.Rendering`:
-```csharp
-double t = 1.0 - Math.Exp(-IslandConfig.AnimationSpeed * dt);
-_currentValue += (_targetValue - _currentValue) * t;
-```
+### 2. LiquidProgressBar (Component)
 
-### MediaService
+一个高度封装的 UI 组件，模拟液态流体质感。
+- **Velocity Mapping**: 进度条头部的宽度和亮度与位移速度（Velocity）成正比。
+- **Smoothed Feedback**: 对速度进行二次平滑处理，消除突发跳变导致的闪烁。
+- **Shimmer Effect**: 持续的流光背景，提供“生命感”。
 
-- Encapsulates `GlobalSystemMediaTransportControlsSessionManager`
-- Exposes: `CurrentTitle`, `CurrentArtist`, `IsPlaying`, `HeaderStatus`
-- Methods: `PlayPauseAsync()`, `SkipNextAsync()`, `SkipPreviousAsync()`
-- Events: `MediaChanged`, `TrackChanged`
+### 3. Media Integration (Service)
 
-### SettingsService
+- 封装 `GlobalSystemMediaTransportControlsSessionManager`。
+- 监听系统媒体状态，自动更新 `ExpandedMediaView`。
+- 提供媒体控制接口（播放/暂停/切歌）。
 
-- Persists to `%LocalAppData%/Island/settings.json`
-- Properties: `BackdropType`, `CenterX`, `LastY`, `IsDocked`
-- Auto-saves on backdrop change and drag release
+### 4. Windowing Helper (Native)
 
-### Window Configuration (WinUIEx)
-
-| Property | Value | Effect |
-|---|---|---|
-| `IsTitleBarVisible` | false | No title bar |
-| `IsAlwaysOnTop` | true | Always on top |
-| `IsResizable/Minimizable/Maximizable` | false | Fixed widget |
-| `IsShownInSwitchers` | false | Hidden from Alt+Tab |
-| `IsVisibleInTray` | true | System tray icon |
-
-## Constants Reference (`IslandConfig`)
-
-| Constant | Value | Usage |
-|---|---|---|
-| `CompactWidth/Height` | 200 / 30 | Default pill size |
-| `ExpandedWidth/Height` | 400 / 120 | Hover/notification size |
-| `AnimationSpeed` | 25.0 | Exponential decay speed |
-| `DockThreshold` | 15 | Y threshold to trigger dock |
-| `DockPeekOffset` | 6 | Visible pixels when docked |
-| `HoverDebounceMs` | 100 | Mouse exit debounce |
-| `DefaultNotificationDurationMs` | 3000 | Standard notification |
-| `TrackChangeNotificationDurationMs` | 4000 | Track change notification |
+- **NativeLineWindow**: 当灵动岛在全屏应用下隐藏时，在屏幕顶部边缘渲染的 1px 像素线，负责捕捉鼠标悬停以唤醒岛屿。
+- **WindowInterop**: 处理 DWM 窗口圆角、阴影以及窗口置顶等低级 API 调用。
 
 ## Build & Run
 
 ```powershell
+# Build
 dotnet build island.csproj -c Debug -p:Platform=x64
+
+# Run
 dotnet run --project island.csproj -c Debug -p:Platform=x64
-dotnet publish island.csproj -c Release -p:Platform=x64
 ```
 
-## AI Quick Reference
+## AI & Developer Quick Reference
 
-| Task | Key Location | Notes |
+| Task | Key Location | Architecture Role |
 |---|---|---|
-| Modify UI layout | `MainWindow.xaml` | Border contains compact/expanded layers |
-| Modify animations | `MainWindow.xaml.cs` #Animation region | Uses `IslandConfig.AnimationSpeed` |
-| Add new state | `UpdateState()` in #State Machine region | Follow existing priority logic |
-| Add menu item | `CreateTrayMenu()` + XAML ContextFlyout | Keep tray and context menu in sync |
-| Window properties | Constructor | WinUIEx config + DWM shadow/corner tweaks |
-| Media features | `Services/MediaService.cs` | GSMTC API, events fire on background thread |
-| Notifications | `ShowNotification()` in #Notifications region | async void + `Task.Delay` timing |
-| Backdrop | `SetBackdrop()` in #Backdrop region | Must sync text colors, auto-saves setting |
-| Add constants | `Models/IslandConfig.cs` | All magic numbers centralized here |
-| Logging | `Helpers/Logger.cs` | `Logger.Info/Warn/Error()`, writes to AppData |
-| Settings | `Services/SettingsService.cs` | JSON to `%LocalAppData%/Island/settings.json` |
+| 修改动画速度 | `IslandConfig.AnimationSpeed` | Constant |
+| 增加新的岛屿状态 | `IslandController.UpdateTargetState()` | Controller Logic |
+| 修改进度条视觉 | `Controls/LiquidProgressBar.xaml` | Component View |
+| 增加通知类型 | `MainWindow.ShowNotification()` | Action Entry |
+| 修改媒体布局 | `Views/ExpandedMediaView.xaml` | View Content |
+| 处理 Win32 消息 | `Helpers/WindowInterop.cs` | Native Helper |
+| 调整物理参数 | `Services/IslandController.cs` | Physics Engine |
+
+## Design Decisions
+
+- **Exponential Decay over Storyboards**: 使用每帧计算而非 XAML Storyboard，以支持在动画过程中动态改变目标（Target Switching），实现无缝的物理过渡。
+- **Component-Based UI**: 将 `Compact` 和 `Expanded` 拆分为独立 View，降低了 `MainWindow` 的 XAML 复杂度，支持未来通过插件化方式增加更多视图模式。
+- **Smoothed Velocity**: 进度条反馈使用平滑后的速度，而非瞬时速度，以适配离散的（Step-based）进度更新。

@@ -1,0 +1,61 @@
+<UserControl
+    x:Class="island.Controls.LiquidProgressBar"
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    xmlns:local="using:island.Controls"
+    xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+    xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+    mc:Ignorable="d">
+
+    <Grid x:Name="RootGrid">
+        <Grid.Resources>
+            <Storyboard x:Name="ShimmerStoryboard">
+                <DoubleAnimation
+                    Storyboard.TargetName="ShimmerTransform"
+                    Storyboard.TargetProperty="X"
+                    From="-300" To="800" Duration="0:0:6"
+                    RepeatBehavior="Forever" />
+            </Storyboard>
+        </Grid.Resources>
+
+        <!-- Liquid Glass Progress Layer -->
+        <Grid x:Name="LiquidGlassProgressLayer" 
+              Width="0" 
+              HorizontalAlignment="Left">
+            
+            <!-- Layer 1: Ambient frosted base (Subtle overall volume fill) -->
+            <Border x:Name="ProgressBase" Background="#1AFFFFFF" />
+
+            <!-- Layer 2: Internal Shimmer Flow (The "Liquid" feel) -->
+            <Canvas IsHitTestVisible="False">
+                <Border x:Name="ProgressShimmer" Width="100" Height="200" VerticalAlignment="Stretch" Opacity="0.15">
+                    <Border.Background>
+                        <LinearGradientBrush StartPoint="0,0.5" EndPoint="1,0.5">
+                            <GradientStop Color="#00FFFFFF" Offset="0.0"/>
+                            <GradientStop Color="#A0FFFFFF" Offset="0.5"/>
+                            <GradientStop Color="#00FFFFFF" Offset="1.0"/>
+                        </LinearGradientBrush>
+                    </Border.Background>
+                    <Border.RenderTransform>
+                        <TranslateTransform x:Name="ShimmerTransform" X="-100"/>
+                    </Border.RenderTransform>
+                </Border>
+            </Canvas>
+
+            <!-- Layer 3: The dynamic 'Comet' tail (Directional energy) -->
+            <Border x:Name="ProgressTail" Width="60" HorizontalAlignment="Right" Opacity="0.2">
+                <Border.Background>
+                    <LinearGradientBrush StartPoint="0,0.5" EndPoint="1,0.5">
+                        <GradientStop Color="#00FFFFFF" Offset="0.0"/>
+                        <GradientStop Color="#10FFFFFF" Offset="0.5"/>
+                        <GradientStop Color="#60FFFFFF" Offset="0.9"/>
+                        <GradientStop Color="#D0FFFFFF" Offset="1.0"/>
+                    </LinearGradientBrush>
+                </Border.Background>
+            </Border>
+            
+            <!-- Layer 4: The bright leading edge core (Precision laser focus point) -->
+            <Border x:Name="ProgressLaserCore" Width="2" HorizontalAlignment="Right" Background="#FFFFFFFF" Opacity="0.7"/>
+        </Grid>
+    </Grid>
+</UserControl>

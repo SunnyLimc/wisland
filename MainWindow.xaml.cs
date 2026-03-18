@@ -24,43 +24,19 @@ namespace island
     {
         private readonly MediaService _mediaService = new();
         private readonly SettingsService _settings = new();
+        private readonly IslandController _controller = new();
 
         private double _dpiScale = 1.0;
-
-        // --- Logical Targets & Current Values ---
-        private double _targetWidth = IslandConfig.CompactWidth;
-        private double _targetHeight = IslandConfig.CompactHeight;
-        private double _currentWidth = IslandConfig.CompactWidth;
-        private double _currentHeight = IslandConfig.CompactHeight;
-
-        private double _targetCompactOpacity = 1;
-        private double _currentCompactOpacity = 1;
-        private double _targetExpandedOpacity = 0;
-        private double _currentExpandedOpacity = 0;
-
-        private double _targetY = IslandConfig.DefaultY;
-        private double _currentY = IslandConfig.DefaultY;
-        private double _centerX = 0;
-
-        // --- Progress State ---
-        private double? _taskProgress = null;
-        private double _currentProgressWidth = 0;
-        private double _previousProgressWidth = 0;
-        private double _smoothedVelocity = 0;
-
-        // --- Logical States ---
-        private bool _isHovered = false;
-        private bool _isDragging = false;
-        private bool _isDocked = false;
-        private bool _isNotifying = false;
-
-        private readonly DispatcherTimer _hoverDebounceTimer;
-        private TimeSpan _lastRenderTime = TimeSpan.Zero;
 
         // --- Dragging Context ---
         private POINT _dragStartScreenPos;
         private double _dragStartCenterX;
         private double _dragStartY;
+
+        // --- Timers & Progress ---
+        private readonly DispatcherTimer _hoverDebounceTimer;
+        private TimeSpan _lastRenderTime = TimeSpan.Zero;
+        private double? _taskProgress = null;
 
         [DllImport("user32.dll")]
         [return: MarshalAs(UnmanagedType.Bool)]
@@ -71,10 +47,7 @@ namespace island
 
         // --- Context-Aware UX State ---
         private readonly DispatcherTimer _foregroundCheckTimer;
-        private bool _isForegroundMaximized = false;
-        
         private readonly DispatcherTimer _dockedHoverDelayTimer;
-        private bool _isHoverPending = false;
 
         // --- Line Mode State ---
         private NativeLineWindow? _lineWindow;
@@ -110,12 +83,10 @@ namespace island
                 // Load saved settings
                 _settings.Load();
 
-                // Initialize Position
-                var display = DisplayArea.Primary.WorkArea;
-                _centerX = _settings.CenterX > 0 ? _settings.CenterX : (display.Width / _dpiScale) / 2.0;
-                _isDocked = _settings.IsDocked;
-                _currentY = _settings.IsDocked ? 0 : Math.Max(IslandConfig.DefaultY, _settings.LastY);
-                _targetY = _currentY;
+                // Initialize Controller Position
+                double initialCenterX = _settings.CenterX > 0 ? _settings.CenterX : (DisplayArea.Primary.WorkArea.Width / _dpiScale) / 2.0;
+                double initialY = _settings.IsDocked ? 0 : Math.Max(IslandConfig.DefaultY, _settings.LastY);
+                _controller.InitializePosition(initialCenterX, initialY, _settings.IsDocked);
 
                 // Tray Icon
                 manager.IsVisibleInTray = true;
@@ -129,8 +100,8 @@ namespace island
                 _hoverDebounceTimer.Tick += (s, e) =>
                 {
                     _hoverDebounceTimer.Stop();
-                    _isHovered = false;
-                    _isHoverPending = false;
+                    _controller.IsHovered = false;
+                    _controller.IsHoverPending = false; // Note: need to add this to controller if missing
                     UpdateState();
                 };
 
@@ -144,8 +115,8 @@ namespace island
                 _dockedHoverDelayTimer.Tick += (s, e) =>
                 {
                     _dockedHoverDelayTimer.Stop();
-                    _isHoverPending = false;
-                    _isHovered = true;
+                    _controller.IsHoverPending = false;
+                    _controller.IsHovered = true;
                     UpdateState();
                 };
 
@@ -156,9 +127,6 @@ namespace island
                 CompositionTarget.Rendering += OnCompositionTargetRendering;
 
                 this.Closed += (s, e) => _lineWindow?.Dispose();
-
-                // Start Shimmer Animation
-                ShimmerStoryboard.Begin();
 
                 Logger.Info("MainWindow initialized successfully");
             }
@@ -175,8 +143,7 @@ namespace island
         {
             var hwnd = WinRT.Interop.WindowNative.GetWindowHandle(this);
             // We ONLY want to disable rounding/shadows when the window is fully tucked away (-1000) and acting as a line.
-            // If it is animating in, hovering, docking, or anything else, it should have its normal rounded shape.
-            bool isCompletelyHiddenLine = _isDocked && _isForegroundMaximized && !_isHovered && !_isNotifying && !_isDragging && _targetY == -1000;
+            bool isCompletelyHiddenLine = _controller.IsDocked && _controller.IsForegroundMaximized && !_controller.IsHovered && !_controller.IsNotifying && !_controller.IsDragging && _controller.Current.Y <= -100;
             
             int preference = isCompletelyHiddenLine ? WindowInterop.DWMWCP_DONOTROUND : WindowInterop.DWMWCP_ROUND;
             WindowInterop.DwmSetWindowAttribute(hwnd, WindowInterop.DWMWA_WINDOW_CORNER_PREFERENCE, ref preference, sizeof(int));
@@ -184,26 +151,25 @@ namespace island
 
         private void CheckForegroundWindow()
         {
-            if (!_isDocked) return;
+            if (!_controller.IsDocked) return;
 
             IntPtr hwnd = WindowInterop.GetForegroundWindow();
             if (hwnd == IntPtr.Zero || hwnd == WinRT.Interop.WindowNative.GetWindowHandle(this))
             {
-                // Do not change state if we are the foreground window or no foreground window
                 return;
             }
 
             bool isMaximized = WindowInterop.IsWindowMaximized(hwnd);
-            if (isMaximized != _isForegroundMaximized)
+            if (isMaximized != _controller.IsForegroundMaximized)
             {
-                _isForegroundMaximized = isMaximized;
+                _controller.IsForegroundMaximized = isMaximized;
                 UpdateState();
             }
         }
 
         private void CursorTrackerTimer_Tick(object? sender, object e)
         {
-            if (!_isDocked || !_isForegroundMaximized || _isHovered)
+            if (!_controller.IsDocked || !_controller.IsForegroundMaximized || _controller.IsHovered)
             {
                 _cursorTrackerTimer.Stop();
                 return;
@@ -211,25 +177,21 @@ namespace island
 
             GetCursorPos(out var pt);
             
-            // Check if cursor is at the very top of the screen within the island's X bounds
             double xRadius = IslandConfig.CompactWidth / 2.0;
-            if (pt.Y <= 1 && pt.X >= (_centerX - xRadius) * _dpiScale && pt.X <= (_centerX + xRadius) * _dpiScale)
+            if (pt.Y <= 1 && pt.X >= (_controller.Current.CenterX - xRadius) * _dpiScale && pt.X <= (_controller.Current.CenterX + xRadius) * _dpiScale)
             {
                 _hoverTicks++;
-                if (_hoverTicks * 50 >= IslandConfig.DockedHoverDelayMs) // 0.75s
+                if (_hoverTicks * 50 >= IslandConfig.DockedHoverDelayMs)
                 {
                     _hoverTicks = 0;
                     _cursorTrackerTimer.Stop();
 
-                    // Pre-sync animation values to make it "grow" from the line
-                    // instead of abruptly snapping from off-screen.
-                    _currentWidth = IslandConfig.CompactWidth;
-                    _currentHeight = 2; // Start from line height
-                    _currentY = 0;      // Start from the very top
+                    _controller.Current.Height = 2; // Grow from line
+                    _controller.Current.Y = 0;
                     
-                    _isHovered = true;
+                    _controller.IsHovered = true;
                     UpdateState();
-                    UpdateShadowState(); // Force DWM update immediately before next render frame
+                    UpdateShadowState();
                 }
             }
             else
@@ -243,8 +205,8 @@ namespace island
             if (_lineWindow != null)
             {
                 int w = (int)Math.Ceiling(IslandConfig.CompactWidth * _dpiScale);
-                int h = (int)Math.Max(2, 2 * _dpiScale); // 2px line
-                int x = (int)Math.Round((_centerX - IslandConfig.CompactWidth / 2.0) * _dpiScale);
+                int h = (int)Math.Max(2, 2 * _dpiScale);
+                int x = (int)Math.Round((_controller.Current.CenterX - IslandConfig.CompactWidth / 2.0) * _dpiScale);
                 int y = 0;
                 _lineWindow.Show(x, y, w, h);
             }
@@ -257,75 +219,20 @@ namespace island
             _lineWindow?.Hide();
         }
 
-        /// <summary>
-        /// Recalculate animation targets based on current logical state.
-        /// Priority: Notifying > Hovered (non-docked, non-dragging) > Default.
-        /// </summary>
         private void UpdateState()
         {
-            if (_isNotifying)
-            {
-                _targetWidth = IslandConfig.ExpandedWidth;
-                _targetHeight = IslandConfig.ExpandedHeight;
-                _targetCompactOpacity = 0;
-                _targetExpandedOpacity = 1;
-                
-                if (_isDocked)
-                {
-                    _targetY = 0;
-                }
-                else
-                {
-                    _targetY = IslandConfig.DefaultY;
-                }
-                HideLineWindow();
-            }
-            else if (_isHovered && !_isDragging)
-            {
-                _targetWidth = IslandConfig.ExpandedWidth;
-                _targetHeight = IslandConfig.ExpandedHeight;
-                _targetCompactOpacity = 0;
-                _targetExpandedOpacity = 1;
+            _controller.UpdateTargetState();
 
-                if (_isDocked)
-                {
-                    // Snap the top edge perfectly to the screen top (Y=0). 
-                    // This ensures all UI content remains visible and it drops down from the bezel.
-                    _targetY = 0;
-                }
-                HideLineWindow();
+            // Handle side effects like showing/hiding native line
+            if (_controller.IsOffscreen() || (_controller.IsDocked && _controller.IsForegroundMaximized && !_controller.IsHovered && !_controller.IsNotifying))
+            {
+                // This will be handled in UpdateAnimation OS sync
             }
             else
             {
-                _targetWidth = IslandConfig.CompactWidth;
-                _targetHeight = IslandConfig.CompactHeight;
-                _targetCompactOpacity = 1;
-                _targetExpandedOpacity = 0;
-
-                if (_isDocked && !_isDragging)
-                {
-                    if (_isForegroundMaximized)
-                    {
-                        // Target moving off-screen upwards so the animation pulls it out of view
-                        _targetY = -_targetHeight;
-                        
-                        // Start tracking the mouse so we can trigger the native line window when it reaches the top
-                        _cursorTrackerTimer.Start();
-                    }
-                    else
-                    {
-                        _targetY = -_targetHeight + IslandConfig.DockPeekOffset;
-                        HideLineWindow();
-                    }
-                }
-                else if (!_isDragging)
-                {
-                    _targetY = Math.Max(IslandConfig.DefaultY, _currentY);
-                    HideLineWindow();
-                }
+                HideLineWindow();
             }
             
-            // Unconditionally update shadow state. It checks _targetY and other flags to decide.
             UpdateShadowState();
         }
 
@@ -353,62 +260,22 @@ namespace island
             // Update DPI scale for cross-monitor dragging support
             _dpiScale = this.GetDpiForWindow() / 96.0;
 
+            // Physics/Animation Tick
             double t = 1.0 - Math.Exp(-IslandConfig.AnimationSpeed * dt);
+            _controller.Tick(dt);
 
-            _currentWidth += (_targetWidth - _currentWidth) * t;
-            _currentHeight += (_targetHeight - _currentHeight) * t;
-            _currentCompactOpacity += (_targetCompactOpacity - _currentCompactOpacity) * t;
-            _currentExpandedOpacity += (_targetExpandedOpacity - _currentExpandedOpacity) * t;
+            var state = _controller.Current;
 
-            if (!_isDragging)
-                _currentY += (_targetY - _currentY) * t;
-
-            // Progress Calculation
+            // Update Progress Bar Component
             double targetProgress = _taskProgress ?? _mediaService.Progress;
-            if (double.IsNaN(targetProgress) || double.IsInfinity(targetProgress)) targetProgress = 0;
-            
-            // Add a small internal horizontal padding (e.g., 4px) to avoid the extreme curve clipping
-            double horizontalInset = 6.0;
-            double availableWidth = Math.Max(0, _currentWidth - (horizontalInset * 2));
-            double targetProgressWidth = (availableWidth * targetProgress) + horizontalInset;
-            
-            _previousProgressWidth = _currentProgressWidth;
-            _currentProgressWidth += (targetProgressWidth - _currentProgressWidth) * t;
-
-            // Ensure the layer is at least as wide as the padding so the "head" starts at the inset
-            double finalProgressWidth = Math.Max(horizontalInset, _currentProgressWidth);
-
-            // Velocity-based visual mapping (The "Liquid" feel)
-            // Instantaneous velocity: pixel change per second
-            double instantVelocity = Math.Abs(_currentProgressWidth - _previousProgressWidth) / dt;
-            
-            // Normalize velocity relative to typical island size (0 to 1 range)
-            double normalizedVelocity = Math.Clamp(instantVelocity / 1500.0, 0, 1.0);
-
-            // Exponential smoothing for the visual feedback (prevents staccato flashing)
-            double vt = 1.0 - Math.Exp(-12.0 * dt); // Slower than main island movement
-            _smoothedVelocity += (normalizedVelocity - _smoothedVelocity) * vt;
+            IslandProgressBar.Update(dt, t, targetProgress, state.Width, state.Height);
 
             // XAML Sync
-            IslandBorder.Width = _currentWidth;
-            IslandBorder.Height = _currentHeight;
-
-            LiquidGlassProgressLayer.Width = finalProgressWidth;
-            
-            // Map smoothed velocity to tail length and opacity
-            ProgressTail.Width = 60 + (_smoothedVelocity * 140);
-            ProgressTail.Opacity = 0.2 + (_smoothedVelocity * 0.4);
-            
-            // Map smoothed velocity to laser core brightness and scale
-            ProgressLaserCore.Opacity = 0.7 + (_smoothedVelocity * 0.3);
-            ProgressLaserCore.Width = 1.5 + (_smoothedVelocity * 2.0);
-
-            // Shimmer visibility: more prominent when moving
-            ProgressShimmer.Opacity = 0.15 + (_smoothedVelocity * 0.2);
+            IslandBorder.Width = state.Width;
+            IslandBorder.Height = state.Height;
 
             // Dynamic radius: half-height for compact, but capped at 20px for expanded state
-            // to match the visual "squircle" look and ensure the clip covers the corners.
-            double radius = Math.Min(_currentHeight / 2.0, 20.0); 
+            double radius = Math.Min(state.Height / 2.0, 20.0); 
             IslandBorder.CornerRadius = new CornerRadius(radius);
 
             // Update Composition Clip for ContentContainer
@@ -419,40 +286,27 @@ namespace island
                 _contentClip.TopRightRadius = vecRadius;
                 _contentClip.BottomLeftRadius = vecRadius;
                 _contentClip.BottomRightRadius = vecRadius;
-                _contentClip.Right = (float)_currentWidth;
-                _contentClip.Bottom = (float)_currentHeight;
+                _contentClip.Right = (float)state.Width;
+                _contentClip.Bottom = (float)state.Height;
             }
 
-            // Linearly interpolate inset: 1.0px at 30px height (compact), 2.0px at 120px height (expanded).
-            // This ensures it looks nearly full-height in normal mode while keeping the "just right" gap in expanded.
-            double coreInset = 1.0 + (_currentHeight - 30.0) / 90.0;
-            coreInset = Math.Clamp(coreInset, 1.0, 2.0);
-            
-            ProgressLaserCore.Height = Math.Max(0, _currentHeight - (coreInset * 2));
-            ProgressLaserCore.CornerRadius = new CornerRadius(1); // Keeps it pill-shaped
+            CompactContent.Opacity = state.CompactOpacity;
+            ExpandedContent.Opacity = state.ExpandedOpacity;
+            CompactContent.IsHitTestVisible = state.IsHitTestVisible;
+            ExpandedContent.IsHitTestVisible = state.IsHitTestVisible;
 
-            CompactContent.Opacity = _currentCompactOpacity;
-            ExpandedContent.Opacity = _currentExpandedOpacity;
-            CompactContent.IsHitTestVisible = _currentCompactOpacity > IslandConfig.HitTestOpacityThreshold;
-            ExpandedContent.IsHitTestVisible = _currentExpandedOpacity > IslandConfig.HitTestOpacityThreshold;
-
-            // OS Window Sync (centerX-based for symmetric expansion)
-            int physW = (int)Math.Ceiling(_currentWidth * _dpiScale);
-            int physH = (int)Math.Ceiling(_currentHeight * _dpiScale);
-            int physX = (int)Math.Round((_centerX - _currentWidth / 2.0) * _dpiScale);
-            int physY = (int)Math.Round(_currentY * _dpiScale);
+            // OS Window Sync
+            int physW = (int)Math.Ceiling(state.Width * _dpiScale);
+            int physH = (int)Math.Ceiling(state.Height * _dpiScale);
+            int physX = (int)Math.Round((state.CenterX - state.Width / 2.0) * _dpiScale);
+            int physY = (int)Math.Round(state.Y * _dpiScale);
 
             // If it's animating off-screen (hiding), show the native line when it's almost gone
-            if (_isDocked && _isForegroundMaximized && !_isHovered && !_isNotifying && !_isDragging)
+            if (_controller.IsOffscreen())
             {
-                if (_currentY < -_targetHeight + 2) // Almost off-screen
-                {
-                    _targetY = -1000;
-                    _currentY = -1000;
-                    physY = -1000; // Snap immediately for this frame
-                    ShowLineWindow();
-                    UpdateShadowState();
-                }
+                physY = -1000; // Snap immediately for this frame
+                ShowLineWindow();
+                UpdateShadowState();
             }
 
             this.AppWindow.MoveAndResize(new RectInt32(physX, physY, physW, physH));
@@ -467,38 +321,43 @@ namespace island
             var props = e.GetCurrentPoint(RootGrid).Properties;
             if (props.IsLeftButtonPressed)
             {
-                _isDragging = true;
+                _controller.IsDragging = true;
                 RootGrid.CapturePointer(e.Pointer);
                 GetCursorPos(out _dragStartScreenPos);
-                _dragStartCenterX = _centerX;
-                _dragStartY = _currentY;
+                _dragStartCenterX = _controller.Current.CenterX;
+                _dragStartY = _controller.Current.Y;
                 UpdateState();
             }
         }
 
         private void RootGrid_PointerMoved(object sender, Microsoft.UI.Xaml.Input.PointerRoutedEventArgs e)
         {
-            if (_isDragging)
+            if (_controller.IsDragging)
             {
                 GetCursorPos(out var currentScreenPos);
-                _centerX = _dragStartCenterX + (currentScreenPos.X - _dragStartScreenPos.X) / _dpiScale;
-                _currentY = _dragStartY + (currentScreenPos.Y - _dragStartScreenPos.Y) / _dpiScale;
+                double deltaX = (currentScreenPos.X - _dragStartScreenPos.X) / _dpiScale;
+                double deltaY = (currentScreenPos.Y - _dragStartScreenPos.Y) / _dpiScale;
 
-                if (_currentY <= IslandConfig.DockThreshold)
+                // Relative drag from starting point to avoid drift
+                _controller.Current.CenterX = _dragStartCenterX + deltaX;
+                _controller.Current.Y = _dragStartY + deltaY;
+
+                if (_controller.Current.Y <= IslandConfig.DockThreshold)
                 {
-                    _currentY = 0;
+                    _controller.Current.Y = 0;
                 }
-                _targetY = _currentY;
+                
+                _controller.UpdateTargetState();
             }
         }
 
         private void RootGrid_PointerReleased(object sender, Microsoft.UI.Xaml.Input.PointerRoutedEventArgs e)
         {
-            if (_isDragging)
+            if (_controller.IsDragging)
             {
-                _isDragging = false;
+                _controller.IsDragging = false;
                 RootGrid.ReleasePointerCapture(e.Pointer);
-                _isDocked = _currentY <= IslandConfig.DockThreshold;
+                _controller.FinalizeDrag();
                 UpdateState();
                 UpdateShadowState();
                 SavePositionSettings();
@@ -513,25 +372,23 @@ namespace island
         {
             _hoverDebounceTimer.Stop();
             
-            // Note: If docked and foreground is maximized, the window is offscreen,
-            // so we rely on CursorTrackerTimer. But if it does somehow trigger, we handle it.
-            if (_isDocked && !_isDragging && _isForegroundMaximized)
+            if (_controller.IsDocked && !_controller.IsDragging && _controller.IsForegroundMaximized)
             {
-                _isHoverPending = true;
+                _controller.IsHoverPending = true;
                 _dockedHoverDelayTimer.Start();
             }
             else
             {
-                _isHovered = true;
+                _controller.IsHovered = true;
                 UpdateState();
             }
         }
 
         private void RootGrid_PointerExited(object sender, Microsoft.UI.Xaml.Input.PointerRoutedEventArgs e)
         {
-            if (_isHoverPending)
+            if (_controller.IsHoverPending)
             {
-                _isHoverPending = false;
+                _controller.IsHoverPending = false;
                 _dockedHoverDelayTimer.Stop();
             }
             else
@@ -553,16 +410,14 @@ namespace island
             {
                 this.DispatcherQueue.TryEnqueue(() =>
                 {
-                    HeaderStatusText.Text = "Notification";
-                    MusicTitleText.Text = title;
-                    ArtistNameText.Text = message;
-                    _isNotifying = true;
+                    ExpandedContent.Update(title, message, "Notification", false);
+                    _controller.IsNotifying = true;
                     UpdateState();
                 });
                 await Task.Delay(durationMs);
                 this.DispatcherQueue.TryEnqueue(() =>
                 {
-                    _isNotifying = false;
+                    _controller.IsNotifying = false;
                     UpdateState();
                     SyncMediaUI();
                 });
@@ -639,13 +494,8 @@ namespace island
 
         private void UpdateTextColors(Windows.UI.Color main, Windows.UI.Color sub)
         {
-            CompactText.Foreground = new SolidColorBrush(main);
-            MusicTitleText.Foreground = new SolidColorBrush(main);
-            ArtistNameText.Foreground = new SolidColorBrush(sub);
-            HeaderStatusText.Foreground = new SolidColorBrush(sub);
-            IconBack.Foreground = new SolidColorBrush(main);
-            IconPlayPause.Foreground = new SolidColorBrush(main);
-            IconForward.Foreground = new SolidColorBrush(main);
+            CompactContent.SetTextColor(main);
+            ExpandedContent.SetColors(main, sub);
         }
 
         private static BackdropType ParseBackdropType(string name) => name switch
@@ -675,7 +525,7 @@ namespace island
         {
             this.DispatcherQueue?.TryEnqueue(() =>
             {
-                if (_isDocked && !_isHovered && !_isDragging)
+                if (_controller.IsDocked && !_controller.IsHovered && !_controller.IsDragging)
                     ShowNotification("New Track", title, IslandConfig.TrackChangeNotificationDurationMs);
             });
         }
@@ -683,15 +533,16 @@ namespace island
         /// <summary>Sync UI elements with current MediaService state.</summary>
         private void SyncMediaUI()
         {
-            MusicTitleText.Text = _mediaService.CurrentTitle;
-            ArtistNameText.Text = _mediaService.CurrentArtist;
-            HeaderStatusText.Text = _mediaService.HeaderStatus;
-            IconPlayPause.Symbol = _mediaService.IsPlaying ? Symbol.Pause : Symbol.Play;
+            ExpandedContent.Update(
+                _mediaService.CurrentTitle,
+                _mediaService.CurrentArtist,
+                _mediaService.HeaderStatus,
+                _mediaService.IsPlaying);
         }
 
-        private async void PlayPause_Click(object sender, RoutedEventArgs e) => await _mediaService.PlayPauseAsync();
-        private async void SkipNext_Click(object sender, RoutedEventArgs e) => await _mediaService.SkipNextAsync();
-        private async void SkipPrevious_Click(object sender, RoutedEventArgs e) => await _mediaService.SkipPreviousAsync();
+        private async void PlayPause_Click(object? sender, EventArgs e) => await _mediaService.PlayPauseAsync();
+        private async void SkipNext_Click(object? sender, EventArgs e) => await _mediaService.SkipNextAsync();
+        private async void SkipPrevious_Click(object? sender, EventArgs e) => await _mediaService.SkipPreviousAsync();
 
         #endregion
 
@@ -751,9 +602,9 @@ namespace island
         /// <summary>Save current position and dock state to settings.</summary>
         private void SavePositionSettings()
         {
-            _settings.CenterX = _centerX;
-            _settings.LastY = _currentY;
-            _settings.IsDocked = _isDocked;
+            _settings.CenterX = _controller.Current.CenterX;
+            _settings.LastY = _controller.Current.Y;
+            _settings.IsDocked = _controller.IsDocked;
             _settings.Save();
         }
 

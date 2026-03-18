@@ -1,0 +1,29 @@
+<UserControl
+    x:Class="island.Views.ExpandedMediaView"
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    xmlns:local="using:island.Views"
+    xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+    xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+    mc:Ignorable="d">
+
+    <Grid x:Name="RootGrid">
+        <StackPanel VerticalAlignment="Center" HorizontalAlignment="Center">
+            <TextBlock x:Name="HeaderStatusText" Text="Now Playing" Foreground="Gray" FontSize="10" HorizontalAlignment="Center"/>
+            <TextBlock x:Name="MusicTitleText" Text="No Media" Foreground="White" FontSize="16" FontWeight="Bold" HorizontalAlignment="Center"/>
+            <TextBlock x:Name="ArtistNameText" Text="Artist Name" Foreground="LightGray" FontSize="12" HorizontalAlignment="Center"/>
+            
+            <StackPanel Orientation="Horizontal" HorizontalAlignment="Center" Margin="0,10,0,0" Spacing="20">
+                <Button x:Name="BtnBack" Background="Transparent" BorderThickness="0" Padding="4" Click="OnBack_Click">
+                    <SymbolIcon x:Name="IconBack" Symbol="Back" Foreground="White"/>
+                </Button>
+                <Button x:Name="BtnPlayPause" Background="Transparent" BorderThickness="0" Padding="4" Click="OnPlayPause_Click">
+                    <SymbolIcon x:Name="IconPlayPause" Symbol="Pause" Foreground="White"/>
+                </Button>
+                <Button x:Name="BtnForward" Background="Transparent" BorderThickness="0" Padding="4" Click="OnForward_Click">
+                    <SymbolIcon x:Name="IconForward" Symbol="Forward" Foreground="White"/>
+                </Button>
+            </StackPanel>
+        </StackPanel>
+    </Grid>
+</UserControl>
