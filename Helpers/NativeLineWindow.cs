@@ -48,17 +48,34 @@ namespace island.Helpers
         [DllImport("gdi32.dll")]
         private static extern IntPtr CreateSolidBrush(uint crColor);
 
+        [DllImport("user32.dll")]
+        private static extern IntPtr BeginPaint(IntPtr hwnd, out PAINTSTRUCT lpPaint);
+
+        [DllImport("user32.dll")]
+        private static extern bool EndPaint(IntPtr hwnd, [In] ref PAINTSTRUCT lpPaint);
+
+        [DllImport("user32.dll")]
+        private static extern bool GetClientRect(IntPtr hWnd, out RECT lpRect);
+
+        [DllImport("user32.dll")]
+        private static extern bool InvalidateRect(IntPtr hWnd, IntPtr lpRect, bool bErase);
+
+        [DllImport("user32.dll")]
+        private static extern IntPtr FillRect(IntPtr hDC, [In] ref RECT lprc, IntPtr hbr);
+
+        [DllImport("gdi32.dll")]
+        private static extern bool DeleteObject(IntPtr hObject);
+
         private const uint WS_EX_LAYERED = 0x00080000;
         private const uint WS_EX_TRANSPARENT = 0x00000020;
         private const uint WS_EX_TOPMOST = 0x00000008;
         private const uint WS_EX_TOOLWINDOW = 0x00000080;
-        
         private const uint WS_POPUP = 0x80000000;
 
         private const int SWP_NOACTIVATE = 0x0010;
         private static readonly IntPtr HWND_TOPMOST = new IntPtr(-1);
-
         private const uint LWA_ALPHA = 0x00000002;
+        private const uint WM_PAINT = 0x000F;
 
         private delegate IntPtr WndProcDelegate(IntPtr hWnd, uint msg, IntPtr wParam, IntPtr lParam);
 
@@ -79,12 +96,39 @@ namespace island.Helpers
             public IntPtr hIconSm;
         }
 
+        [StructLayout(LayoutKind.Sequential)]
+        private struct PAINTSTRUCT
+        {
+            public IntPtr hdc;
+            public bool fErase;
+            public RECT rcPaint;
+            public bool fRestore;
+            public bool fIncUpdate;
+            [MarshalAs(UnmanagedType.ByValArray, SizeConst = 32)]
+            public byte[] rgbReserved;
+        }
+
+        [StructLayout(LayoutKind.Sequential)]
+        public struct RECT
+        {
+            public int Left;
+            public int Top;
+            public int Right;
+            public int Bottom;
+        }
+
         private string _className = "DynamicIslandLineClass";
+        private double _progress = 0.0;
+        private IntPtr _activeBrush;
+        private IntPtr _bgBrush;
 
         public NativeLineWindow()
         {
-            _wndProc = DefWindowProc;
+            _wndProc = WndProc; 
             var hInstance = GetModuleHandle(null);
+
+            _activeBrush = CreateSolidBrush(0x00FFFFFF); // Pure white
+            _bgBrush = CreateSolidBrush(0x00404040);     // Dark gray
 
             WNDCLASSEX wndClass = new WNDCLASSEX
             {
@@ -93,8 +137,7 @@ namespace island.Helpers
                 lpfnWndProc = _wndProc,
                 hInstance = hInstance,
                 lpszClassName = _className,
-                // White brush (COLORREF: 0x00BBGGRR -> 0x00FFFFFF)
-                hbrBackground = CreateSolidBrush(0x00FFFFFF)
+                hbrBackground = IntPtr.Zero
             };
 
             RegisterClassEx(ref wndClass);
@@ -110,11 +153,44 @@ namespace island.Helpers
                 hInstance,
                 IntPtr.Zero);
 
-            // Set alpha to 180 (semi-transparent solid line)
             if (_hwnd != IntPtr.Zero)
             {
-                SetLayeredWindowAttributes(_hwnd, 0, 180, LWA_ALPHA);
+                SetLayeredWindowAttributes(_hwnd, 0, 255, LWA_ALPHA);
             }
+        }
+
+        public void SetProgress(double progress)
+        {
+            if (Math.Abs(_progress - progress) > 0.001)
+            {
+                _progress = Math.Clamp(progress, 0.0, 1.0);
+                InvalidateRect(_hwnd, IntPtr.Zero, true);
+            }
+        }
+
+        private IntPtr WndProc(IntPtr hWnd, uint msg, IntPtr wParam, IntPtr lParam)
+        {
+            if (msg == WM_PAINT)
+            {
+                IntPtr hdc = BeginPaint(hWnd, out var ps);
+                GetClientRect(hWnd, out var rect);
+                
+                int w = rect.Right - rect.Left;
+                int h = rect.Bottom - rect.Top;
+                int progressW = (int)Math.Round(w * _progress);
+
+                // Draw Background Line (Darker)
+                RECT bgRect = new RECT { Left = progressW, Top = 0, Right = w, Bottom = h };
+                FillRect(hdc, ref bgRect, _bgBrush);
+
+                // Draw Active Progress (Brighter)
+                RECT activeRect = new RECT { Left = 0, Top = 0, Right = progressW, Bottom = h };
+                FillRect(hdc, ref activeRect, _activeBrush);
+
+                EndPaint(hWnd, ref ps);
+                return IntPtr.Zero;
+            }
+            return DefWindowProc(hWnd, msg, wParam, lParam);
         }
 
         public void Show(int x, int y, int width, int height)
@@ -122,7 +198,7 @@ namespace island.Helpers
             if (_hwnd != IntPtr.Zero)
             {
                 SetWindowPos(_hwnd, HWND_TOPMOST, x, y, width, height, SWP_NOACTIVATE);
-                ShowWindow(_hwnd, 8); // SW_SHOWNA
+                ShowWindow(_hwnd, 8); 
             }
         }
 
@@ -130,7 +206,7 @@ namespace island.Helpers
         {
             if (_hwnd != IntPtr.Zero)
             {
-                ShowWindow(_hwnd, 0); // SW_HIDE
+                ShowWindow(_hwnd, 0); 
             }
         }
 
@@ -141,6 +217,8 @@ namespace island.Helpers
                 DestroyWindow(_hwnd);
                 _hwnd = IntPtr.Zero;
             }
+            if (_activeBrush != IntPtr.Zero) DeleteObject(_activeBrush);
+            if (_bgBrush != IntPtr.Zero) DeleteObject(_bgBrush);
         }
     }
 }

@@ -29,6 +29,9 @@ namespace island.Services
         /// <summary>Current media progress from 0.0 to 1.0.</summary>
         public double Progress { get; private set; }
 
+        private double _currentPositionSeconds = 0;
+        private double _durationSeconds = 0;
+
         /// <summary>Fired when media properties (title, artist, playback state) change.</summary>
         public event Action? MediaChanged;
 
@@ -52,6 +55,19 @@ namespace island.Services
             catch (Exception ex)
             {
                 Logger.Error(ex, "Failed to initialize media manager");
+            }
+        }
+
+        /// <summary>
+        /// Smoothly advance progress locally based on time delta.
+        /// Call this every frame from the UI loop.
+        /// </summary>
+        public void Tick(double dt)
+        {
+            if (IsPlaying && _durationSeconds > 0)
+            {
+                _currentPositionSeconds = Math.Min(_durationSeconds, _currentPositionSeconds + dt);
+                Progress = _currentPositionSeconds / _durationSeconds;
             }
         }
 
@@ -197,10 +213,14 @@ namespace island.Services
                 var timeline = session.GetTimelineProperties();
                 if (timeline != null && timeline.EndTime.TotalSeconds > 0)
                 {
-                    Progress = timeline.Position.TotalSeconds / timeline.EndTime.TotalSeconds;
+                    _currentPositionSeconds = timeline.Position.TotalSeconds;
+                    _durationSeconds = timeline.EndTime.TotalSeconds;
+                    Progress = _currentPositionSeconds / _durationSeconds;
                 }
                 else
                 {
+                    _currentPositionSeconds = 0;
+                    _durationSeconds = 0;
                     Progress = 0;
                 }
             }

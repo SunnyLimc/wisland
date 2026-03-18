@@ -205,9 +205,12 @@ namespace island
             if (_lineWindow != null)
             {
                 int w = (int)Math.Ceiling(IslandConfig.CompactWidth * _dpiScale);
-                int h = (int)Math.Max(2, 2 * _dpiScale);
+                int h = (int)Math.Max(1, 1 * _dpiScale); // 1px line
                 int x = (int)Math.Round((_controller.Current.CenterX - IslandConfig.CompactWidth / 2.0) * _dpiScale);
                 int y = 0;
+
+                double progress = _taskProgress ?? _mediaService.Progress;
+                _lineWindow.SetProgress(progress);
                 _lineWindow.Show(x, y, w, h);
             }
         }
@@ -260,6 +263,9 @@ namespace island
             // Update DPI scale for cross-monitor dragging support
             _dpiScale = this.GetDpiForWindow() / 96.0;
 
+            // Update Media Extrapolation
+            _mediaService.Tick(dt);
+
             // Physics/Animation Tick
             double t = 1.0 - Math.Exp(-IslandConfig.AnimationSpeed * dt);
             _controller.Tick(dt);
@@ -305,6 +311,8 @@ namespace island
             if (_controller.IsOffscreen())
             {
                 physY = -1000; // Snap immediately for this frame
+                double progress = _taskProgress ?? _mediaService.Progress;
+                _lineWindow?.SetProgress(progress);
                 ShowLineWindow();
                 UpdateShadowState();
             }
