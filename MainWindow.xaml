@@ -40,20 +40,25 @@
                 <Grid x:Name="LiquidGlassProgressLayer" 
                       Width="0" 
                       HorizontalAlignment="Left">
-                    <!-- Solid translucent background for filled track -->
-                    <Border Background="#25FFFFFF" />
                     
-                    <!-- Fixed-width moving head for a sharp glowing leading edge -->
-                    <!-- This prevents the gradient from stretching and blurring when expanded -->
-                    <Border Width="80" HorizontalAlignment="Right">
+                    <!-- Layer 1: Ambient frosted base (Subtle overall volume fill) -->
+                    <Border Background="#1AFFFFFF" />
+
+                    <!-- Layer 3: The dynamic 'Comet' tail (Directional energy) -->
+                    <Border Width="120" HorizontalAlignment="Right">
                         <Border.Background>
                             <LinearGradientBrush StartPoint="0,0.5" EndPoint="1,0.5">
                                 <GradientStop Color="#00FFFFFF" Offset="0.0"/>
-                                <GradientStop Color="#60FFFFFF" Offset="0.75"/>
-                                <GradientStop Color="#C0FFFFFF" Offset="1.0"/>
+                                <GradientStop Color="#20FFFFFF" Offset="0.5"/>
+                                <GradientStop Color="#70FFFFFF" Offset="0.9"/>
+                                <GradientStop Color="#D0FFFFFF" Offset="1.0"/>
                             </LinearGradientBrush>
                         </Border.Background>
                     </Border>
+                    
+                    <!-- Layer 4: The bright leading edge core (Precision laser focus point) -->
+                    <!-- We will set its Height and CornerRadius dynamically in C# so it scales gracefully -->
+                    <Border x:Name="ProgressLaserCore" Width="2" HorizontalAlignment="Right" Background="#FFFFFFFF" Opacity="0.9"/>
                 </Grid>
 
                 <!-- Compact State Content -->

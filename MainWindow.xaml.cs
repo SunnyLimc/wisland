@@ -387,6 +387,14 @@ namespace island
 
             LiquidGlassProgressLayer.Width = _currentProgressWidth;
 
+            // Linearly interpolate inset: 1.0px at 30px height (compact), 2.0px at 120px height (expanded).
+            // This ensures it looks nearly full-height in normal mode while keeping the "just right" gap in expanded.
+            double coreInset = 1.0 + (_currentHeight - 30.0) / 90.0;
+            coreInset = Math.Clamp(coreInset, 1.0, 2.0);
+            
+            ProgressLaserCore.Height = Math.Max(0, _currentHeight - (coreInset * 2));
+            ProgressLaserCore.CornerRadius = new CornerRadius(1); // Keeps it pill-shaped
+
             CompactContent.Opacity = _currentCompactOpacity;
             ExpandedContent.Opacity = _currentExpandedOpacity;
             CompactContent.IsHitTestVisible = _currentCompactOpacity > IslandConfig.HitTestOpacityThreshold;
