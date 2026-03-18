@@ -45,6 +45,8 @@ namespace island
         // --- Progress State ---
         private double? _taskProgress = null;
         private double _currentProgressWidth = 0;
+        private double _previousProgressWidth = 0;
+        private double _smoothedVelocity = 0;
 
         // --- Logical States ---
         private bool _isHovered = false;
@@ -154,6 +156,9 @@ namespace island
                 CompositionTarget.Rendering += OnCompositionTargetRendering;
 
                 this.Closed += (s, e) => _lineWindow?.Dispose();
+
+                // Start Shimmer Animation
+                ShimmerStoryboard.Begin();
 
                 Logger.Info("MainWindow initialized successfully");
             }
@@ -361,13 +366,46 @@ namespace island
             // Progress Calculation
             double targetProgress = _taskProgress ?? _mediaService.Progress;
             if (double.IsNaN(targetProgress) || double.IsInfinity(targetProgress)) targetProgress = 0;
-            double targetProgressWidth = _currentWidth * targetProgress;
+            
+            // Add a small internal horizontal padding (e.g., 4px) to avoid the extreme curve clipping
+            double horizontalInset = 6.0;
+            double availableWidth = Math.Max(0, _currentWidth - (horizontalInset * 2));
+            double targetProgressWidth = (availableWidth * targetProgress) + horizontalInset;
+            
+            _previousProgressWidth = _currentProgressWidth;
             _currentProgressWidth += (targetProgressWidth - _currentProgressWidth) * t;
+
+            // Ensure the layer is at least as wide as the padding so the "head" starts at the inset
+            double finalProgressWidth = Math.Max(horizontalInset, _currentProgressWidth);
+
+            // Velocity-based visual mapping (The "Liquid" feel)
+            // Instantaneous velocity: pixel change per second
+            double instantVelocity = Math.Abs(_currentProgressWidth - _previousProgressWidth) / dt;
+            
+            // Normalize velocity relative to typical island size (0 to 1 range)
+            double normalizedVelocity = Math.Clamp(instantVelocity / 1500.0, 0, 1.0);
+
+            // Exponential smoothing for the visual feedback (prevents staccato flashing)
+            double vt = 1.0 - Math.Exp(-12.0 * dt); // Slower than main island movement
+            _smoothedVelocity += (normalizedVelocity - _smoothedVelocity) * vt;
 
             // XAML Sync
             IslandBorder.Width = _currentWidth;
             IslandBorder.Height = _currentHeight;
+
+            LiquidGlassProgressLayer.Width = finalProgressWidth;
             
+            // Map smoothed velocity to tail length and opacity
+            ProgressTail.Width = 60 + (_smoothedVelocity * 140);
+            ProgressTail.Opacity = 0.2 + (_smoothedVelocity * 0.4);
+            
+            // Map smoothed velocity to laser core brightness and scale
+            ProgressLaserCore.Opacity = 0.7 + (_smoothedVelocity * 0.3);
+            ProgressLaserCore.Width = 1.5 + (_smoothedVelocity * 2.0);
+
+            // Shimmer visibility: more prominent when moving
+            ProgressShimmer.Opacity = 0.15 + (_smoothedVelocity * 0.2);
+
             // Dynamic radius: half-height for compact, but capped at 20px for expanded state
             // to match the visual "squircle" look and ensure the clip covers the corners.
             double radius = Math.Min(_currentHeight / 2.0, 20.0); 
@@ -384,8 +422,6 @@ namespace island
                 _contentClip.Right = (float)_currentWidth;
                 _contentClip.Bottom = (float)_currentHeight;
             }
-
-            LiquidGlassProgressLayer.Width = _currentProgressWidth;
 
             // Linearly interpolate inset: 1.0px at 30px height (compact), 2.0px at 120px height (expanded).
             // This ensures it looks nearly full-height in normal mode while keeping the "just right" gap in expanded.

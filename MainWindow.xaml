@@ -12,6 +12,16 @@
           PointerReleased="RootGrid_PointerReleased"
           PointerEntered="RootGrid_PointerEntered"
           PointerExited="RootGrid_PointerExited">
+
+        <Grid.Resources>
+            <Storyboard x:Name="ShimmerStoryboard">
+                <DoubleAnimation
+                    Storyboard.TargetName="ShimmerTransform"
+                    Storyboard.TargetProperty="X"
+                    From="-300" To="800" Duration="0:0:6"
+                    RepeatBehavior="Forever" />
+            </Storyboard>
+        </Grid.Resources>
         
         <Border x:Name="IslandBorder"
                 Width="200" Height="30"
@@ -42,22 +52,37 @@
                       HorizontalAlignment="Left">
                     
                     <!-- Layer 1: Ambient frosted base (Subtle overall volume fill) -->
-                    <Border Background="#1AFFFFFF" />
+                    <Border x:Name="ProgressBase" Background="#1AFFFFFF" />
+
+                    <!-- Layer 2: Internal Shimmer Flow (The "Liquid" feel) -->
+                    <Canvas IsHitTestVisible="False">
+                        <Border x:Name="ProgressShimmer" Width="100" Height="200" VerticalAlignment="Stretch" Opacity="0.15">
+                            <Border.Background>
+                                <LinearGradientBrush StartPoint="0,0.5" EndPoint="1,0.5">
+                                    <GradientStop Color="#00FFFFFF" Offset="0.0"/>
+                                    <GradientStop Color="#A0FFFFFF" Offset="0.5"/>
+                                    <GradientStop Color="#00FFFFFF" Offset="1.0"/>
+                                </LinearGradientBrush>
+                            </Border.Background>
+                            <Border.RenderTransform>
+                                <TranslateTransform x:Name="ShimmerTransform" X="-100"/>
+                            </Border.RenderTransform>
+                        </Border>
+                    </Canvas>
 
                     <!-- Layer 3: The dynamic 'Comet' tail (Directional energy) -->
-                    <Border Width="120" HorizontalAlignment="Right">
+                    <Border x:Name="ProgressTail" Width="140" HorizontalAlignment="Right" Opacity="0.4">
                         <Border.Background>
                             <LinearGradientBrush StartPoint="0,0.5" EndPoint="1,0.5">
                                 <GradientStop Color="#00FFFFFF" Offset="0.0"/>
-                                <GradientStop Color="#20FFFFFF" Offset="0.5"/>
-                                <GradientStop Color="#70FFFFFF" Offset="0.9"/>
+                                <GradientStop Color="#10FFFFFF" Offset="0.5"/>
+                                <GradientStop Color="#60FFFFFF" Offset="0.9"/>
                                 <GradientStop Color="#D0FFFFFF" Offset="1.0"/>
                             </LinearGradientBrush>
                         </Border.Background>
                     </Border>
                     
                     <!-- Layer 4: The bright leading edge core (Precision laser focus point) -->
-                    <!-- We will set its Height and CornerRadius dynamically in C# so it scales gracefully -->
                     <Border x:Name="ProgressLaserCore" Width="2" HorizontalAlignment="Right" Background="#FFFFFFFF" Opacity="0.9"/>
                 </Grid>
 
