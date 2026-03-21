@@ -37,9 +37,10 @@ dotnet run --project island.csproj -c Debug -p:Platform=x64
 
 ```text
 App.xaml(.cs)            Application startup
-MainWindow.xaml(.cs)     Shell composition and orchestration
-Models/                  Shared constants and render state
-Services/                Controller, media integration, settings persistence
+MainWindow.xaml + MainWindow.*.cs
+                         Shell composition and orchestration split by concern
+Models/                  Shared constants, typed config values, and render state
+Services/                Controller, media integration, settings, window monitoring, appearance
 Views/                   Compact and expanded content views
 Controls/                Custom liquid progress bar
 Helpers/                 Logging and native window interop

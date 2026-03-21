@@ -25,6 +25,8 @@ namespace island.Models
         public const double MaximizedDockPeekOffset = 1; // Ultra-thin line
 
         // --- Timing ---
+        public const int ForegroundCheckIntervalMs = 500;
+        public const int CursorTrackerIntervalMs = 50;
         public const int HoverDebounceMs = 100;
         public const int DockedHoverDelayMs = 750; // 0.75s delay to trigger expansion when docked
         public const int DefaultNotificationDurationMs = 3000;

@@ -23,7 +23,7 @@ The current architecture is intentionally split like this:
 
 - `MainWindow` is the composition root and runtime orchestrator.
 - `IslandController` is the pure state and animation target engine.
-- `MediaService` and `SettingsService` are side-effect adapters.
+- `MediaService`, `SettingsService`, `ForegroundWindowMonitor`, `WindowAppearanceService`, and `ShellVisibilityService` are side-effect adapters.
 - `Views/` and `Controls/` are lightweight presentation units.
 - `Helpers/` isolate Win32 and operational concerns.
 
@@ -33,6 +33,9 @@ That split matters. If you are changing code, keep logic placement consistent:
 - Put WinUI element synchronization in `MainWindow`.
 - Put OS integration in `Helpers/`.
 - Put media/session integration in `MediaService`.
+- Put foreground-window polling in `ForegroundWindowMonitor`.
+- Put backdrop and DWM appearance application in `WindowAppearanceService`.
+- Put docked line-overlay ownership in `ShellVisibilityService`.
 - Put persistence in `SettingsService`.
 
 ## 3. System Map
@@ -45,8 +48,10 @@ MainWindow
   -> configures window behavior, tray, backdrop, timers, media hookup
   -> owns render loop and input events
   -> delegates state targeting to IslandController
+  -> reacts to ForegroundWindowMonitor events
+  -> delegates backdrop/corner application to WindowAppearanceService
+  -> delegates docked line-overlay ownership to ShellVisibilityService
   -> syncs logical state into XAML and AppWindow geometry
-  -> coordinates NativeLineWindow for docked/maximized mode
 
 IslandController
   -> stores logical flags
@@ -59,6 +64,18 @@ MediaService
 
 SettingsService
   -> persists backdrop + position + dock state
+
+ForegroundWindowMonitor
+  -> polls the foreground window state when the island is docked
+  -> raises maximized-state changes to the shell
+
+WindowAppearanceService
+  -> applies backdrop, text colors, and DWM corner preferences
+
+ShellVisibilityService
+  -> owns NativeLineWindow
+  -> shows and hides the docked line overlay
+  -> translates logical shell line requests into DPI-aware Win32 overlay geometry
 
 Views / Controls
   -> render compact content, expanded media content, and liquid progress visuals
@@ -73,15 +90,20 @@ Helpers
 island/
 ├── App.xaml / App.xaml.cs
 │   Startup and unhandled exception logging.
-├── MainWindow.xaml / MainWindow.xaml.cs
-│   Top-level shell, event routing, render loop, OS window sync, tray menu.
+├── MainWindow.xaml / MainWindow.*.cs
+│   Top-level shell split into partial files for state, animation, interaction,
+│   media, tray, appearance, and lifetime concerns.
 ├── Models/
+│   ├── BackdropType.cs
 │   ├── IslandConfig.cs
 │   └── IslandState.cs
 ├── Services/
+│   ├── ForegroundWindowMonitor.cs
 │   ├── IslandController.cs
 │   ├── MediaService.cs
-│   └── SettingsService.cs
+│   ├── ShellVisibilityService.cs
+│   ├── SettingsService.cs
+│   └── WindowAppearanceService.cs
 ├── Views/
 │   ├── CompactView.xaml(.cs)
 │   └── ExpandedMediaView.xaml(.cs)
@@ -109,7 +131,7 @@ island/
 3. Saved settings are loaded from `%LocalAppData%/Island/settings.json`.
 4. The controller is initialized with starting position and docked state.
 5. Backdrop is restored.
-6. Media integration, timers, composition clipping, and the line window are initialized.
+6. Media integration, timers, composition clipping, and shell visibility services are initialized.
 7. `CompositionTarget.Rendering` becomes the per-frame update loop.
 
 ### 5.2 Input -> State -> Frame
@@ -122,7 +144,7 @@ Pointer / timer / media event
   -> MainWindow calls UpdateState()
   -> IslandController recalculates targets
   -> per-frame UpdateAnimation() advances current state
-  -> MainWindow syncs state into XAML + AppWindow + NativeLineWindow
+  -> MainWindow syncs state into XAML + AppWindow and delegates line overlay visibility to ShellVisibilityService
 ```
 
 ### 5.3 Per-Frame Animation
@@ -152,7 +174,7 @@ When all of these are true:
 - the island is not notifying,
 - the island is not being dragged,
 
-the main island can be moved off-screen and represented by `NativeLineWindow`, a top-most transparent Win32 overlay that paints a 1px progress strip.
+the main island can be moved off-screen and represented by a `NativeLineWindow`, owned through `ShellVisibilityService`, that paints a 1px progress strip.
 
 This is one of the most sensitive parts of the app because it depends on:
 
@@ -200,14 +222,14 @@ Owns orchestration and side effects:
 - drag lifecycle
 - hover timers
 - foreground maximized detection
-- line-window coordination
+- shell visibility coordination
 - render loop
 - media UI synchronization
 - tray menu wiring
 - backdrop application
 - persistence save points
 
-Important implication: `MainWindow` is large because it is the shell boundary. Do not move pure state math here if it belongs in `IslandController`.
+Important implication: `MainWindow` is still the shell boundary, but it is now split across partial files by runtime concern. Do not move pure state math here if it belongs in `IslandController`.
 
 ### `IslandController`
 
@@ -255,6 +277,40 @@ Persists only stable user preferences and placement data:
 
 It is not a general state snapshot system.
 
+### `ForegroundWindowMonitor`
+
+Owns the polling loop for foreground maximized-window detection.
+
+This keeps shell state transitions separate from:
+
+- Win32 foreground window lookup
+- maximized-state inspection
+- timer ownership
+
+`MainWindow` now subscribes to state changes instead of owning the polling logic directly.
+
+### `WindowAppearanceService`
+
+Owns shell appearance application:
+
+- backdrop selection
+- text color application
+- border background updates
+- DWM corner preference changes
+
+This keeps `MainWindow` from directly coordinating WinUI backdrop objects and native corner preferences.
+
+### `ShellVisibilityService`
+
+Owns the docked line overlay abstraction:
+
+- lifetime of `NativeLineWindow`
+- DPI-aware geometry for the 1px line overlay
+- progress updates for the line surface
+- line hide/show calls from the shell
+
+This keeps `MainWindow` from directly managing the Win32 overlay window instance.
+
 ### `CompactView`
 
 Minimal compact content surface. Right now it only shows text and text color.
@@ -285,7 +341,7 @@ Its update model is velocity-aware and includes dirty checks to reduce unnecessa
 
 ### `NativeLineWindow`
 
-Raw Win32 overlay window used only for the fully tucked docked state. It paints progress directly via `WM_PAINT`.
+Raw Win32 overlay window used only for the fully tucked docked state. It paints progress directly via `WM_PAINT` and is owned by `ShellVisibilityService`.
 
 ### `WindowInterop`
 
@@ -338,7 +394,7 @@ These are the rules that contributors should preserve:
 1. `IslandController` stays UI-framework-free.
 2. Motion is frame-driven, not storyboard-driven.
 3. `MainWindow` is the only place that should directly sync shell state into WinUI elements and `AppWindow`.
-4. Docked hidden mode is a two-window system: the main island window plus `NativeLineWindow`.
+4. Docked hidden mode is a two-window system: the main island window plus a `NativeLineWindow` managed by `ShellVisibilityService`.
 5. Settings persistence should remain small, explicit, and tolerant of corruption.
 6. Service failures should log and degrade gracefully rather than crash the process.
 
@@ -350,13 +406,13 @@ Use this table before editing:
 | --- | --- | --- |
 | Change compact / expanded sizing | `Models/IslandConfig.cs`, `Services/IslandController.cs` | Config holds constants, controller holds target logic. |
 | Change animation feel | `Models/IslandConfig.cs`, `Services/IslandController.cs`, `Controls/LiquidProgressBar.xaml.cs` | Shell motion and progress motion are separate concerns. |
-| Change docking behavior | `Services/IslandController.cs`, `MainWindow.xaml.cs` | Controller handles logical targets, MainWindow handles physical anchoring. |
-| Change hidden line mode | `MainWindow.xaml.cs`, `Helpers/NativeLineWindow.cs` | Be careful with DPI and monitor math. |
+| Change docking behavior | `Services/IslandController.cs`, `Services/ForegroundWindowMonitor.cs`, `MainWindow.State.cs`, `MainWindow.Animation.cs` | Controller handles logical targets, monitor handles foreground polling, MainWindow handles physical anchoring. |
+| Change hidden line mode | `MainWindow.State.cs`, `MainWindow.Animation.cs`, `Services/ShellVisibilityService.cs`, `Helpers/NativeLineWindow.cs`, `Services/WindowAppearanceService.cs` | Be careful with DPI, monitor math, and corner state transitions. |
 | Change compact UI | `Views/CompactView.xaml`, `Views/CompactView.xaml.cs` | Keep the view lightweight. |
 | Change expanded media UI | `Views/ExpandedMediaView.xaml`, `Views/ExpandedMediaView.xaml.cs` | Event surface lives here, command behavior lives in MainWindow. |
-| Change tray actions | `MainWindow.xaml.cs` | `CreateTrayMenu()` is the entrypoint. |
-| Add a persisted setting | `Services/SettingsService.cs`, `MainWindow.xaml.cs` | Load during startup, save at the relevant mutation point. |
-| Change media behavior | `Services/MediaService.cs`, `MainWindow.xaml.cs` | Service owns GSMTC; window decides how UI responds. |
+| Change tray actions | `MainWindow.Tray.cs` | `CreateTrayMenu()` is the entrypoint. |
+| Add a persisted setting | `Services/SettingsService.cs`, `Models/BackdropType.cs`, `MainWindow.Lifetime.cs`, `MainWindow.Appearance.cs` | Keep persisted values typed at the shell boundary whenever possible. |
+| Change media behavior | `Services/MediaService.cs`, `MainWindow.Media.cs`, `MainWindow.Notifications.cs` | Service owns GSMTC; window decides how UI responds. |
 | Change diagnostics | `Helpers/Logger.cs` | Logging is local-file based. |
 
 ## 11. Best Practices For Vibe Coding In This Repo
@@ -374,6 +430,7 @@ The best "vibe coding" approach for this codebase is not "rewrite everything int
 
 - understand the runtime loop,
 - keep pure logic and side effects separated,
+- keep native window polling and native appearance application behind services,
 - document real behavior instead of idealized architecture,
 - leave obvious extension seams for later.
 
@@ -381,9 +438,7 @@ The best "vibe coding" approach for this codebase is not "rewrite everything int
 
 These are documentation-backed refactor seams, not mandatory changes:
 
-- Split `MainWindow.xaml.cs` into partial files by concern such as animation, drag, media, and tray.
-- Extract a small `BackdropService` or `WindowAppearanceService` if backdrop logic grows.
-- Extract a `ForegroundWindowMonitor` if maximized-window detection gets more complex.
+- Introduce a typed settings snapshot model if persisted preferences expand beyond a few fields.
 - Introduce manual smoke-test notes for docking, DPI, and line-mode behavior if UI changes become frequent.
 
 ## 13. Documentation Contract

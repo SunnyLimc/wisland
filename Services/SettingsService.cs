@@ -2,6 +2,7 @@ using System;
 using System.IO;
 using System.Text.Json;
 using island.Helpers;
+using island.Models;
 
 namespace island.Services
 {
@@ -11,7 +12,6 @@ namespace island.Services
     /// </summary>
     public sealed class SettingsService
     {
-        private const string DefaultBackdropType = "Mica";
         private const double DefaultLastY = 10;
         private static readonly JsonSerializerOptions JsonOptions = new() { WriteIndented = true };
         private static readonly string SettingsPath = Path.Combine(
@@ -19,7 +19,7 @@ namespace island.Services
             "Island", "settings.json");
 
         /// <summary>User's selected backdrop type name ("Mica", "Acrylic", "None").</summary>
-        public string BackdropType { get; set; } = DefaultBackdropType;
+        public BackdropType BackdropType { get; set; } = BackdropType.Mica;
 
         /// <summary>Last horizontal center position (in logical pixels).</summary>
         public double CenterX { get; set; }
@@ -44,7 +44,7 @@ namespace island.Services
                 var data = JsonSerializer.Deserialize<SettingsData>(json);
                 if (data != null)
                 {
-                    BackdropType = NormalizeBackdropType(data.BackdropType);
+                    BackdropType = ParseBackdropType(data.BackdropType);
                     CenterX = SanitizeCenterX(data.CenterX);
                     LastY = SanitizeLastY(data.LastY);
                     IsDocked = data.IsDocked;
@@ -69,7 +69,7 @@ namespace island.Services
 
                 var data = new SettingsData
                 {
-                    BackdropType = NormalizeBackdropType(BackdropType),
+                    BackdropType = FormatBackdropType(BackdropType),
                     CenterX = SanitizeCenterX(CenterX),
                     LastY = SanitizeLastY(LastY),
                     IsDocked = IsDocked
@@ -85,12 +85,14 @@ namespace island.Services
             }
         }
 
-        private static string NormalizeBackdropType(string? value) => value switch
+        private static BackdropType ParseBackdropType(string? value) => value switch
         {
-            "Acrylic" => "Acrylic",
-            "None" => "None",
-            _ => DefaultBackdropType,
+            "Acrylic" => BackdropType.Acrylic,
+            "None" => BackdropType.None,
+            _ => BackdropType.Mica,
         };
+
+        private static string FormatBackdropType(BackdropType value) => value.ToString();
 
         private static double SanitizeCenterX(double value)
             => double.IsFinite(value) && value >= 0 ? value : 0;

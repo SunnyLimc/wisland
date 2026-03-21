@@ -83,8 +83,6 @@ namespace island.Services
 
             if (IsDocked && !IsDragging)
             {
-                // In refactored sync layer (MainWindow), we use precision height. 
-                // But we still need a logical target to drive the animation.
                 double peek = IsForegroundMaximized ? IslandConfig.MaximizedDockPeekOffset : IslandConfig.DockPeekOffset;
                 _targetY = -_targetHeight + peek;
             }
@@ -150,7 +148,7 @@ namespace island.Services
         // --- Hidden Check ---
         public bool IsOffscreen()
         {
-            return IsDocked && IsForegroundMaximized && !IsHovered && !IsNotifying && !IsDragging 
+            return IsDocked && IsForegroundMaximized && !IsHovered && !IsNotifying && !IsDragging
                    && Current.Y < -_targetHeight + 2;
         }
     }
