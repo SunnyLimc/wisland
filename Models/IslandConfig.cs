@@ -21,8 +21,8 @@ namespace island.Models
         // --- Positioning ---
         public const double DefaultY = 10;
         public const double DockThreshold = 15;
-        public const double DockPeekOffset = 6;
-        public const double MaximizedDockPeekOffset = 2; // Thin line when foreground is maximized
+        public const double DockPeekOffset = 5; // Reduced from 6 for "just progress" look
+        public const double MaximizedDockPeekOffset = 1; // Ultra-thin line
 
         // --- Timing ---
         public const int HoverDebounceMs = 100;

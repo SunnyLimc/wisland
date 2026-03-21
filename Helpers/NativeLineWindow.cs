@@ -161,10 +161,21 @@ namespace island.Helpers
 
         public void SetProgress(double progress)
         {
-            if (Math.Abs(_progress - progress) > 0.001)
+            if (Math.Abs(_progress - progress) > 0.0001)
             {
+                // Calculate if the pixel width actually changes (Layer 2: Progress Thresholding)
+                GetClientRect(_hwnd, out var rect);
+                int w = rect.Right - rect.Left;
+                int oldPixelW = (int)Math.Round(w * _progress);
+                int newPixelW = (int)Math.Round(w * progress);
+
                 _progress = Math.Clamp(progress, 0.0, 1.0);
-                InvalidateRect(_hwnd, IntPtr.Zero, true);
+
+                // Only invalidate if at least one pixel of the progress bar has moved
+                if (oldPixelW != newPixelW)
+                {
+                    InvalidateRect(_hwnd, IntPtr.Zero, true);
+                }
             }
         }
 

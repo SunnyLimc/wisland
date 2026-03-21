@@ -11,6 +11,11 @@ namespace island.Controls
         private double _previousProgressWidth = 0;
         private double _smoothedVelocity = 0;
 
+        // Last-rendered values for dirty checking
+        private double _lastRenderedWidth = -1;
+        private double _lastRenderedVelocity = -1;
+        private double _lastRenderedHeight = -1;
+
         public LiquidProgressBar()
         {
             this.InitializeComponent();
@@ -46,22 +51,35 @@ namespace island.Controls
             double vt = 1.0 - Math.Exp(-12.0 * dt);
             _smoothedVelocity += (normalizedVelocity - _smoothedVelocity) * vt;
 
-            // 3. XAML Sync
-            LiquidGlassProgressLayer.Width = finalProgressWidth;
+            // 3. XAML Sync with Layer 3: Visual Property Guarding
+            // Avoid layout thrashing if the change is sub-pixel insignificant
+            if (Math.Abs(finalProgressWidth - _lastRenderedWidth) > 0.01)
+            {
+                LiquidGlassProgressLayer.Width = finalProgressWidth;
+                _lastRenderedWidth = finalProgressWidth;
+            }
             
-            ProgressTail.Width = 60 + (_smoothedVelocity * 140);
-            ProgressTail.Opacity = 0.2 + (_smoothedVelocity * 0.4);
-            
-            ProgressLaserCore.Opacity = 0.7 + (_smoothedVelocity * 0.3);
-            ProgressLaserCore.Width = 1.5 + (_smoothedVelocity * 2.0);
+            if (Math.Abs(_smoothedVelocity - _lastRenderedVelocity) > 0.005)
+            {
+                ProgressTail.Width = 60 + (_smoothedVelocity * 140);
+                ProgressTail.Opacity = 0.2 + (_smoothedVelocity * 0.4);
+                
+                ProgressLaserCore.Opacity = 0.7 + (_smoothedVelocity * 0.3);
+                ProgressLaserCore.Width = 1.5 + (_smoothedVelocity * 2.0);
 
-            ProgressShimmer.Opacity = 0.15 + (_smoothedVelocity * 0.2);
+                ProgressShimmer.Opacity = 0.15 + (_smoothedVelocity * 0.2);
+                _lastRenderedVelocity = _smoothedVelocity;
+            }
 
             // 4. Height Scaling (Leading Edge Core)
-            double coreInset = 1.0 + (currentHeight - 30.0) / 90.0;
-            coreInset = Math.Clamp(coreInset, 1.0, 2.0);
-            ProgressLaserCore.Height = Math.Max(0, currentHeight - (coreInset * 2));
-            ProgressLaserCore.CornerRadius = new CornerRadius(1);
+            if (Math.Abs(currentHeight - _lastRenderedHeight) > 0.1)
+            {
+                double coreInset = 1.0 + (currentHeight - 30.0) / 90.0;
+                coreInset = Math.Clamp(coreInset, 1.0, 2.0);
+                ProgressLaserCore.Height = Math.Max(0, currentHeight - (coreInset * 2));
+                ProgressLaserCore.CornerRadius = new CornerRadius(1);
+                _lastRenderedHeight = currentHeight;
+            }
         }
     }
 }

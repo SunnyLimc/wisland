@@ -24,6 +24,7 @@ namespace island.Services
         private double _targetWidth = IslandConfig.CompactWidth;
         private double _targetHeight = IslandConfig.CompactHeight;
         private double _targetY = IslandConfig.DefaultY;
+        public double TargetY => _targetY;
         private double _targetCompactOpacity = 1.0;
         private double _targetExpandedOpacity = 0.0;
 
@@ -50,11 +51,13 @@ namespace island.Services
         {
             if (IsNotifying)
             {
-                SetExpandedTargets(IsDocked ? 0 : IslandConfig.DefaultY);
+                // Respect floating position if not docked
+                SetExpandedTargets(IsDocked ? 0 : Current.Y);
             }
             else if (IsHovered && !IsDragging)
             {
-                SetExpandedTargets(IsDocked ? 0 : IslandConfig.DefaultY);
+                // Respect floating position if not docked
+                SetExpandedTargets(IsDocked ? 0 : Current.Y);
             }
             else
             {
@@ -80,14 +83,10 @@ namespace island.Services
 
             if (IsDocked && !IsDragging)
             {
-                if (IsForegroundMaximized)
-                {
-                    _targetY = -_targetHeight; // Animation target off-screen
-                }
-                else
-                {
-                    _targetY = -_targetHeight + IslandConfig.DockPeekOffset;
-                }
+                // In refactored sync layer (MainWindow), we use precision height. 
+                // But we still need a logical target to drive the animation.
+                double peek = IsForegroundMaximized ? IslandConfig.MaximizedDockPeekOffset : IslandConfig.DockPeekOffset;
+                _targetY = -_targetHeight + peek;
             }
             else if (!IsDragging)
             {
@@ -117,21 +116,34 @@ namespace island.Services
         }
 
         // --- Drag Helpers ---
-        public void HandleDrag(double deltaX, double deltaY)
+        public void HandleDrag(double centerX, double y)
         {
-            Current.CenterX += deltaX;
-            Current.Y += deltaY;
+            Current.CenterX = centerX;
+            Current.Y = y;
 
             if (Current.Y <= IslandConfig.DockThreshold)
             {
                 Current.Y = 0;
             }
-            _targetY = Current.Y;
+            else
+            {
+                // Real-time dock release to allow freedom of movement (Fixes "stuck at top" issue)
+                IsDocked = false;
+            }
+            
+            UpdateTargetState();
         }
 
         public void FinalizeDrag()
         {
             IsDocked = Current.Y <= IslandConfig.DockThreshold;
+            
+            // Set the final rest position as the new target
+            if (!IsDocked)
+            {
+                _targetY = Math.Max(IslandConfig.DefaultY, Current.Y);
+            }
+            
             UpdateTargetState();
         }
 

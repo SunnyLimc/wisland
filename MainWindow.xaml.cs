@@ -30,8 +30,8 @@ namespace island
 
         // --- Dragging Context ---
         private POINT _dragStartScreenPos;
-        private double _dragStartCenterX;
-        private double _dragStartY;
+        private double _dragPhysicalOffsetX;
+        private double _dragPhysicalOffsetY;
 
         // --- Timers & Progress ---
         private readonly DispatcherTimer _hoverDebounceTimer;
@@ -57,6 +57,9 @@ namespace island
         // --- Content Clipping ---
         private readonly Microsoft.UI.Composition.RectangleClip _contentClip;
         private readonly Microsoft.UI.Composition.Visual _contentVisual;
+
+        // --- OS Window Sync State ---
+        private int _lastPhysX, _lastPhysY, _lastPhysW, _lastPhysH;
 
         public MainWindow()
         {
@@ -142,8 +145,8 @@ namespace island
         private void UpdateShadowState()
         {
             var hwnd = WinRT.Interop.WindowNative.GetWindowHandle(this);
-            // We ONLY want to disable rounding/shadows when the window is fully tucked away (-1000) and acting as a line.
-            bool isCompletelyHiddenLine = _controller.IsDocked && _controller.IsForegroundMaximized && !_controller.IsHovered && !_controller.IsNotifying && !_controller.IsDragging && _controller.Current.Y <= -100;
+            // We ONLY want to disable rounding/shadows when the window is fully tucked away and acting as a line.
+            bool isCompletelyHiddenLine = _controller.IsOffscreen();
             
             int preference = isCompletelyHiddenLine ? WindowInterop.DWMWCP_DONOTROUND : WindowInterop.DWMWCP_ROUND;
             WindowInterop.DwmSetWindowAttribute(hwnd, WindowInterop.DWMWA_WINDOW_CORNER_PREFERENCE, ref preference, sizeof(int));
@@ -186,8 +189,9 @@ namespace island
                     _hoverTicks = 0;
                     _cursorTrackerTimer.Stop();
 
-                    _controller.Current.Height = 2; // Grow from line
-                    _controller.Current.Y = 0;
+                    // Soft-reset height to 1px so the physics engine can "grow" it from the line.
+                    // We DON'T touch Current.Y here to avoid breaking the animation target logic.
+                    _controller.Current.Height = 1;
                     
                     _controller.IsHovered = true;
                     UpdateState();
@@ -284,7 +288,7 @@ namespace island
             double radius = Math.Min(state.Height / 2.0, 20.0); 
             IslandBorder.CornerRadius = new CornerRadius(radius);
 
-            // Update Composition Clip for ContentContainer
+            // Update Composition Clip for ContentContainer (Layer 3: Composition-Level Clipping)
             if (_contentClip != null)
             {
                 var vecRadius = new Vector2((float)radius);
@@ -294,30 +298,77 @@ namespace island
                 _contentClip.BottomRightRadius = vecRadius;
                 _contentClip.Right = (float)state.Width;
                 _contentClip.Bottom = (float)state.Height;
+
+                // Explicitly clip out the top part when docked and settled to prevent any text bleed
+                if (_controller.IsDocked && !_controller.IsHovered && !_controller.IsNotifying && !_controller.IsDragging && state.Height <= IslandConfig.CompactHeight + 1)
+                {
+                    double peek = _controller.IsForegroundMaximized ? IslandConfig.MaximizedDockPeekOffset : IslandConfig.DockPeekOffset;
+                    _contentClip.Top = (float)(state.Height - peek);
+                }
+                else
+                {
+                    _contentClip.Top = 0;
+                }
             }
 
-            CompactContent.Opacity = state.CompactOpacity;
-            ExpandedContent.Opacity = state.ExpandedOpacity;
-            CompactContent.IsHitTestVisible = state.IsHitTestVisible;
-            ExpandedContent.IsHitTestVisible = state.IsHitTestVisible;
+            if (CompactContent.Opacity != state.CompactOpacity) CompactContent.Opacity = state.CompactOpacity;
+            if (ExpandedContent.Opacity != state.ExpandedOpacity) ExpandedContent.Opacity = state.ExpandedOpacity;
+            
+            // Mutually exclusive hit testing (Layer 4: Interactive Isolation)
+            bool isExpandedActive = state.ExpandedOpacity > IslandConfig.HitTestOpacityThreshold;
+            if (ExpandedContent.IsHitTestVisible != isExpandedActive)
+            {
+                ExpandedContent.IsHitTestVisible = isExpandedActive;
+                CompactContent.IsHitTestVisible = !isExpandedActive && state.IsHitTestVisible;
+            }
 
-            // OS Window Sync
+            // OS Window Sync (Layer 1: Window Sync Guarding)
             int physW = (int)Math.Ceiling(state.Width * _dpiScale);
             int physH = (int)Math.Ceiling(state.Height * _dpiScale);
             int physX = (int)Math.Round((state.CenterX - state.Width / 2.0) * _dpiScale);
-            int physY = (int)Math.Round(state.Y * _dpiScale);
+            int physY;
 
-            // If it's animating off-screen (hiding), show the native line when it's almost gone
+            // Get the display area where the window is currently located (Best Practice for Multi-Monitor)
+            var display = DisplayArea.GetFromWindowId(this.AppWindow.Id, DisplayAreaFallback.Primary);
+            int monitorTopPhys = display.WorkArea.Y;
+
+            // DPI-Precise Visible Height (Layer 2: Physical Pixel Anchoring)
+            // CRITICAL: Only anchor when the animation has nearly settled to avoid snapping!
+            bool isSettled = Math.Abs(state.Height - IslandConfig.CompactHeight) < 1.0 && Math.Abs(state.Y - _controller.TargetY) < 1.0;
+
+            if (isSettled && _controller.IsDocked && !_controller.IsHovered && !_controller.IsNotifying && !_controller.IsDragging)
+            {
+                // We want EXACTLY 'DockPeekOffset' logical pixels visible.
+                double peek = _controller.IsForegroundMaximized ? IslandConfig.MaximizedDockPeekOffset : IslandConfig.DockPeekOffset;
+                int visiblePhys = (int)Math.Round(peek * _dpiScale);
+                
+                // Absolute coordinate relative to the current monitor's top
+                physY = monitorTopPhys + visiblePhys - physH;
+            }
+            else
+            {
+                physY = (int)Math.Round(state.Y * _dpiScale);
+            }
+
+            // If it's animating off-screen (hiding), snap it
             if (_controller.IsOffscreen())
             {
-                physY = -1000; // Snap immediately for this frame
+                physY = -1000;
                 double progress = _taskProgress ?? _mediaService.Progress;
                 _lineWindow?.SetProgress(progress);
                 ShowLineWindow();
                 UpdateShadowState();
             }
 
-            this.AppWindow.MoveAndResize(new RectInt32(physX, physY, physW, physH));
+            // ONLY update if physical coordinates changed (Best Practice)
+            if (physX != _lastPhysX || physY != _lastPhysY || physW != _lastPhysW || physH != _lastPhysH)
+            {
+                this.AppWindow.MoveAndResize(new RectInt32(physX, physY, physW, physH));
+                _lastPhysX = physX;
+                _lastPhysY = physY;
+                _lastPhysW = physW;
+                _lastPhysH = physH;
+            }
         }
 
         #endregion
@@ -326,14 +377,27 @@ namespace island
 
         private void RootGrid_PointerPressed(object sender, Microsoft.UI.Xaml.Input.PointerRoutedEventArgs e)
         {
+            // Only start dragging if the click wasn't on a button or interactive element
+            if (e.OriginalSource is FrameworkElement fe && (fe is Button || fe.Parent is Button))
+            {
+                return;
+            }
+
             var props = e.GetCurrentPoint(RootGrid).Properties;
             if (props.IsLeftButtonPressed)
             {
                 _controller.IsDragging = true;
                 RootGrid.CapturePointer(e.Pointer);
+                
                 GetCursorPos(out _dragStartScreenPos);
-                _dragStartCenterX = _controller.Current.CenterX;
-                _dragStartY = _controller.Current.Y;
+                
+                // Get current physical position
+                double physCenterX = (_controller.Current.CenterX) * _dpiScale;
+                double physCenterY = (_controller.Current.Y) * _dpiScale;
+
+                _dragPhysicalOffsetX = _dragStartScreenPos.X - physCenterX;
+                _dragPhysicalOffsetY = _dragStartScreenPos.Y - physCenterY;
+
                 UpdateState();
             }
         }
@@ -342,20 +406,26 @@ namespace island
         {
             if (_controller.IsDragging)
             {
-                GetCursorPos(out var currentScreenPos);
-                double deltaX = (currentScreenPos.X - _dragStartScreenPos.X) / _dpiScale;
-                double deltaY = (currentScreenPos.Y - _dragStartScreenPos.Y) / _dpiScale;
-
-                // Relative drag from starting point to avoid drift
-                _controller.Current.CenterX = _dragStartCenterX + deltaX;
-                _controller.Current.Y = _dragStartY + deltaY;
-
-                if (_controller.Current.Y <= IslandConfig.DockThreshold)
-                {
-                    _controller.Current.Y = 0;
-                }
+                GetCursorPos(out var currentPos);
                 
-                _controller.UpdateTargetState();
+                // Calculate target physical center based on original cursor-to-center offset
+                double targetPhysCenterX = currentPos.X - _dragPhysicalOffsetX;
+                double targetPhysCenterY = currentPos.Y - _dragPhysicalOffsetY;
+
+                // Get current display area based on cursor position for boundary checking
+                var display = DisplayArea.GetFromPoint(new PointInt32(currentPos.X, currentPos.Y), DisplayAreaFallback.Primary);
+                var bounds = display.WorkArea;
+
+                // Boundary Guard: Keep window partially on screen so it can't be lost
+                double halfWidthPhys = (IslandConfig.CompactWidth / 2.0) * _dpiScale;
+                targetPhysCenterX = Math.Clamp(targetPhysCenterX, bounds.X + halfWidthPhys, bounds.X + bounds.Width - halfWidthPhys);
+                targetPhysCenterY = Math.Clamp(targetPhysCenterY, bounds.Y, bounds.Y + bounds.Height - 10);
+
+                // Update DPI Scale for the monitor where the window is being dragged
+                _dpiScale = this.GetDpiForWindow() / 96.0;
+
+                // Delegate coordinates to controller (handles real-time dock release and target calculation)
+                _controller.HandleDrag(targetPhysCenterX / _dpiScale, targetPhysCenterY / _dpiScale);
             }
         }
 
