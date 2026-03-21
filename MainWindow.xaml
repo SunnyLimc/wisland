@@ -8,17 +8,25 @@
     xmlns:views="using:island.Views"
     Title="island">
 
-    <Grid x:Name="RootGrid" Background="Transparent"
+    <Grid x:Name="RootGrid" Background="Transparent" UseLayoutRounding="True"
           PointerPressed="RootGrid_PointerPressed"
           PointerMoved="RootGrid_PointerMoved"
           PointerReleased="RootGrid_PointerReleased"
           PointerEntered="RootGrid_PointerEntered"
           PointerExited="RootGrid_PointerExited">
 
-        <Border x:Name="IslandBorder"
-                Width="200" Height="30"
+        <Border x:Name="HostSurface"
                 Background="Black"
                 CornerRadius="15"
+                HorizontalAlignment="Stretch"
+                VerticalAlignment="Stretch"
+                IsHitTestVisible="False"/>
+
+        <Border x:Name="IslandBorder"
+                Background="Black"
+                CornerRadius="15"
+                Width="200"
+                Height="30"
                 HorizontalAlignment="Center"
                 VerticalAlignment="Center">
             

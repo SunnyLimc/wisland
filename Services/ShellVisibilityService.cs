@@ -12,14 +12,10 @@ namespace island.Services
     {
         private readonly NativeLineWindow _lineWindow = new();
 
-        public void ShowDockedLine(double centerX, double dpiScale, double progress)
+        public void ShowDockedLine(int physicalX, int monitorTopPhysical, int physicalWidth, double progress)
         {
-            int width = (int)Math.Ceiling(IslandConfig.CompactWidth * dpiScale);
-            int height = Math.Max(1, (int)Math.Ceiling(dpiScale));
-            int x = (int)Math.Round((centerX - IslandConfig.CompactWidth / 2.0) * dpiScale);
-
             _lineWindow.SetProgress(progress);
-            _lineWindow.Show(x, 0, width, height);
+            _lineWindow.Show(physicalX, monitorTopPhysical, physicalWidth, 1);
         }
 
         public void HideDockedLine()

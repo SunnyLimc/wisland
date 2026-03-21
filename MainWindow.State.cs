@@ -1,4 +1,5 @@
 using System;
+using Windows.Graphics;
 using island.Models;
 
 namespace island
@@ -42,11 +43,15 @@ namespace island
             }
 
             GetCursorPos(out var pt);
+            var display = GetCurrentDisplayArea();
+            int activationTopPhys = display.WorkArea.Y + 1;
+            int lineLeftPhys = _lastPhysX;
+            int lineRightPhys = _lastPhysX + _lastPhysW;
 
-            double xRadius = IslandConfig.CompactWidth / 2.0;
-            if (pt.Y <= 1
-                && pt.X >= (_controller.Current.CenterX - xRadius) * _dpiScale
-                && pt.X <= (_controller.Current.CenterX + xRadius) * _dpiScale)
+            if (pt.Y <= activationTopPhys
+                && pt.Y >= display.WorkArea.Y - 1
+                && pt.X >= lineLeftPhys
+                && pt.X <= lineRightPhys)
             {
                 _hoverTicks++;
                 if (_hoverTicks * IslandConfig.CursorTrackerIntervalMs >= IslandConfig.DockedHoverDelayMs)
@@ -65,11 +70,12 @@ namespace island
             }
         }
 
-        private void ShowLineWindow()
+        private void ShowLineWindow(int physicalX, int monitorTopPhysical, int physicalWidth)
         {
             _shellVisibilityService.ShowDockedLine(
-                _controller.Current.CenterX,
-                _dpiScale,
+                physicalX,
+                monitorTopPhysical,
+                physicalWidth,
                 GetDisplayedProgress());
         }
 

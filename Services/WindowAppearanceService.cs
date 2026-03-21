@@ -20,6 +20,7 @@ namespace island.Services
 
         public void ApplyAppearance(
             Window window,
+            Border hostSurface,
             Border islandBorder,
             CompactView compactView,
             ExpandedMediaView expandedView,
@@ -31,6 +32,7 @@ namespace island.Services
             ApplyBackdrop(window, backdropType);
 
             IslandVisualTokens tokens = ResolveTokens(backdropType, themeKind, accentColor);
+            hostSurface.Background = new SolidColorBrush(tokens.SurfaceColor);
             islandBorder.Background = new SolidColorBrush(tokens.SurfaceColor);
             compactView.SetTextColor(tokens.PrimaryTextColor);
             expandedView.SetColors(tokens.PrimaryTextColor, tokens.SecondaryTextColor, tokens.IconColor);

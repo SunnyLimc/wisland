@@ -3,6 +3,7 @@ using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
 using System;
 using Windows.Graphics;
+using island.Helpers;
 using island.Models;
 using WinUIEx;
 
@@ -28,11 +29,11 @@ namespace island
 
             GetCursorPos(out _dragStartScreenPos);
 
-            double physCenterX = _controller.Current.CenterX * _dpiScale;
-            double physCenterY = _controller.Current.Y * _dpiScale;
+            double physCenterX = _lastPhysX + (_lastPhysW / 2.0);
+            double physTopY = _lastPhysY;
 
             _dragPhysicalOffsetX = _dragStartScreenPos.X - physCenterX;
-            _dragPhysicalOffsetY = _dragStartScreenPos.Y - physCenterY;
+            _dragPhysicalOffsetY = _dragStartScreenPos.Y - physTopY;
 
             UpdateState();
         }
@@ -51,13 +52,15 @@ namespace island
 
             var display = DisplayArea.GetFromPoint(new PointInt32(currentPos.X, currentPos.Y), DisplayAreaFallback.Primary);
             var bounds = display.WorkArea;
+            double targetDpiScale = WindowInterop.GetDpiScaleForPoint(currentPos.X, currentPos.Y);
 
-            double halfWidthPhys = (IslandConfig.CompactWidth / 2.0) * _dpiScale;
+            int currentPhysWidth = GetPhysicalPixels(_controller.Current.Width, targetDpiScale);
+            double halfWidthPhys = currentPhysWidth / 2.0;
             targetPhysCenterX = Math.Clamp(targetPhysCenterX, bounds.X + halfWidthPhys, bounds.X + bounds.Width - halfWidthPhys);
             targetPhysCenterY = Math.Clamp(targetPhysCenterY, bounds.Y, bounds.Y + bounds.Height - 10);
 
-            _dpiScale = this.GetDpiForWindow() / 96.0;
-            _controller.HandleDrag(targetPhysCenterX / _dpiScale, targetPhysCenterY / _dpiScale);
+            _dpiScale = targetDpiScale;
+            _controller.HandleDrag(targetPhysCenterX / targetDpiScale, targetPhysCenterY / targetDpiScale);
         }
 
         private void RootGrid_PointerReleased(object sender, Microsoft.UI.Xaml.Input.PointerRoutedEventArgs e)

@@ -5,6 +5,7 @@ using Microsoft.UI.Xaml.Media;
 using System;
 using System.Numerics;
 using Windows.Graphics;
+using island.Helpers;
 using island.Models;
 using WinUIEx;
 
@@ -39,17 +40,32 @@ namespace island
                 dt = IslandConfig.FallbackDeltaTime;
             }
 
-            _dpiScale = this.GetDpiForWindow() / 96.0;
+            var display = GetCurrentDisplayArea();
+            int monitorTopPhys = display.WorkArea.Y;
+            int monitorCenterXPhys = display.WorkArea.X + (display.WorkArea.Width / 2);
+            _dpiScale = WindowInterop.GetDpiScaleForPoint(monitorCenterXPhys, monitorTopPhys);
             _mediaService.Tick(dt);
 
             double t = 1.0 - Math.Exp(-IslandConfig.AnimationSpeed * dt);
             _controller.Tick(dt);
 
             var state = _controller.Current;
-            IslandProgressBar.Update(dt, t, GetDisplayedProgress(), state.Width, state.Height);
+            int physWidth = GetPhysicalPixels(state.Width, _dpiScale);
+            int physHeight = GetPhysicalPixels(state.Height, _dpiScale);
+            double renderWidth = GetLogicalPixels(physWidth, _dpiScale);
+            double renderHeight = GetLogicalPixels(physHeight, _dpiScale);
+            double physicalPixelLogical = GetLogicalPixels(1, _dpiScale);
 
-            IslandBorder.Width = state.Width;
-            IslandBorder.Height = state.Height;
+            if (Math.Abs(_lastProgressBottomBleed - physicalPixelLogical) > 0.0001)
+            {
+                IslandProgressBar.Margin = new Thickness(0, 0, 0, -physicalPixelLogical);
+                _lastProgressBottomBleed = physicalPixelLogical;
+            }
+
+            IslandProgressBar.Update(dt, t, GetDisplayedProgress(), renderWidth, renderHeight);
+
+            IslandBorder.Width = renderWidth;
+            IslandBorder.Height = renderHeight;
 
             bool isDockPeekState = _controller.IsDocked
                 && !_controller.IsHovered
@@ -57,23 +73,25 @@ namespace island
                 && !_controller.IsDragging
                 && state.Height <= IslandConfig.CompactHeight + 1;
 
-            double radius = Math.Min(state.Height / 2.0, 20.0);
+            double radius = Math.Min(renderHeight / 2.0, 20.0);
             IslandBorder.CornerRadius = isDockPeekState
                 ? new CornerRadius(0)
                 : new CornerRadius(radius);
+            HostSurface.CornerRadius = IslandBorder.CornerRadius;
 
             var vecRadius = new Vector2((float)radius);
             _contentClip.TopLeftRadius = isDockPeekState ? Vector2.Zero : vecRadius;
             _contentClip.TopRightRadius = isDockPeekState ? Vector2.Zero : vecRadius;
             _contentClip.BottomLeftRadius = isDockPeekState ? Vector2.Zero : vecRadius;
             _contentClip.BottomRightRadius = isDockPeekState ? Vector2.Zero : vecRadius;
-            _contentClip.Right = (float)state.Width;
-            _contentClip.Bottom = (float)state.Height;
+            _contentClip.Right = (float)renderWidth;
+            _contentClip.Bottom = (float)(renderHeight + physicalPixelLogical);
 
             if (isDockPeekState)
             {
-                double peek = _controller.IsForegroundMaximized ? IslandConfig.MaximizedDockPeekOffset : IslandConfig.DockPeekOffset;
-                _contentClip.Top = (float)(state.Height - peek);
+                int visiblePhys = GetDockPeekPhysicalPixels(_dpiScale);
+                double visibleLogical = GetLogicalPixels(visiblePhys, _dpiScale);
+                _contentClip.Top = (float)(renderHeight - visibleLogical);
             }
             else
             {
@@ -97,20 +115,15 @@ namespace island
                 CompactContent.IsHitTestVisible = !isExpandedActive && state.IsHitTestVisible;
             }
 
-            int physWidth = (int)Math.Ceiling(state.Width * _dpiScale);
-            int physHeight = (int)Math.Ceiling(state.Height * _dpiScale);
-            int physX = (int)Math.Round((state.CenterX - state.Width / 2.0) * _dpiScale);
+            int physX = (int)Math.Round((state.CenterX * _dpiScale) - (physWidth / 2.0));
             int physY;
-            var display = DisplayArea.GetFromWindowId(this.AppWindow.Id, DisplayAreaFallback.Primary);
-            int monitorTopPhys = display.WorkArea.Y;
 
             bool isSettled = Math.Abs(state.Height - IslandConfig.CompactHeight) < 1.0
                 && Math.Abs(state.Y - _controller.TargetY) < 1.0;
 
             if (isSettled && _controller.IsDocked && !_controller.IsHovered && !_controller.IsNotifying && !_controller.IsDragging)
             {
-                double peek = _controller.IsForegroundMaximized ? IslandConfig.MaximizedDockPeekOffset : IslandConfig.DockPeekOffset;
-                int visiblePhys = (int)Math.Round(peek * _dpiScale);
+                int visiblePhys = GetDockPeekPhysicalPixels(_dpiScale);
                 physY = monitorTopPhys + visiblePhys - physHeight;
             }
             else
@@ -121,7 +134,7 @@ namespace island
             if (_controller.IsOffscreen())
             {
                 physY = -1000;
-                ShowLineWindow();
+                ShowLineWindow(physX, monitorTopPhys, physWidth);
                 UpdateShadowState();
             }
 
@@ -134,6 +147,21 @@ namespace island
                 _lastPhysH = physHeight;
             }
         }
+
+        private DisplayArea GetCurrentDisplayArea()
+            => DisplayArea.GetFromWindowId(this.AppWindow.Id, DisplayAreaFallback.Primary);
+
+        private int GetDockPeekPhysicalPixels(double dpiScale)
+        {
+            double peek = _controller.IsForegroundMaximized ? IslandConfig.MaximizedDockPeekOffset : IslandConfig.DockPeekOffset;
+            return Math.Max(1, (int)Math.Round(peek * dpiScale));
+        }
+
+        private static int GetPhysicalPixels(double logicalPixels, double dpiScale)
+            => Math.Max(1, (int)Math.Ceiling(logicalPixels * dpiScale));
+
+        private static double GetLogicalPixels(int physicalPixels, double dpiScale)
+            => physicalPixels / dpiScale;
 
     }
 }

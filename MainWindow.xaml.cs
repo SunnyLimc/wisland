@@ -67,6 +67,7 @@ namespace island
 
         // --- OS Window Sync State ---
         private int _lastPhysX, _lastPhysY, _lastPhysW, _lastPhysH;
+        private double _lastProgressBottomBleed = -1;
 
         public MainWindow()
         {
@@ -94,13 +95,18 @@ namespace island
 
                 this.AppWindow.IsShownInSwitchers = false;
 
-                _dpiScale = this.GetDpiForWindow() / 96.0;
+                var primaryDisplay = DisplayArea.Primary;
+                int primaryCenterXPhys = primaryDisplay.WorkArea.X + (primaryDisplay.WorkArea.Width / 2);
+                int primaryTopPhys = primaryDisplay.WorkArea.Y;
+                _dpiScale = WindowInterop.GetDpiScaleForPoint(primaryCenterXPhys, primaryTopPhys);
 
                 // Load saved settings
                 _settings.Load();
 
                 // Initialize Controller Position
-                double initialCenterX = _settings.CenterX > 0 ? _settings.CenterX : (DisplayArea.Primary.WorkArea.Width / _dpiScale) / 2.0;
+                double initialCenterX = _settings.CenterX > 0
+                    ? _settings.CenterX
+                    : primaryCenterXPhys / _dpiScale;
                 double initialY = _settings.IsDocked ? 0 : Math.Max(IslandConfig.DefaultY, _settings.LastY);
                 _controller.InitializePosition(initialCenterX, initialY, _settings.IsDocked);
 

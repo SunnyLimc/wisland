@@ -31,6 +31,7 @@ namespace island
 
             _appearanceService.ApplyAppearance(
                 this,
+                HostSurface,
                 IslandBorder,
                 CompactContent,
                 ExpandedContent,
