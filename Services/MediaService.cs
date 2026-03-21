@@ -137,11 +137,15 @@ namespace island.Services
             if (_isDisposed)
                 return;
 
+            var previousSession = _currentSession;
             var newSession = _manager?.GetCurrentSession();
 
-            DetachCurrentSession();
-
             _currentSession = newSession;
+
+            if (!ReferenceEquals(previousSession, newSession))
+            {
+                DetachSession(previousSession);
+            }
 
             if (_currentSession != null)
             {
@@ -253,13 +257,34 @@ namespace island.Services
         }
 
         private void DetachCurrentSession()
+            => DetachSession(_currentSession);
+
+        private void DetachSession(GlobalSystemMediaTransportControlsSession? session)
         {
-            if (_currentSession == null)
+            if (session == null)
                 return;
 
-            _currentSession.MediaPropertiesChanged -= OnMediaPropertiesChanged;
-            _currentSession.PlaybackInfoChanged -= OnPlaybackInfoChanged;
-            _currentSession.TimelinePropertiesChanged -= OnTimelinePropertiesChanged;
+            TryDetachHandler(
+                () => session.MediaPropertiesChanged -= OnMediaPropertiesChanged,
+                "MediaPropertiesChanged");
+            TryDetachHandler(
+                () => session.PlaybackInfoChanged -= OnPlaybackInfoChanged,
+                "PlaybackInfoChanged");
+            TryDetachHandler(
+                () => session.TimelinePropertiesChanged -= OnTimelinePropertiesChanged,
+                "TimelinePropertiesChanged");
+        }
+
+        private static void TryDetachHandler(Action detach, string eventName)
+        {
+            try
+            {
+                detach();
+            }
+            catch (Exception ex)
+            {
+                Logger.Warn($"Ignoring media session detach failure for {eventName}: {ex.Message}");
+            }
         }
 
         public void Dispose()

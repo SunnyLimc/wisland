@@ -24,16 +24,20 @@
               HorizontalAlignment="Left">
             
             <!-- Layer 1: Ambient frosted base (Subtle overall volume fill) -->
-            <Border x:Name="ProgressBase" Background="#1AFFFFFF" />
+            <Border x:Name="ProgressBase">
+                <Border.Background>
+                    <SolidColorBrush x:Name="ProgressBaseBrush" Color="#306C7A93"/>
+                </Border.Background>
+            </Border>
 
             <!-- Layer 2: Internal Shimmer Flow (The "Liquid" feel) -->
             <Canvas IsHitTestVisible="False">
                 <Border x:Name="ProgressShimmer" Width="100" Height="200" VerticalAlignment="Stretch" Opacity="0.15">
                     <Border.Background>
                         <LinearGradientBrush StartPoint="0,0.5" EndPoint="1,0.5">
-                            <GradientStop Color="#00FFFFFF" Offset="0.0"/>
-                            <GradientStop Color="#A0FFFFFF" Offset="0.5"/>
-                            <GradientStop Color="#00FFFFFF" Offset="1.0"/>
+                            <GradientStop x:Name="ProgressShimmerStartStop" Color="#00000000" Offset="0.0"/>
+                            <GradientStop x:Name="ProgressShimmerHighlightStop" Color="#88A7C8FF" Offset="0.5"/>
+                            <GradientStop x:Name="ProgressShimmerEndStop" Color="#00000000" Offset="1.0"/>
                         </LinearGradientBrush>
                     </Border.Background>
                     <Border.RenderTransform>
@@ -46,16 +50,20 @@
             <Border x:Name="ProgressTail" Width="60" HorizontalAlignment="Right" Opacity="0.2">
                 <Border.Background>
                     <LinearGradientBrush StartPoint="0,0.5" EndPoint="1,0.5">
-                        <GradientStop Color="#00FFFFFF" Offset="0.0"/>
-                        <GradientStop Color="#10FFFFFF" Offset="0.5"/>
-                        <GradientStop Color="#60FFFFFF" Offset="0.9"/>
-                        <GradientStop Color="#D0FFFFFF" Offset="1.0"/>
+                        <GradientStop x:Name="ProgressTailStartStop" Color="#00000000" Offset="0.0"/>
+                        <GradientStop x:Name="ProgressTailMidStop" Color="#186EA0FF" Offset="0.5"/>
+                        <GradientStop x:Name="ProgressTailNearEndStop" Color="#6C6EA0FF" Offset="0.9"/>
+                        <GradientStop x:Name="ProgressTailEndStop" Color="#F2D8E6FF" Offset="1.0"/>
                     </LinearGradientBrush>
                 </Border.Background>
             </Border>
             
             <!-- Layer 4: The bright leading edge core (Precision laser focus point) -->
-            <Border x:Name="ProgressLaserCore" Width="2" HorizontalAlignment="Right" Background="#FFFFFFFF" Opacity="0.7"/>
+            <Border x:Name="ProgressLaserCore" Width="2" HorizontalAlignment="Right" Opacity="0.7">
+                <Border.Background>
+                    <SolidColorBrush x:Name="ProgressLaserCoreBrush" Color="#FFF2F6FF"/>
+                </Border.Background>
+            </Border>
         </Grid>
     </Grid>
 </UserControl>

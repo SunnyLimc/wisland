@@ -26,6 +26,8 @@ namespace island
             _notificationCts?.Cancel();
             _notificationCts = null;
 
+            RootGrid.ActualThemeChanged -= RootGrid_ActualThemeChanged;
+            _uiSettings.ColorValuesChanged -= UiSettings_ColorValuesChanged;
             CompositionTarget.Rendering -= OnCompositionTargetRendering;
             _hoverDebounceTimer.Tick -= HoverDebounceTimer_Tick;
             _dockedHoverDelayTimer.Tick -= DockedHoverDelayTimer_Tick;

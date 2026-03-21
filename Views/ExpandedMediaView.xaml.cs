@@ -26,14 +26,14 @@ namespace island.Views
             IconPlayPause.Symbol = isPlaying ? Symbol.Pause : Symbol.Play;
         }
 
-        public void SetColors(Color main, Color sub)
+        public void SetColors(Color main, Color sub, Color icon)
         {
             MusicTitleText.Foreground = new SolidColorBrush(main);
             ArtistNameText.Foreground = new SolidColorBrush(sub);
             HeaderStatusText.Foreground = new SolidColorBrush(sub);
-            IconBack.Foreground = new SolidColorBrush(main);
-            IconPlayPause.Foreground = new SolidColorBrush(main);
-            IconForward.Foreground = new SolidColorBrush(main);
+            IconBack.Foreground = new SolidColorBrush(icon);
+            IconPlayPause.Foreground = new SolidColorBrush(icon);
+            IconForward.Foreground = new SolidColorBrush(icon);
         }
 
         private void OnBack_Click(object sender, RoutedEventArgs e) => BackClick?.Invoke(this, EventArgs.Empty);

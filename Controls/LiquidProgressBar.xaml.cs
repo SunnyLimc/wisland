@@ -2,6 +2,7 @@ using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
 using Microsoft.UI.Xaml.Media;
 using System;
+using island.Models;
 
 namespace island.Controls
 {
@@ -20,6 +21,19 @@ namespace island.Controls
         {
             this.InitializeComponent();
             ShimmerStoryboard.Begin();
+        }
+
+        public void ApplyPalette(ProgressBarPalette palette)
+        {
+            ProgressBaseBrush.Color = palette.BaseColor;
+            ProgressShimmerStartStop.Color = palette.ShimmerStartColor;
+            ProgressShimmerHighlightStop.Color = palette.ShimmerHighlightColor;
+            ProgressShimmerEndStop.Color = palette.ShimmerEndColor;
+            ProgressTailStartStop.Color = palette.TailStartColor;
+            ProgressTailMidStop.Color = palette.TailMidColor;
+            ProgressTailNearEndStop.Color = palette.TailNearEndColor;
+            ProgressTailEndStop.Color = palette.TailEndColor;
+            ProgressLaserCoreBrush.Color = palette.LeadingEdgeColor;
         }
 
         /// <summary>

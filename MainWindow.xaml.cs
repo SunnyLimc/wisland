@@ -10,6 +10,7 @@ using Windows.Graphics;
 using System.Threading.Tasks;
 using System.Numerics;
 using System.Threading;
+using Windows.UI.ViewManagement;
 using WinUIEx;
 using island.Helpers;
 using island.Models;
@@ -28,6 +29,7 @@ namespace island
         private readonly SettingsService _settings = new();
         private readonly IslandController _controller = new();
         private readonly ForegroundWindowMonitor _foregroundWindowMonitor;
+        private readonly UISettings _uiSettings = new();
 
         private double _dpiScale = 1.0;
 
@@ -72,6 +74,8 @@ namespace island
             {
                 this.InitializeComponent();
                 this.ExtendsContentIntoTitleBar = true;
+                RootGrid.ActualThemeChanged += RootGrid_ActualThemeChanged;
+                _uiSettings.ColorValuesChanged += UiSettings_ColorValuesChanged;
                 _foregroundWindowMonitor = new ForegroundWindowMonitor(
                     () => WinRT.Interop.WindowNative.GetWindowHandle(this),
                     TimeSpan.FromMilliseconds(IslandConfig.ForegroundCheckIntervalMs));

@@ -25,6 +25,7 @@ The current architecture is intentionally split like this:
 - `IslandController` is the pure state and animation target engine.
 - `MediaService`, `SettingsService`, `ForegroundWindowMonitor`, `WindowAppearanceService`, and `ShellVisibilityService` are side-effect adapters.
 - `Views/` and `Controls/` are lightweight presentation units.
+- `Models/` now also contain semantic appearance tokens for theme-aware styling.
 - `Helpers/` isolate Win32 and operational concerns.
 
 That split matters. If you are changing code, keep logic placement consistent:
@@ -49,6 +50,7 @@ MainWindow
   -> owns render loop and input events
   -> delegates state targeting to IslandController
   -> reacts to ForegroundWindowMonitor events
+  -> listens for system theme and accent-color changes
   -> delegates backdrop/corner application to WindowAppearanceService
   -> delegates docked line-overlay ownership to ShellVisibilityService
   -> syncs logical state into XAML and AppWindow geometry
@@ -70,7 +72,8 @@ ForegroundWindowMonitor
   -> raises maximized-state changes to the shell
 
 WindowAppearanceService
-  -> applies backdrop, text colors, and DWM corner preferences
+  -> resolves theme-aware visual tokens from backdrop + system theme + accent
+  -> applies shell surface, text/icon colors, progress palette, and DWM corner preferences
 
 ShellVisibilityService
   -> owns NativeLineWindow
@@ -96,7 +99,10 @@ island/
 ├── Models/
 │   ├── BackdropType.cs
 │   ├── IslandConfig.cs
-│   └── IslandState.cs
+│   ├── IslandState.cs
+│   ├── IslandThemeKind.cs
+│   ├── IslandVisualTokens.cs
+│   └── ProgressBarPalette.cs
 ├── Services/
 │   ├── ForegroundWindowMonitor.cs
 │   ├── IslandController.cs
@@ -131,7 +137,7 @@ island/
 3. Saved settings are loaded from `%LocalAppData%/Island/settings.json`.
 4. The controller is initialized with starting position and docked state.
 5. Backdrop is restored.
-6. Media integration, timers, composition clipping, and shell visibility services are initialized.
+6. Media integration, timers, composition clipping, shell visibility services, and theme listeners are initialized.
 7. `CompositionTarget.Rendering` becomes the per-frame update loop.
 
 ### 5.2 Input -> State -> Frame
@@ -141,6 +147,7 @@ The central loop is:
 ```text
 Pointer / timer / media event
   -> MainWindow updates controller flags or service state
+  -> MainWindow refreshes appearance when system theme or accent changes
   -> MainWindow calls UpdateState()
   -> IslandController recalculates targets
   -> per-frame UpdateAnimation() advances current state
@@ -294,11 +301,13 @@ This keeps shell state transitions separate from:
 Owns shell appearance application:
 
 - backdrop selection
+- semantic token resolution for light/dark + accent-aware styling
 - text color application
 - border background updates
+- progress palette application
 - DWM corner preference changes
 
-This keeps `MainWindow` from directly coordinating WinUI backdrop objects and native corner preferences.
+This keeps `MainWindow` from directly coordinating WinUI backdrop objects, accent-aware color decisions, and native corner preferences.
 
 ### `ShellVisibilityService`
 
@@ -338,6 +347,8 @@ It layers:
 - a bright leading edge core
 
 Its update model is velocity-aware and includes dirty checks to reduce unnecessary layout work.
+
+Its colors are now palette-driven rather than hardcoded, so theme changes do not require motion logic changes.
 
 ### `NativeLineWindow`
 
