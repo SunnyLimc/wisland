@@ -11,18 +11,21 @@ namespace island.Services
     /// </summary>
     public sealed class SettingsService
     {
+        private const string DefaultBackdropType = "Mica";
+        private const double DefaultLastY = 10;
+        private static readonly JsonSerializerOptions JsonOptions = new() { WriteIndented = true };
         private static readonly string SettingsPath = Path.Combine(
             Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
             "Island", "settings.json");
 
         /// <summary>User's selected backdrop type name ("Mica", "Acrylic", "None").</summary>
-        public string BackdropType { get; set; } = "Mica";
+        public string BackdropType { get; set; } = DefaultBackdropType;
 
         /// <summary>Last horizontal center position (in logical pixels).</summary>
         public double CenterX { get; set; }
 
         /// <summary>Last vertical position (in logical pixels).</summary>
-        public double LastY { get; set; } = 10;
+        public double LastY { get; set; } = DefaultLastY;
 
         /// <summary>Whether the island was docked to screen top.</summary>
         public bool IsDocked { get; set; }
@@ -41,9 +44,9 @@ namespace island.Services
                 var data = JsonSerializer.Deserialize<SettingsData>(json);
                 if (data != null)
                 {
-                    BackdropType = data.BackdropType ?? "Mica";
-                    CenterX = data.CenterX;
-                    LastY = data.LastY;
+                    BackdropType = NormalizeBackdropType(data.BackdropType);
+                    CenterX = SanitizeCenterX(data.CenterX);
+                    LastY = SanitizeLastY(data.LastY);
                     IsDocked = data.IsDocked;
                 }
             }
@@ -61,24 +64,39 @@ namespace island.Services
             try
             {
                 var dir = Path.GetDirectoryName(SettingsPath)!;
+                var tempPath = SettingsPath + ".tmp";
                 Directory.CreateDirectory(dir);
 
                 var data = new SettingsData
                 {
-                    BackdropType = BackdropType,
-                    CenterX = CenterX,
-                    LastY = LastY,
+                    BackdropType = NormalizeBackdropType(BackdropType),
+                    CenterX = SanitizeCenterX(CenterX),
+                    LastY = SanitizeLastY(LastY),
                     IsDocked = IsDocked
                 };
 
-                var json = JsonSerializer.Serialize(data, new JsonSerializerOptions { WriteIndented = true });
-                File.WriteAllText(SettingsPath, json);
+                var json = JsonSerializer.Serialize(data, JsonOptions);
+                File.WriteAllText(tempPath, json);
+                File.Move(tempPath, SettingsPath, true);
             }
             catch (Exception ex)
             {
                 Logger.Error(ex, "Failed to save settings");
             }
         }
+
+        private static string NormalizeBackdropType(string? value) => value switch
+        {
+            "Acrylic" => "Acrylic",
+            "None" => "None",
+            _ => DefaultBackdropType,
+        };
+
+        private static double SanitizeCenterX(double value)
+            => double.IsFinite(value) && value >= 0 ? value : 0;
+
+        private static double SanitizeLastY(double value)
+            => double.IsFinite(value) && value >= 0 ? value : DefaultLastY;
 
         private sealed class SettingsData
         {

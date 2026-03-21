@@ -13,6 +13,9 @@
                    Foreground="White" 
                    HorizontalAlignment="Center" 
                    VerticalAlignment="Center" 
-                   FontSize="12"/>
+                   FontSize="12"
+                   TextAlignment="Center"
+                   TextTrimming="CharacterEllipsis"
+                   MaxWidth="160"/>
     </Grid>
 </UserControl>

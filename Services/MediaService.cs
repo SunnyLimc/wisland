@@ -9,10 +9,11 @@ namespace island.Services
     /// Encapsulates Windows GSMTC (Global System Media Transport Controls) API.
     /// Manages session lifecycle, exposes media properties and playback control.
     /// </summary>
-    public sealed class MediaService
+    public sealed class MediaService : IDisposable
     {
         private GlobalSystemMediaTransportControlsSessionManager? _manager;
         private GlobalSystemMediaTransportControlsSession? _currentSession;
+        private bool _isDisposed;
 
         /// <summary>Current track title, or "No Media" if no session.</summary>
         public string CurrentTitle { get; private set; } = "No Media";
@@ -45,6 +46,9 @@ namespace island.Services
         {
             try
             {
+                if (_isDisposed)
+                    return;
+
                 _manager = await GlobalSystemMediaTransportControlsSessionManager.RequestAsync();
                 if (_manager != null)
                 {
@@ -120,7 +124,7 @@ namespace island.Services
         public void RefreshFromCurrentSession()
         {
             if (_currentSession != null)
-                UpdateUIFromSession(_currentSession);
+                _ = UpdateUIFromSessionAsync(_currentSession);
             else
                 SetNoMedia();
         }
@@ -130,14 +134,12 @@ namespace island.Services
 
         private void UpdateCurrentSession()
         {
+            if (_isDisposed)
+                return;
+
             var newSession = _manager?.GetCurrentSession();
 
-            if (_currentSession != null)
-            {
-                _currentSession.MediaPropertiesChanged -= OnMediaPropertiesChanged;
-                _currentSession.PlaybackInfoChanged -= OnPlaybackInfoChanged;
-                _currentSession.TimelinePropertiesChanged -= OnTimelinePropertiesChanged;
-            }
+            DetachCurrentSession();
 
             _currentSession = newSession;
 
@@ -146,7 +148,7 @@ namespace island.Services
                 _currentSession.MediaPropertiesChanged += OnMediaPropertiesChanged;
                 _currentSession.PlaybackInfoChanged += OnPlaybackInfoChanged;
                 _currentSession.TimelinePropertiesChanged += OnTimelinePropertiesChanged;
-                UpdateUIFromSession(_currentSession);
+                _ = UpdateUIFromSessionAsync(_currentSession);
                 UpdatePlaybackState(_currentSession);
                 UpdateTimelineState(_currentSession);
             }
@@ -157,7 +159,7 @@ namespace island.Services
         }
 
         private void OnMediaPropertiesChanged(GlobalSystemMediaTransportControlsSession sender, MediaPropertiesChangedEventArgs args)
-            => UpdateUIFromSession(sender);
+            => _ = UpdateUIFromSessionAsync(sender);
 
         private void OnPlaybackInfoChanged(GlobalSystemMediaTransportControlsSession sender, PlaybackInfoChangedEventArgs args)
             => UpdatePlaybackState(sender);
@@ -165,26 +167,28 @@ namespace island.Services
         private void OnTimelinePropertiesChanged(GlobalSystemMediaTransportControlsSession sender, TimelinePropertiesChangedEventArgs args)
             => UpdateTimelineState(sender);
 
-        private async void UpdateUIFromSession(GlobalSystemMediaTransportControlsSession session)
+        private async Task UpdateUIFromSessionAsync(GlobalSystemMediaTransportControlsSession session)
         {
             try
             {
                 var props = await session.TryGetMediaPropertiesAsync();
-                if (props != null)
+                if (_isDisposed || !ReferenceEquals(session, _currentSession) || props == null)
                 {
-                    var newTitle = string.IsNullOrEmpty(props.Title) ? "Unknown Track" : props.Title;
-                    var newArtist = string.IsNullOrEmpty(props.Artist) ? "Unknown Artist" : props.Artist;
-                    var titleChanged = newTitle != CurrentTitle;
-
-                    CurrentTitle = newTitle;
-                    CurrentArtist = newArtist;
-                    HeaderStatus = "Now Playing";
-
-                    MediaChanged?.Invoke();
-
-                    if (titleChanged)
-                        TrackChanged?.Invoke(newTitle, newArtist);
+                    return;
                 }
+
+                var newTitle = string.IsNullOrEmpty(props.Title) ? "Unknown Track" : props.Title;
+                var newArtist = string.IsNullOrEmpty(props.Artist) ? "Unknown Artist" : props.Artist;
+                var titleChanged = newTitle != CurrentTitle;
+
+                CurrentTitle = newTitle;
+                CurrentArtist = newArtist;
+                HeaderStatus = "Now Playing";
+
+                MediaChanged?.Invoke();
+
+                if (titleChanged)
+                    TrackChanged?.Invoke(newTitle, newArtist);
             }
             catch (Exception ex)
             {
@@ -196,6 +200,9 @@ namespace island.Services
         {
             try
             {
+                if (_isDisposed || !ReferenceEquals(session, _currentSession))
+                    return;
+
                 var info = session.GetPlaybackInfo();
                 IsPlaying = info?.PlaybackStatus == GlobalSystemMediaTransportControlsSessionPlaybackStatus.Playing;
                 MediaChanged?.Invoke();
@@ -210,6 +217,9 @@ namespace island.Services
         {
             try
             {
+                if (_isDisposed || !ReferenceEquals(session, _currentSession))
+                    return;
+
                 var timeline = session.GetTimelineProperties();
                 if (timeline != null && timeline.EndTime.TotalSeconds > 0)
                 {
@@ -236,8 +246,37 @@ namespace island.Services
             CurrentArtist = "Waiting for music...";
             HeaderStatus = "Dynamic Island";
             IsPlaying = false;
+            _currentPositionSeconds = 0;
+            _durationSeconds = 0;
             Progress = 0;
             MediaChanged?.Invoke();
+        }
+
+        private void DetachCurrentSession()
+        {
+            if (_currentSession == null)
+                return;
+
+            _currentSession.MediaPropertiesChanged -= OnMediaPropertiesChanged;
+            _currentSession.PlaybackInfoChanged -= OnPlaybackInfoChanged;
+            _currentSession.TimelinePropertiesChanged -= OnTimelinePropertiesChanged;
+        }
+
+        public void Dispose()
+        {
+            if (_isDisposed)
+                return;
+
+            _isDisposed = true;
+
+            if (_manager != null)
+            {
+                _manager.CurrentSessionChanged -= OnCurrentSessionChanged;
+            }
+
+            DetachCurrentSession();
+            _currentSession = null;
+            _manager = null;
         }
     }
 }

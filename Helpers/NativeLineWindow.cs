@@ -3,10 +3,10 @@ using System.Runtime.InteropServices;
 
 namespace island.Helpers
 {
-    public class NativeLineWindow : IDisposable
+    public sealed class NativeLineWindow : IDisposable
     {
         private IntPtr _hwnd;
-        private WndProcDelegate _wndProc;
+        private readonly WndProcDelegate _wndProc;
 
         [DllImport("user32.dll", SetLastError = true)]
         private static extern IntPtr CreateWindowEx(
@@ -34,7 +34,7 @@ namespace island.Helpers
         private static extern ushort RegisterClassEx(ref WNDCLASSEX lpwcx);
 
         [DllImport("kernel32.dll")]
-        private static extern IntPtr GetModuleHandle(string lpModuleName);
+        private static extern IntPtr GetModuleHandle(string? lpModuleName);
 
         [DllImport("user32.dll")]
         private static extern bool SetLayeredWindowAttributes(IntPtr hwnd, uint crKey, byte bAlpha, uint dwFlags);
@@ -73,6 +73,8 @@ namespace island.Helpers
         private const uint WS_POPUP = 0x80000000;
 
         private const int SWP_NOACTIVATE = 0x0010;
+        private const int SW_HIDE = 0;
+        private const int SW_SHOWNA = 8;
         private static readonly IntPtr HWND_TOPMOST = new IntPtr(-1);
         private const uint LWA_ALPHA = 0x00000002;
         private const uint WM_PAINT = 0x000F;
@@ -161,6 +163,11 @@ namespace island.Helpers
 
         public void SetProgress(double progress)
         {
+            if (_hwnd == IntPtr.Zero)
+            {
+                return;
+            }
+
             if (Math.Abs(_progress - progress) > 0.0001)
             {
                 // Calculate if the pixel width actually changes (Layer 2: Progress Thresholding)
@@ -209,7 +216,7 @@ namespace island.Helpers
             if (_hwnd != IntPtr.Zero)
             {
                 SetWindowPos(_hwnd, HWND_TOPMOST, x, y, width, height, SWP_NOACTIVATE);
-                ShowWindow(_hwnd, 8); 
+                ShowWindow(_hwnd, SW_SHOWNA);
             }
         }
 
@@ -217,7 +224,7 @@ namespace island.Helpers
         {
             if (_hwnd != IntPtr.Zero)
             {
-                ShowWindow(_hwnd, 0); 
+                ShowWindow(_hwnd, SW_HIDE);
             }
         }
 

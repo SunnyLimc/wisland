@@ -22,6 +22,7 @@ namespace island.Views
             MusicTitleText.Text = title;
             ArtistNameText.Text = artist;
             HeaderStatusText.Text = header;
+            ArtistNameText.Visibility = string.IsNullOrWhiteSpace(artist) ? Visibility.Collapsed : Visibility.Visible;
             IconPlayPause.Symbol = isPlaying ? Symbol.Pause : Symbol.Play;
         }
 

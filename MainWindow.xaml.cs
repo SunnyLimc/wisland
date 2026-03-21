@@ -9,6 +9,7 @@ using System.Runtime.InteropServices;
 using Windows.Graphics;
 using System.Threading.Tasks;
 using System.Numerics;
+using System.Threading;
 using WinUIEx;
 using island.Helpers;
 using island.Models;
@@ -53,6 +54,9 @@ namespace island
         private NativeLineWindow? _lineWindow;
         private readonly DispatcherTimer _cursorTrackerTimer;
         private int _hoverTicks = 0;
+        private CancellationTokenSource? _notificationCts;
+        private bool _isClosed;
+        private BackdropType _currentBackdropType = BackdropType.Mica;
 
         // --- Content Clipping ---
         private readonly Microsoft.UI.Composition.RectangleClip _contentClip;
@@ -96,40 +100,27 @@ namespace island
                 manager.TrayIconContextMenu += (s, e) => e.Flyout = CreateTrayMenu();
 
                 // Backdrop (from saved settings)
-                SetBackdrop(ParseBackdropType(_settings.BackdropType));
+                SetBackdrop(ParseBackdropType(_settings.BackdropType), persist: false);
                 _ = InitializeMediaAsync();
 
                 _hoverDebounceTimer = new DispatcherTimer { Interval = TimeSpan.FromMilliseconds(IslandConfig.HoverDebounceMs) };
-                _hoverDebounceTimer.Tick += (s, e) =>
-                {
-                    _hoverDebounceTimer.Stop();
-                    _controller.IsHovered = false;
-                    _controller.IsHoverPending = false; // Note: need to add this to controller if missing
-                    UpdateState();
-                };
+                _hoverDebounceTimer.Tick += HoverDebounceTimer_Tick;
 
                 // Foreground window check loop
                 _foregroundCheckTimer = new DispatcherTimer { Interval = TimeSpan.FromMilliseconds(500) };
-                _foregroundCheckTimer.Tick += (s, e) => CheckForegroundWindow();
+                _foregroundCheckTimer.Tick += ForegroundCheckTimer_Tick;
                 _foregroundCheckTimer.Start();
 
                 // Hover delay timer
                 _dockedHoverDelayTimer = new DispatcherTimer { Interval = TimeSpan.FromMilliseconds(IslandConfig.DockedHoverDelayMs) };
-                _dockedHoverDelayTimer.Tick += (s, e) =>
-                {
-                    _dockedHoverDelayTimer.Stop();
-                    _controller.IsHoverPending = false;
-                    _controller.IsHovered = true;
-                    UpdateState();
-                };
+                _dockedHoverDelayTimer.Tick += DockedHoverDelayTimer_Tick;
 
                 _lineWindow = new NativeLineWindow();
                 _cursorTrackerTimer = new DispatcherTimer { Interval = TimeSpan.FromMilliseconds(50) };
                 _cursorTrackerTimer.Tick += CursorTrackerTimer_Tick;
 
                 CompositionTarget.Rendering += OnCompositionTargetRendering;
-
-                this.Closed += (s, e) => _lineWindow?.Dispose();
+                this.Closed += OnWindowClosed;
 
                 Logger.Info("MainWindow initialized successfully");
             }
@@ -141,6 +132,24 @@ namespace island
         }
 
         #region State Machine
+
+        private void HoverDebounceTimer_Tick(object? sender, object e)
+        {
+            _hoverDebounceTimer.Stop();
+            _controller.IsHovered = false;
+            _controller.IsHoverPending = false;
+            UpdateState();
+        }
+
+        private void ForegroundCheckTimer_Tick(object? sender, object e) => CheckForegroundWindow();
+
+        private void DockedHoverDelayTimer_Tick(object? sender, object e)
+        {
+            _dockedHoverDelayTimer.Stop();
+            _controller.IsHoverPending = false;
+            _controller.IsHovered = true;
+            UpdateState();
+        }
 
         private void UpdateShadowState()
         {
@@ -229,6 +238,7 @@ namespace island
         private void UpdateState()
         {
             _controller.UpdateTargetState();
+            UpdateCursorTrackerState();
 
             // Handle side effects like showing/hiding native line
             if (_controller.IsOffscreen() || (_controller.IsDocked && _controller.IsForegroundMaximized && !_controller.IsHovered && !_controller.IsNotifying))
@@ -241,6 +251,22 @@ namespace island
             }
             
             UpdateShadowState();
+        }
+
+        private void UpdateCursorTrackerState()
+        {
+            if (_controller.IsDocked && _controller.IsForegroundMaximized && !_controller.IsHovered && !_controller.IsNotifying && !_controller.IsDragging)
+            {
+                if (!_cursorTrackerTimer.IsEnabled)
+                {
+                    _cursorTrackerTimer.Start();
+                }
+            }
+            else
+            {
+                _hoverTicks = 0;
+                _cursorTrackerTimer.Stop();
+            }
         }
 
         #endregion
@@ -482,28 +508,67 @@ namespace island
         /// <summary>
         /// Show an expanded notification for the specified duration.
         /// </summary>
-        public async void ShowNotification(string title, string message, int durationMs = IslandConfig.DefaultNotificationDurationMs)
+        public void ShowNotification(string title, string message, int durationMs = IslandConfig.DefaultNotificationDurationMs, string header = "Notification")
+            => _ = ShowNotificationAsync(title, message, header, durationMs);
+
+        private async Task ShowNotificationAsync(string title, string message, string header, int durationMs)
         {
+            var previousCts = _notificationCts;
+            var notificationCts = new CancellationTokenSource();
+            _notificationCts = notificationCts;
+
+            previousCts?.Cancel();
+
             try
             {
+                if (_isClosed)
+                {
+                    return;
+                }
+
                 this.DispatcherQueue.TryEnqueue(() =>
                 {
-                    ExpandedContent.Update(title, message, "Notification", false);
+                    if (_isClosed)
+                    {
+                        return;
+                    }
+
+                    ExpandedContent.Update(title, message, header, false);
                     _controller.IsNotifying = true;
                     UpdateState();
                 });
-                await Task.Delay(durationMs);
-                this.DispatcherQueue.TryEnqueue(() =>
-                {
-                    _controller.IsNotifying = false;
-                    UpdateState();
-                    SyncMediaUI();
-                });
+
+                await Task.Delay(Math.Max(0, durationMs), notificationCts.Token);
+            }
+            catch (OperationCanceledException)
+            {
+                // A newer notification replaced this one or the window is closing.
             }
             catch (Exception ex)
             {
                 Logger.Error(ex, "ShowNotification failed");
             }
+            finally
+            {
+                if (ReferenceEquals(_notificationCts, notificationCts))
+                {
+                    _notificationCts = null;
+
+                    if (!_isClosed)
+                    {
+                        this.DispatcherQueue.TryEnqueue(ClearNotificationState);
+                    }
+                }
+
+                notificationCts.Dispose();
+            }
+        }
+
+        private void ClearNotificationState()
+        {
+            _controller.IsNotifying = false;
+            UpdateState();
+            SyncMediaUI();
         }
 
         #endregion
@@ -536,8 +601,10 @@ namespace island
         /// <summary>
         /// Apply a system backdrop effect and update text colors to match.
         /// </summary>
-        public void SetBackdrop(BackdropType type)
+        public void SetBackdrop(BackdropType type, bool persist = true)
         {
+            _currentBackdropType = type;
+
             Windows.UI.Color textColor;
             Windows.UI.Color subTextColor;
 
@@ -565,9 +632,11 @@ namespace island
             }
             UpdateTextColors(textColor, subTextColor);
 
-            // Persist backdrop preference
-            _settings.BackdropType = type.ToString();
-            _settings.Save();
+            if (persist && _settings.BackdropType != type.ToString())
+            {
+                _settings.BackdropType = type.ToString();
+                _settings.Save();
+            }
         }
 
         private void UpdateTextColors(Windows.UI.Color main, Windows.UI.Color sub)
@@ -604,7 +673,7 @@ namespace island
             this.DispatcherQueue?.TryEnqueue(() =>
             {
                 if (_controller.IsDocked && !_controller.IsHovered && !_controller.IsDragging)
-                    ShowNotification("New Track", title, IslandConfig.TrackChangeNotificationDurationMs);
+                    ShowNotification(title, artist, IslandConfig.TrackChangeNotificationDurationMs, "New Track");
             });
         }
 
@@ -641,12 +710,15 @@ namespace island
             menu.Items.Add(new MenuFlyoutSeparator());
             var backdropSub = new MenuFlyoutSubItem { Text = "Backdrop Style" };
             var micaItem = new MenuFlyoutItem { Text = "Mica" };
+            if (_currentBackdropType == BackdropType.Mica) micaItem.Icon = new SymbolIcon(Symbol.Accept);
             micaItem.Click += Mica_Click;
             backdropSub.Items.Add(micaItem);
             var acrylicItem = new MenuFlyoutItem { Text = "Acrylic" };
+            if (_currentBackdropType == BackdropType.Acrylic) acrylicItem.Icon = new SymbolIcon(Symbol.Accept);
             acrylicItem.Click += Acrylic_Click;
             backdropSub.Items.Add(acrylicItem);
             var noneItem = new MenuFlyoutItem { Text = "None" };
+            if (_currentBackdropType == BackdropType.None) noneItem.Icon = new SymbolIcon(Symbol.Accept);
             noneItem.Click += None_Click;
             backdropSub.Items.Add(noneItem);
             menu.Items.Add(backdropSub);
@@ -658,7 +730,7 @@ namespace island
         }
 
         private void ShowIsland_Click(object sender, RoutedEventArgs e) { this.Activate(); this.SetForegroundWindow(); }
-        private void TestNotification_Click(object sender, RoutedEventArgs e) => ShowNotification("Dynamic Island", "Flawless Physics!");
+        private void TestNotification_Click(object sender, RoutedEventArgs e) => ShowNotification("Dynamic Island", "Flawless Physics!", header: "Test Notification");
         private async void TestProgress_Click(object sender, RoutedEventArgs e)
         {
             for (int i = 0; i <= 100; i += 5)
@@ -684,6 +756,42 @@ namespace island
             _settings.LastY = _controller.Current.Y;
             _settings.IsDocked = _controller.IsDocked;
             _settings.Save();
+        }
+
+        #endregion
+
+        #region Lifetime
+
+        private void OnWindowClosed(object sender, WindowEventArgs args)
+        {
+            if (_isClosed)
+            {
+                return;
+            }
+
+            _isClosed = true;
+
+            _notificationCts?.Cancel();
+            _notificationCts = null;
+
+            CompositionTarget.Rendering -= OnCompositionTargetRendering;
+            _hoverDebounceTimer.Tick -= HoverDebounceTimer_Tick;
+            _foregroundCheckTimer.Tick -= ForegroundCheckTimer_Tick;
+            _dockedHoverDelayTimer.Tick -= DockedHoverDelayTimer_Tick;
+            _cursorTrackerTimer.Tick -= CursorTrackerTimer_Tick;
+
+            _hoverDebounceTimer.Stop();
+            _foregroundCheckTimer.Stop();
+            _dockedHoverDelayTimer.Stop();
+            _cursorTrackerTimer.Stop();
+
+            _mediaService.MediaChanged -= OnMediaServiceChanged;
+            _mediaService.TrackChanged -= OnTrackChanged;
+            _mediaService.Dispose();
+
+            _lineWindow?.Hide();
+            _lineWindow?.Dispose();
+            _lineWindow = null;
         }
 
         #endregion
