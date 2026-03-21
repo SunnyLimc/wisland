@@ -51,18 +51,26 @@ namespace island
             IslandBorder.Width = state.Width;
             IslandBorder.Height = state.Height;
 
+            bool isDockPeekState = _controller.IsDocked
+                && !_controller.IsHovered
+                && !_controller.IsNotifying
+                && !_controller.IsDragging
+                && state.Height <= IslandConfig.CompactHeight + 1;
+
             double radius = Math.Min(state.Height / 2.0, 20.0);
-            IslandBorder.CornerRadius = new CornerRadius(radius);
+            IslandBorder.CornerRadius = isDockPeekState
+                ? new CornerRadius(0)
+                : new CornerRadius(radius);
 
             var vecRadius = new Vector2((float)radius);
-            _contentClip.TopLeftRadius = vecRadius;
-            _contentClip.TopRightRadius = vecRadius;
-            _contentClip.BottomLeftRadius = vecRadius;
-            _contentClip.BottomRightRadius = vecRadius;
+            _contentClip.TopLeftRadius = isDockPeekState ? Vector2.Zero : vecRadius;
+            _contentClip.TopRightRadius = isDockPeekState ? Vector2.Zero : vecRadius;
+            _contentClip.BottomLeftRadius = isDockPeekState ? Vector2.Zero : vecRadius;
+            _contentClip.BottomRightRadius = isDockPeekState ? Vector2.Zero : vecRadius;
             _contentClip.Right = (float)state.Width;
             _contentClip.Bottom = (float)state.Height;
 
-            if (_controller.IsDocked && !_controller.IsHovered && !_controller.IsNotifying && !_controller.IsDragging && state.Height <= IslandConfig.CompactHeight + 1)
+            if (isDockPeekState)
             {
                 double peek = _controller.IsForegroundMaximized ? IslandConfig.MaximizedDockPeekOffset : IslandConfig.DockPeekOffset;
                 _contentClip.Top = (float)(state.Height - peek);
