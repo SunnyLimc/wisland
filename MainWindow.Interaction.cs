@@ -55,12 +55,16 @@ namespace island
             double targetDpiScale = WindowInterop.GetDpiScaleForPoint(currentPos.X, currentPos.Y);
 
             int currentPhysWidth = GetPhysicalPixels(_controller.Current.Width, targetDpiScale);
+            int currentPhysHeight = GetPhysicalPixels(_controller.Current.Height, targetDpiScale);
             double halfWidthPhys = currentPhysWidth / 2.0;
             targetPhysCenterX = Math.Clamp(targetPhysCenterX, bounds.X + halfWidthPhys, bounds.X + bounds.Width - halfWidthPhys);
             targetPhysCenterY = Math.Clamp(targetPhysCenterY, bounds.Y, bounds.Y + bounds.Height - 10);
 
             _dpiScale = targetDpiScale;
-            _controller.HandleDrag(targetPhysCenterX / targetDpiScale, targetPhysCenterY / targetDpiScale);
+            SetActiveDisplayAnchorFromDrag(display, targetPhysCenterX, targetPhysCenterY, currentPhysHeight);
+            _controller.HandleDrag(
+                (targetPhysCenterX - bounds.X) / targetDpiScale,
+                (targetPhysCenterY - bounds.Y) / targetDpiScale);
         }
 
         private void RootGrid_PointerReleased(object sender, Microsoft.UI.Xaml.Input.PointerRoutedEventArgs e)

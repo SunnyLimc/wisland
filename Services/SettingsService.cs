@@ -30,6 +30,18 @@ namespace island.Services
         /// <summary>Whether the island was docked to screen top.</summary>
         public bool IsDocked { get; set; }
 
+        /// <summary>Last resolved anchor point in physical pixels.</summary>
+        public int? AnchorPhysicalX { get; set; }
+
+        /// <summary>Last resolved anchor point in physical pixels.</summary>
+        public int? AnchorPhysicalY { get; set; }
+
+        /// <summary>Last display-relative horizontal center position in logical pixels.</summary>
+        public double? RelativeCenterX { get; set; }
+
+        /// <summary>Last display-relative top position in logical pixels.</summary>
+        public double? RelativeTopY { get; set; }
+
         /// <summary>
         /// Load settings from disk. Returns silently with defaults if file doesn't exist or is corrupted.
         /// </summary>
@@ -48,6 +60,10 @@ namespace island.Services
                     CenterX = SanitizeCenterX(data.CenterX);
                     LastY = SanitizeLastY(data.LastY);
                     IsDocked = data.IsDocked;
+                    AnchorPhysicalX = SanitizeAnchorPhysical(data.AnchorPhysicalX);
+                    AnchorPhysicalY = SanitizeAnchorPhysical(data.AnchorPhysicalY);
+                    RelativeCenterX = SanitizeRelativeCenterX(data.RelativeCenterX);
+                    RelativeTopY = SanitizeRelativeTopY(data.RelativeTopY);
                 }
             }
             catch (Exception ex)
@@ -72,7 +88,11 @@ namespace island.Services
                     BackdropType = FormatBackdropType(BackdropType),
                     CenterX = SanitizeCenterX(CenterX),
                     LastY = SanitizeLastY(LastY),
-                    IsDocked = IsDocked
+                    IsDocked = IsDocked,
+                    AnchorPhysicalX = SanitizeAnchorPhysical(AnchorPhysicalX),
+                    AnchorPhysicalY = SanitizeAnchorPhysical(AnchorPhysicalY),
+                    RelativeCenterX = SanitizeRelativeCenterX(RelativeCenterX),
+                    RelativeTopY = SanitizeRelativeTopY(RelativeTopY)
                 };
 
                 var json = JsonSerializer.Serialize(data, JsonOptions);
@@ -100,12 +120,25 @@ namespace island.Services
         private static double SanitizeLastY(double value)
             => double.IsFinite(value) && value >= 0 ? value : DefaultLastY;
 
+        private static int? SanitizeAnchorPhysical(int? value)
+            => value.HasValue ? value : null;
+
+        private static double? SanitizeRelativeCenterX(double? value)
+            => value.HasValue && double.IsFinite(value.Value) && value.Value >= 0 ? value : null;
+
+        private static double? SanitizeRelativeTopY(double? value)
+            => value.HasValue && double.IsFinite(value.Value) && value.Value >= 0 ? value : null;
+
         private sealed class SettingsData
         {
             public string? BackdropType { get; set; }
             public double CenterX { get; set; }
             public double LastY { get; set; }
             public bool IsDocked { get; set; }
+            public int? AnchorPhysicalX { get; set; }
+            public int? AnchorPhysicalY { get; set; }
+            public double? RelativeCenterX { get; set; }
+            public double? RelativeTopY { get; set; }
         }
     }
 }

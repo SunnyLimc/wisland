@@ -59,7 +59,7 @@
             </Border>
             
             <!-- Layer 4: The bright leading edge core (Precision laser focus point) -->
-            <Border x:Name="ProgressLaserCore" Width="2" HorizontalAlignment="Right" Opacity="0.7">
+            <Border x:Name="ProgressLaserCore" Width="2" HorizontalAlignment="Right" VerticalAlignment="Stretch" Opacity="0.7">
                 <Border.Background>
                     <SolidColorBrush x:Name="ProgressLaserCoreBrush" Color="#FFF2F6FF"/>
                 </Border.Background>

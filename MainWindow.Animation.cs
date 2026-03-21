@@ -42,14 +42,16 @@ namespace island
 
             var display = GetCurrentDisplayArea();
             int monitorTopPhys = display.WorkArea.Y;
-            int monitorCenterXPhys = display.WorkArea.X + (display.WorkArea.Width / 2);
-            _dpiScale = WindowInterop.GetDpiScaleForPoint(monitorCenterXPhys, monitorTopPhys);
+            _dpiScale = GetDisplayDpiScale(display);
             _mediaService.Tick(dt);
 
             double t = 1.0 - Math.Exp(-IslandConfig.AnimationSpeed * dt);
             _controller.Tick(dt);
 
             var state = _controller.Current;
+            ClampControllerPositionToDisplay(display.WorkArea, state.Width, state.Height, _dpiScale);
+            _controller.UpdateTargetState();
+
             int physWidth = GetPhysicalPixels(state.Width, _dpiScale);
             int physHeight = GetPhysicalPixels(state.Height, _dpiScale);
             double renderWidth = GetLogicalPixels(physWidth, _dpiScale);
@@ -115,7 +117,7 @@ namespace island
                 CompactContent.IsHitTestVisible = !isExpandedActive && state.IsHitTestVisible;
             }
 
-            int physX = (int)Math.Round((state.CenterX * _dpiScale) - (physWidth / 2.0));
+            int physX = display.WorkArea.X + (int)Math.Round((state.CenterX * _dpiScale) - (physWidth / 2.0));
             int physY;
 
             bool isSettled = Math.Abs(state.Height - IslandConfig.CompactHeight) < 1.0
@@ -128,7 +130,7 @@ namespace island
             }
             else
             {
-                physY = (int)Math.Round(state.Y * _dpiScale);
+                physY = display.WorkArea.Y + (int)Math.Round(state.Y * _dpiScale);
             }
 
             if (_controller.IsOffscreen())
@@ -146,10 +148,9 @@ namespace island
                 _lastPhysW = physWidth;
                 _lastPhysH = physHeight;
             }
-        }
 
-        private DisplayArea GetCurrentDisplayArea()
-            => DisplayArea.GetFromWindowId(this.AppWindow.Id, DisplayAreaFallback.Primary);
+            UpdateAnchorPhysicalPoint(display, state, physWidth, physHeight);
+        }
 
         private int GetDockPeekPhysicalPixels(double dpiScale)
         {

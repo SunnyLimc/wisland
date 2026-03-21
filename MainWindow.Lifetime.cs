@@ -8,9 +8,18 @@ namespace island
         /// <summary>Save current position and dock state to settings.</summary>
         private void SavePositionSettings()
         {
+            var display = GetCurrentDisplayArea();
+            int physWidth = GetPhysicalPixels(_controller.Current.Width, _dpiScale);
+            int physHeight = GetPhysicalPixels(_controller.Current.Height, _dpiScale);
+            UpdateAnchorPhysicalPoint(display, _controller.Current, physWidth, physHeight);
+
             _settings.CenterX = _controller.Current.CenterX;
-            _settings.LastY = _controller.Current.Y;
+            _settings.LastY = _controller.IsDocked ? 0 : _controller.Current.Y;
             _settings.IsDocked = _controller.IsDocked;
+            _settings.RelativeCenterX = _controller.Current.CenterX;
+            _settings.RelativeTopY = _controller.IsDocked ? 0 : _controller.Current.Y;
+            _settings.AnchorPhysicalX = _hasAnchorPhysicalPoint ? _anchorPhysicalX : null;
+            _settings.AnchorPhysicalY = _hasAnchorPhysicalPoint ? _anchorPhysicalY : null;
             _settings.Save();
         }
 

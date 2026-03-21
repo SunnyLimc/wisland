@@ -16,6 +16,7 @@ namespace island.Controls
         private double _lastRenderedWidth = -1;
         private double _lastRenderedVelocity = -1;
         private double _lastRenderedHeight = -1;
+        private double _lastRenderedCoreInset = -1;
 
         public LiquidProgressBar()
         {
@@ -90,7 +91,14 @@ namespace island.Controls
             {
                 double coreInset = 1.0 + (currentHeight - 30.0) / 90.0;
                 coreInset = Math.Clamp(coreInset, 1.0, 2.0);
-                ProgressLaserCore.Height = Math.Max(0, currentHeight - (coreInset * 2));
+
+                if (Math.Abs(coreInset - _lastRenderedCoreInset) > 0.01)
+                {
+                    ProgressLaserCore.Margin = new Thickness(0, coreInset, 0, coreInset);
+                    _lastRenderedCoreInset = coreInset;
+                }
+
+                ProgressLaserCore.Height = double.NaN;
                 ProgressLaserCore.CornerRadius = new CornerRadius(1);
                 _lastRenderedHeight = currentHeight;
             }
