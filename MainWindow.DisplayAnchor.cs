@@ -1,5 +1,4 @@
 using System;
-using Microsoft.UI.Windowing;
 using Windows.Graphics;
 using island.Helpers;
 using island.Models;
@@ -10,42 +9,42 @@ namespace island
     {
         private void InitializeDisplayAnchorFromSettings()
         {
-            if (TryGetSavedDisplayState(out var savedDisplay, out double savedCenterX, out double savedTopY))
+            if (TryGetSavedDisplayState(out var savedWorkArea, out double savedCenterX, out double savedTopY))
             {
-                _dpiScale = GetDisplayDpiScale(savedDisplay);
+                _dpiScale = GetDisplayDpiScale(savedWorkArea);
                 _controller.InitializePosition(savedCenterX, _settings.IsDocked ? 0 : savedTopY, _settings.IsDocked);
-                ClampControllerPositionToDisplay(savedDisplay.WorkArea, _controller.Current.Width, _controller.Current.Height, _dpiScale);
-                UpdateAnchorPhysicalPoint(savedDisplay, _controller.Current, GetPhysicalPixels(_controller.Current.Width, _dpiScale), GetPhysicalPixels(_controller.Current.Height, _dpiScale));
+                ClampControllerPositionToDisplay(savedWorkArea, _controller.Current.Width, _controller.Current.Height, _dpiScale);
+                UpdateAnchorPhysicalPoint(savedWorkArea, _controller.Current, GetPhysicalPixels(_controller.Current.Width, _dpiScale), GetPhysicalPixels(_controller.Current.Height, _dpiScale));
                 return;
             }
 
-            var primaryDisplay = DisplayArea.Primary;
-            _dpiScale = GetDisplayDpiScale(primaryDisplay);
-            double defaultCenterX = primaryDisplay.WorkArea.Width / (2.0 * _dpiScale);
+            RectInt32 primaryWorkArea = WindowInterop.GetPrimaryDisplayWorkArea();
+            _dpiScale = GetDisplayDpiScale(primaryWorkArea);
+            double defaultCenterX = primaryWorkArea.Width / (2.0 * _dpiScale);
             double defaultTopY = IslandConfig.DefaultY;
 
             _controller.InitializePosition(defaultCenterX, _settings.IsDocked ? 0 : defaultTopY, _settings.IsDocked);
-            ClampControllerPositionToDisplay(primaryDisplay.WorkArea, _controller.Current.Width, _controller.Current.Height, _dpiScale);
-            UpdateAnchorPhysicalPoint(primaryDisplay, _controller.Current, GetPhysicalPixels(_controller.Current.Width, _dpiScale), GetPhysicalPixels(_controller.Current.Height, _dpiScale));
+            ClampControllerPositionToDisplay(primaryWorkArea, _controller.Current.Width, _controller.Current.Height, _dpiScale);
+            UpdateAnchorPhysicalPoint(primaryWorkArea, _controller.Current, GetPhysicalPixels(_controller.Current.Width, _dpiScale), GetPhysicalPixels(_controller.Current.Height, _dpiScale));
         }
 
-        private bool TryGetSavedDisplayState(out DisplayArea display, out double relativeCenterX, out double relativeTopY)
+        private bool TryGetSavedDisplayState(out RectInt32 workArea, out double relativeCenterX, out double relativeTopY)
         {
             if (_settings.AnchorPhysicalX.HasValue && _settings.AnchorPhysicalY.HasValue)
             {
-                display = ResolveDisplayFromPhysicalPoint(_settings.AnchorPhysicalX.Value, _settings.AnchorPhysicalY.Value);
-                double displayDpi = GetDisplayDpiScale(display);
+                workArea = ResolveDisplayWorkAreaFromPhysicalPoint(_settings.AnchorPhysicalX.Value, _settings.AnchorPhysicalY.Value);
+                double displayDpi = GetDisplayDpiScale(workArea);
                 relativeCenterX = _settings.RelativeCenterX ?? _settings.CenterX;
                 relativeTopY = _settings.RelativeTopY ?? _settings.LastY;
 
                 if (!double.IsFinite(relativeCenterX) || relativeCenterX <= 0)
                 {
-                    relativeCenterX = (Math.Clamp(_settings.AnchorPhysicalX.Value, display.WorkArea.X, display.WorkArea.X + Math.Max(0, display.WorkArea.Width - 1)) - display.WorkArea.X) / displayDpi;
+                    relativeCenterX = (Math.Clamp(_settings.AnchorPhysicalX.Value, workArea.X, workArea.X + Math.Max(0, workArea.Width - 1)) - workArea.X) / displayDpi;
                 }
 
                 if (!double.IsFinite(relativeTopY) || relativeTopY < 0)
                 {
-                    relativeTopY = Math.Max(0, (_settings.AnchorPhysicalY.Value - display.WorkArea.Y) / displayDpi);
+                    relativeTopY = Math.Max(0, (_settings.AnchorPhysicalY.Value - workArea.Y) / displayDpi);
                 }
 
                 return true;
@@ -53,35 +52,76 @@ namespace island
 
             if (_settings.CenterX > 0)
             {
-                display = DisplayArea.Primary;
+                workArea = WindowInterop.GetPrimaryDisplayWorkArea();
                 relativeCenterX = _settings.CenterX;
                 relativeTopY = _settings.LastY;
                 return true;
             }
 
-            display = DisplayArea.Primary;
+            workArea = WindowInterop.GetPrimaryDisplayWorkArea();
             relativeCenterX = 0;
             relativeTopY = 0;
             return false;
         }
 
-        private DisplayArea GetCurrentDisplayArea()
+        private RectInt32 GetCurrentDisplayWorkArea()
         {
             if (_hasAnchorPhysicalPoint)
             {
-                return ResolveDisplayFromPhysicalPoint(_anchorPhysicalX, _anchorPhysicalY);
+                return ResolveDisplayWorkAreaFromPhysicalPoint(_anchorPhysicalX, _anchorPhysicalY);
             }
 
-            return DisplayArea.Primary;
+            return WindowInterop.GetPrimaryDisplayWorkArea();
         }
 
-        private DisplayArea ResolveDisplayFromPhysicalPoint(int x, int y)
-            => DisplayArea.GetFromPoint(new PointInt32(x, y), DisplayAreaFallback.Nearest);
+        private RectInt32 ResolveDisplayWorkAreaFromPhysicalPoint(int x, int y)
+            => WindowInterop.GetDisplayWorkAreaForPoint(x, y);
 
-        private double GetDisplayDpiScale(DisplayArea display)
+        private bool ActiveDisplayHasScreenAbove(RectInt32 workArea)
         {
-            int sampleX = display.WorkArea.X + Math.Max(0, display.WorkArea.Width / 2);
-            int sampleY = display.WorkArea.Y + Math.Max(0, Math.Min(display.WorkArea.Height - 1, 1));
+            int displayLeft = workArea.X;
+            int displayRight = workArea.X + workArea.Width;
+
+            foreach (RectInt32 other in WindowInterop.GetDisplayWorkAreas())
+            {
+                bool isSameDisplay = other.X == workArea.X
+                    && other.Y == workArea.Y
+                    && other.Width == workArea.Width
+                    && other.Height == workArea.Height;
+                if (isSameDisplay)
+                {
+                    continue;
+                }
+
+                bool overlapsHorizontally = other.X < displayRight && other.X + other.Width > displayLeft;
+                bool isAbove = other.Y + other.Height <= workArea.Y;
+
+                if (overlapsHorizontally && isAbove)
+                {
+                    return true;
+                }
+            }
+
+            return false;
+        }
+
+        private bool ShouldUseDockedLinePresentation(RectInt32 workArea)
+        {
+            if (!_controller.IsDocked
+                || _controller.IsHovered
+                || _controller.IsNotifying
+                || _controller.IsDragging)
+            {
+                return false;
+            }
+
+            return _controller.IsForegroundMaximized || ActiveDisplayHasScreenAbove(workArea);
+        }
+
+        private double GetDisplayDpiScale(RectInt32 workArea)
+        {
+            int sampleX = workArea.X + Math.Max(0, workArea.Width / 2);
+            int sampleY = workArea.Y + Math.Max(0, Math.Min(workArea.Height - 1, 1));
             return WindowInterop.GetDpiScaleForPoint(sampleX, sampleY);
         }
 
@@ -105,22 +145,22 @@ namespace island
             _controller.Current.Y = Math.Clamp(_controller.Current.Y, 0, maxTopY);
         }
 
-        private void UpdateAnchorPhysicalPoint(DisplayArea display, IslandState state, int physWidth, int physHeight)
+        private void UpdateAnchorPhysicalPoint(RectInt32 workArea, IslandState state, int physWidth, int physHeight)
         {
-            int centerXPhys = display.WorkArea.X + (int)Math.Round(state.CenterX * _dpiScale);
-            centerXPhys = Math.Clamp(centerXPhys, display.WorkArea.X, display.WorkArea.X + Math.Max(0, display.WorkArea.Width - 1));
+            int centerXPhys = workArea.X + (int)Math.Round(state.CenterX * _dpiScale);
+            centerXPhys = Math.Clamp(centerXPhys, workArea.X, workArea.X + Math.Max(0, workArea.Width - 1));
 
             int anchorYPhys;
             if (_controller.IsDocked)
             {
                 int visiblePhys = GetDockPeekPhysicalPixels(_dpiScale);
-                anchorYPhys = display.WorkArea.Y + Math.Max(0, visiblePhys - 1);
+                anchorYPhys = workArea.Y + Math.Max(0, visiblePhys - 1);
             }
             else
             {
-                int topPhys = display.WorkArea.Y + (int)Math.Round(Math.Max(0, state.Y) * _dpiScale);
+                int topPhys = workArea.Y + (int)Math.Round(Math.Max(0, state.Y) * _dpiScale);
                 anchorYPhys = topPhys + Math.Max(1, physHeight / 2);
-                anchorYPhys = Math.Clamp(anchorYPhys, display.WorkArea.Y, display.WorkArea.Y + Math.Max(0, display.WorkArea.Height - 1));
+                anchorYPhys = Math.Clamp(anchorYPhys, workArea.Y, workArea.Y + Math.Max(0, workArea.Height - 1));
             }
 
             _anchorPhysicalX = centerXPhys;
@@ -128,11 +168,11 @@ namespace island
             _hasAnchorPhysicalPoint = true;
         }
 
-        private void SetActiveDisplayAnchorFromDrag(DisplayArea display, double physicalCenterX, double physicalTopY, int physHeight)
+        private void SetActiveDisplayAnchorFromDrag(RectInt32 workArea, double physicalCenterX, double physicalTopY, int physHeight)
         {
-            _anchorPhysicalX = Math.Clamp((int)Math.Round(physicalCenterX), display.WorkArea.X, display.WorkArea.X + Math.Max(0, display.WorkArea.Width - 1));
+            _anchorPhysicalX = Math.Clamp((int)Math.Round(physicalCenterX), workArea.X, workArea.X + Math.Max(0, workArea.Width - 1));
             int anchorY = (int)Math.Round(physicalTopY) + Math.Max(1, physHeight / 2);
-            _anchorPhysicalY = Math.Clamp(anchorY, display.WorkArea.Y, display.WorkArea.Y + Math.Max(0, display.WorkArea.Height - 1));
+            _anchorPhysicalY = Math.Clamp(anchorY, workArea.Y, workArea.Y + Math.Max(0, workArea.Height - 1));
             _hasAnchorPhysicalPoint = true;
         }
     }

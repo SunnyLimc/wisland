@@ -1,5 +1,6 @@
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Media;
+using Windows.Graphics;
 
 namespace island
 {
@@ -8,10 +9,10 @@ namespace island
         /// <summary>Save current position and dock state to settings.</summary>
         private void SavePositionSettings()
         {
-            var display = GetCurrentDisplayArea();
+            RectInt32 workArea = GetCurrentDisplayWorkArea();
             int physWidth = GetPhysicalPixels(_controller.Current.Width, _dpiScale);
             int physHeight = GetPhysicalPixels(_controller.Current.Height, _dpiScale);
-            UpdateAnchorPhysicalPoint(display, _controller.Current, physWidth, physHeight);
+            UpdateAnchorPhysicalPoint(workArea, _controller.Current, physWidth, physHeight);
 
             _settings.CenterX = _controller.Current.CenterX;
             _settings.LastY = _controller.IsDocked ? 0 : _controller.Current.Y;

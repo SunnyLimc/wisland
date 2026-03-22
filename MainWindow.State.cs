@@ -32,24 +32,29 @@ namespace island
         }
 
         private void UpdateShadowState()
-            => _appearanceService.ApplyWindowCornerPreference(this, _controller.IsOffscreen());
+        {
+            RectInt32 displayWorkArea = GetCurrentDisplayWorkArea();
+            _appearanceService.ApplyWindowCornerPreference(
+                this,
+                _controller.IsOffscreen() || ShouldUseDockedLinePresentation(displayWorkArea));
+        }
 
         private void CursorTrackerTimer_Tick(object? sender, object e)
         {
-            if (!_controller.IsDocked || !_controller.IsForegroundMaximized || _controller.IsHovered)
+            RectInt32 displayWorkArea = GetCurrentDisplayWorkArea();
+            if (!ShouldUseDockedLinePresentation(displayWorkArea) || _controller.IsHovered)
             {
                 _cursorTrackerTimer.Stop();
                 return;
             }
 
             GetCursorPos(out var pt);
-            var display = GetCurrentDisplayArea();
-            int activationTopPhys = display.WorkArea.Y + 1;
+            int activationTopPhys = displayWorkArea.Y + 1;
             int lineLeftPhys = _lastPhysX;
             int lineRightPhys = _lastPhysX + _lastPhysW;
 
             if (pt.Y <= activationTopPhys
-                && pt.Y >= display.WorkArea.Y - 1
+                && pt.Y >= displayWorkArea.Y - 1
                 && pt.X >= lineLeftPhys
                 && pt.X <= lineRightPhys)
             {
@@ -92,8 +97,7 @@ namespace island
             _foregroundWindowMonitor.SetActive(_controller.IsDocked);
             UpdateCursorTrackerState();
 
-            if (!_controller.IsOffscreen()
-                && !(_controller.IsDocked && _controller.IsForegroundMaximized && !_controller.IsHovered && !_controller.IsNotifying))
+            if (!ShouldUseDockedLinePresentation(GetCurrentDisplayWorkArea()))
             {
                 HideLineWindow();
             }
@@ -103,11 +107,7 @@ namespace island
 
         private void UpdateCursorTrackerState()
         {
-            if (_controller.IsDocked
-                && _controller.IsForegroundMaximized
-                && !_controller.IsHovered
-                && !_controller.IsNotifying
-                && !_controller.IsDragging)
+            if (ShouldUseDockedLinePresentation(GetCurrentDisplayWorkArea()))
             {
                 if (!_cursorTrackerTimer.IsEnabled)
                 {

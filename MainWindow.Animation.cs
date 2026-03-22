@@ -7,7 +7,6 @@ using System.Numerics;
 using Windows.Graphics;
 using island.Helpers;
 using island.Models;
-using WinUIEx;
 
 namespace island
 {
@@ -40,17 +39,18 @@ namespace island
                 dt = IslandConfig.FallbackDeltaTime;
             }
 
-            var display = GetCurrentDisplayArea();
-            int monitorTopPhys = display.WorkArea.Y;
-            _dpiScale = GetDisplayDpiScale(display);
+            RectInt32 displayWorkArea = GetCurrentDisplayWorkArea();
+            int monitorTopPhys = displayWorkArea.Y;
+            _dpiScale = GetDisplayDpiScale(displayWorkArea);
             _mediaService.Tick(dt);
 
             double t = 1.0 - Math.Exp(-IslandConfig.AnimationSpeed * dt);
             _controller.Tick(dt);
 
             var state = _controller.Current;
-            ClampControllerPositionToDisplay(display.WorkArea, state.Width, state.Height, _dpiScale);
+            ClampControllerPositionToDisplay(displayWorkArea, state.Width, state.Height, _dpiScale);
             _controller.UpdateTargetState();
+            bool useDockedLinePresentation = ShouldUseDockedLinePresentation(displayWorkArea);
 
             int physWidth = GetPhysicalPixels(state.Width, _dpiScale);
             int physHeight = GetPhysicalPixels(state.Height, _dpiScale);
@@ -73,6 +73,7 @@ namespace island
                 && !_controller.IsHovered
                 && !_controller.IsNotifying
                 && !_controller.IsDragging
+                && !useDockedLinePresentation
                 && state.Height <= IslandConfig.CompactHeight + 1;
 
             double radius = Math.Min(renderHeight / 2.0, 20.0);
@@ -117,7 +118,7 @@ namespace island
                 CompactContent.IsHitTestVisible = !isExpandedActive && state.IsHitTestVisible;
             }
 
-            int physX = display.WorkArea.X + (int)Math.Round((state.CenterX * _dpiScale) - (physWidth / 2.0));
+            int physX = displayWorkArea.X + (int)Math.Round((state.CenterX * _dpiScale) - (physWidth / 2.0));
             int physY;
 
             bool isSettled = Math.Abs(state.Height - IslandConfig.CompactHeight) < 1.0
@@ -130,12 +131,13 @@ namespace island
             }
             else
             {
-                physY = display.WorkArea.Y + (int)Math.Round(state.Y * _dpiScale);
+                physY = displayWorkArea.Y + (int)Math.Round(state.Y * _dpiScale);
             }
 
-            if (_controller.IsOffscreen())
+            if (_controller.IsOffscreen() || useDockedLinePresentation)
             {
-                physY = -1000;
+                RectInt32 virtualScreen = WindowInterop.GetVirtualScreenBounds();
+                physY = virtualScreen.Y - physHeight - 64;
                 ShowLineWindow(physX, monitorTopPhys, physWidth);
                 UpdateShadowState();
             }
@@ -149,7 +151,7 @@ namespace island
                 _lastPhysH = physHeight;
             }
 
-            UpdateAnchorPhysicalPoint(display, state, physWidth, physHeight);
+            UpdateAnchorPhysicalPoint(displayWorkArea, state, physWidth, physHeight);
         }
 
         private int GetDockPeekPhysicalPixels(double dpiScale)

@@ -1,6 +1,5 @@
 using System;
 using island.Helpers;
-using island.Models;
 
 namespace island.Services
 {
@@ -10,23 +9,30 @@ namespace island.Services
     /// </summary>
     public sealed class ShellVisibilityService : IDisposable
     {
-        private readonly NativeLineWindow _lineWindow = new();
+        private NativeLineWindow? _lineWindow;
 
         public void ShowDockedLine(int physicalX, int monitorTopPhysical, int physicalWidth, double progress)
         {
-            _lineWindow.SetProgress(progress);
-            _lineWindow.Show(physicalX, monitorTopPhysical, physicalWidth, 1);
+            NativeLineWindow lineWindow = _lineWindow ??= new NativeLineWindow();
+            lineWindow.SetProgress(progress);
+            lineWindow.Show(physicalX, monitorTopPhysical, physicalWidth, 1);
         }
 
         public void HideDockedLine()
         {
+            if (_lineWindow == null)
+            {
+                return;
+            }
+
             _lineWindow.Hide();
+            _lineWindow.Dispose();
+            _lineWindow = null;
         }
 
         public void Dispose()
         {
-            _lineWindow.Hide();
-            _lineWindow.Dispose();
+            HideDockedLine();
         }
     }
 }

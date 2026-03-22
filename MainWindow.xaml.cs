@@ -95,7 +95,6 @@ namespace island
                 manager.IsResizable = false;
                 manager.IsMinimizable = false;
                 manager.IsMaximizable = false;
-
                 this.AppWindow.IsShownInSwitchers = false;
 
                 // Load saved settings
@@ -103,7 +102,6 @@ namespace island
 
                 InitializeDisplayAnchorFromSettings();
 
-                // Tray Icon
                 manager.IsVisibleInTray = true;
                 manager.TrayIconContextMenu += (s, e) => e.Flyout = CreateTrayMenu();
 

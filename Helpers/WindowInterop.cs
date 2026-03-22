@@ -1,5 +1,7 @@
 using System;
+using System.Collections.Generic;
 using System.Runtime.InteropServices;
+using Windows.Graphics;
 
 namespace island.Helpers
 {
@@ -13,6 +15,21 @@ namespace island.Helpers
 
         [DllImport("user32.dll")]
         private static extern IntPtr MonitorFromPoint(POINT pt, uint dwFlags);
+
+        [DllImport("user32.dll")]
+        private static extern int GetSystemMetrics(int nIndex);
+
+        [DllImport("user32.dll")]
+        [return: MarshalAs(UnmanagedType.Bool)]
+        private static extern bool EnumDisplayMonitors(
+            IntPtr hdc,
+            IntPtr lprcClip,
+            MonitorEnumProc lpfnEnum,
+            IntPtr dwData);
+
+        [DllImport("user32.dll", CharSet = CharSet.Auto)]
+        [return: MarshalAs(UnmanagedType.Bool)]
+        private static extern bool GetMonitorInfo(IntPtr hMonitor, ref MONITORINFOEX lpmi);
 
         [DllImport("shcore.dll")]
         private static extern int GetDpiForMonitor(IntPtr hmonitor, MONITOR_DPI_TYPE dpiType, out uint dpiX, out uint dpiY);
@@ -43,8 +60,26 @@ namespace island.Helpers
         [StructLayout(LayoutKind.Sequential)]
         private struct RECT { public int left; public int top; public int right; public int bottom; }
 
+        [StructLayout(LayoutKind.Sequential, CharSet = CharSet.Auto)]
+        private struct MONITORINFOEX
+        {
+            public int cbSize;
+            public RECT rcMonitor;
+            public RECT rcWork;
+            public uint dwFlags;
+
+            [MarshalAs(UnmanagedType.ByValTStr, SizeConst = 32)]
+            public string szDevice;
+        }
+
+        private delegate bool MonitorEnumProc(IntPtr hMonitor, IntPtr hdcMonitor, IntPtr lprcMonitor, IntPtr dwData);
+
         private const int SW_SHOWMAXIMIZED = 3;
         private const uint MONITOR_DEFAULTTONEAREST = 2;
+        private const int SM_XVIRTUALSCREEN = 76;
+        private const int SM_YVIRTUALSCREEN = 77;
+        private const int SM_CXVIRTUALSCREEN = 78;
+        private const int SM_CYVIRTUALSCREEN = 79;
 
         /// <summary>
         /// Checks if the provided window handle represents a maximized window.
@@ -73,6 +108,102 @@ namespace island.Helpers
             }
 
             return 1.0;
+        }
+
+        public static RectInt32 GetDisplayWorkAreaForPoint(int x, int y)
+        {
+            var point = new POINT { X = x, Y = y };
+            IntPtr monitor = MonitorFromPoint(point, MONITOR_DEFAULTTONEAREST);
+            return GetMonitorWorkArea(monitor);
+        }
+
+        public static IReadOnlyList<RectInt32> GetDisplayWorkAreas()
+        {
+            List<RectInt32> workAreas = new();
+
+            EnumDisplayMonitors(
+                IntPtr.Zero,
+                IntPtr.Zero,
+                (hMonitor, _, _, _) =>
+                {
+                    MONITORINFOEX info = new MONITORINFOEX
+                    {
+                        cbSize = Marshal.SizeOf<MONITORINFOEX>(),
+                        szDevice = string.Empty
+                    };
+
+                    if (GetMonitorInfo(hMonitor, ref info))
+                    {
+                        RECT work = info.rcWork;
+                        workAreas.Add(new RectInt32(
+                            work.left,
+                            work.top,
+                            Math.Max(0, work.right - work.left),
+                            Math.Max(0, work.bottom - work.top)));
+                    }
+
+                    return true;
+                },
+                IntPtr.Zero);
+
+            return workAreas;
+        }
+
+        public static RectInt32 GetPrimaryDisplayWorkArea()
+        {
+            foreach (RectInt32 workArea in GetDisplayWorkAreas())
+            {
+                bool containsOrigin = workArea.X <= 0
+                    && workArea.Y <= 0
+                    && workArea.X + workArea.Width > 0
+                    && workArea.Y + workArea.Height > 0;
+
+                if (containsOrigin)
+                {
+                    return workArea;
+                }
+            }
+
+            IReadOnlyList<RectInt32> workAreas = GetDisplayWorkAreas();
+            if (workAreas.Count > 0)
+            {
+                return workAreas[0];
+            }
+
+            return new RectInt32(0, 0, 1920, 1080);
+        }
+
+        public static RectInt32 GetVirtualScreenBounds()
+            => new RectInt32(
+                GetSystemMetrics(SM_XVIRTUALSCREEN),
+                GetSystemMetrics(SM_YVIRTUALSCREEN),
+                Math.Max(0, GetSystemMetrics(SM_CXVIRTUALSCREEN)),
+                Math.Max(0, GetSystemMetrics(SM_CYVIRTUALSCREEN)));
+
+        private static RectInt32 GetMonitorWorkArea(IntPtr monitor)
+        {
+            if (monitor == IntPtr.Zero)
+            {
+                return GetPrimaryDisplayWorkArea();
+            }
+
+            MONITORINFOEX info = new MONITORINFOEX
+            {
+                cbSize = Marshal.SizeOf<MONITORINFOEX>(),
+                szDevice = string.Empty
+            };
+
+            if (GetMonitorInfo(monitor, ref info))
+            {
+                RECT work = info.rcWork;
+                return new RectInt32(
+                    work.left,
+                    work.top,
+                    Math.Max(0, work.right - work.left),
+                    Math.Max(0, work.bottom - work.top));
+            }
+
+            return GetPrimaryDisplayWorkArea();
         }
 
         // --- DWM API for Shadow Control ---

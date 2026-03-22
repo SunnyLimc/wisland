@@ -1,11 +1,9 @@
-using Microsoft.UI.Windowing;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
 using System;
 using Windows.Graphics;
 using island.Helpers;
 using island.Models;
-using WinUIEx;
 
 namespace island
 {
@@ -50,21 +48,20 @@ namespace island
             double targetPhysCenterX = currentPos.X - _dragPhysicalOffsetX;
             double targetPhysCenterY = currentPos.Y - _dragPhysicalOffsetY;
 
-            var display = DisplayArea.GetFromPoint(new PointInt32(currentPos.X, currentPos.Y), DisplayAreaFallback.Primary);
-            var bounds = display.WorkArea;
+            RectInt32 workArea = WindowInterop.GetDisplayWorkAreaForPoint(currentPos.X, currentPos.Y);
             double targetDpiScale = WindowInterop.GetDpiScaleForPoint(currentPos.X, currentPos.Y);
 
             int currentPhysWidth = GetPhysicalPixels(_controller.Current.Width, targetDpiScale);
             int currentPhysHeight = GetPhysicalPixels(_controller.Current.Height, targetDpiScale);
             double halfWidthPhys = currentPhysWidth / 2.0;
-            targetPhysCenterX = Math.Clamp(targetPhysCenterX, bounds.X + halfWidthPhys, bounds.X + bounds.Width - halfWidthPhys);
-            targetPhysCenterY = Math.Clamp(targetPhysCenterY, bounds.Y, bounds.Y + bounds.Height - 10);
+            targetPhysCenterX = Math.Clamp(targetPhysCenterX, workArea.X + halfWidthPhys, workArea.X + workArea.Width - halfWidthPhys);
+            targetPhysCenterY = Math.Clamp(targetPhysCenterY, workArea.Y, workArea.Y + workArea.Height - 10);
 
             _dpiScale = targetDpiScale;
-            SetActiveDisplayAnchorFromDrag(display, targetPhysCenterX, targetPhysCenterY, currentPhysHeight);
+            SetActiveDisplayAnchorFromDrag(workArea, targetPhysCenterX, targetPhysCenterY, currentPhysHeight);
             _controller.HandleDrag(
-                (targetPhysCenterX - bounds.X) / targetDpiScale,
-                (targetPhysCenterY - bounds.Y) / targetDpiScale);
+                (targetPhysCenterX - workArea.X) / targetDpiScale,
+                (targetPhysCenterY - workArea.Y) / targetDpiScale);
         }
 
         private void RootGrid_PointerReleased(object sender, Microsoft.UI.Xaml.Input.PointerRoutedEventArgs e)

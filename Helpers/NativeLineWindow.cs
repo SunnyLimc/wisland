@@ -70,6 +70,7 @@ namespace island.Helpers
         private const uint WS_EX_TRANSPARENT = 0x00000020;
         private const uint WS_EX_TOPMOST = 0x00000008;
         private const uint WS_EX_TOOLWINDOW = 0x00000080;
+        private const uint WS_EX_NOACTIVATE = 0x08000000;
         private const uint WS_POPUP = 0x80000000;
 
         private const int SWP_NOACTIVATE = 0x0010;
@@ -78,6 +79,8 @@ namespace island.Helpers
         private static readonly IntPtr HWND_TOPMOST = new IntPtr(-1);
         private const uint LWA_ALPHA = 0x00000002;
         private const uint WM_PAINT = 0x000F;
+        private const uint WM_NCHITTEST = 0x0084;
+        private static readonly IntPtr HTTRANSPARENT = new IntPtr(-1);
 
         private delegate IntPtr WndProcDelegate(IntPtr hWnd, uint msg, IntPtr wParam, IntPtr lParam);
 
@@ -145,7 +148,7 @@ namespace island.Helpers
             RegisterClassEx(ref wndClass);
 
             _hwnd = CreateWindowEx(
-                WS_EX_LAYERED | WS_EX_TRANSPARENT | WS_EX_TOPMOST | WS_EX_TOOLWINDOW,
+                WS_EX_LAYERED | WS_EX_TRANSPARENT | WS_EX_TOPMOST | WS_EX_TOOLWINDOW | WS_EX_NOACTIVATE,
                 _className,
                 "IslandLine",
                 WS_POPUP,
@@ -188,6 +191,11 @@ namespace island.Helpers
 
         private IntPtr WndProc(IntPtr hWnd, uint msg, IntPtr wParam, IntPtr lParam)
         {
+            if (msg == WM_NCHITTEST)
+            {
+                return HTTRANSPARENT;
+            }
+
             if (msg == WM_PAINT)
             {
                 IntPtr hdc = BeginPaint(hWnd, out var ps);
