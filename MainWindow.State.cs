@@ -9,12 +9,24 @@ namespace island
         private void HoverDebounceTimer_Tick(object? sender, object e)
         {
             _hoverDebounceTimer.Stop();
+
+            if (_isContextFlyoutOpen)
+            {
+                return;
+            }
+
             SetHoverMode(HoverMode.None);
         }
 
         private void DockedHoverDelayTimer_Tick(object? sender, object e)
         {
             _dockedHoverDelayTimer.Stop();
+
+            if (_isContextFlyoutOpen)
+            {
+                return;
+            }
+
             SetHoverMode(HoverMode.PointerActive);
         }
 
@@ -37,6 +49,11 @@ namespace island
 
         private void CursorTrackerTimer_Tick(object? sender, object e)
         {
+            if (_isContextFlyoutOpen)
+            {
+                return;
+            }
+
             RectInt32 displayWorkArea = GetCurrentDisplayWorkArea();
             if (!SupportsDockedLinePresentation(displayWorkArea))
             {

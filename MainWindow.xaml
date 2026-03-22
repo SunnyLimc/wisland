@@ -29,9 +29,10 @@
                 Height="30"
                 HorizontalAlignment="Center"
                 VerticalAlignment="Center">
-            
+             
             <Border.ContextFlyout>
-                <MenuFlyout>
+                <MenuFlyout Opening="IslandContextFlyout_Opening"
+                            Closed="IslandContextFlyout_Closed">
                     <MenuFlyoutItem Text="Test Notification" Click="TestNotification_Click"/>
                     <MenuFlyoutItem Text="Test Task Progress" Click="TestProgress_Click"/>
                     <MenuFlyoutSeparator/>

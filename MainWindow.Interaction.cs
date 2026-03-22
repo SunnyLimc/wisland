@@ -83,6 +83,12 @@ namespace island
         {
             _hoverDebounceTimer.Stop();
 
+            if (_isContextFlyoutOpen)
+            {
+                _dockedHoverDelayTimer.Stop();
+                return;
+            }
+
             if (SupportsDockedLinePresentation(GetCurrentDisplayWorkArea()) && !IsPointerHoverMode(_hoverMode))
             {
                 _dockedHoverDelayTimer.Stop();
@@ -102,6 +108,13 @@ namespace island
 
         private void RootGrid_PointerExited(object sender, Microsoft.UI.Xaml.Input.PointerRoutedEventArgs e)
         {
+            if (_isContextFlyoutOpen)
+            {
+                _hoverDebounceTimer.Stop();
+                _dockedHoverDelayTimer.Stop();
+                return;
+            }
+
             if (SupportsDockedLinePresentation(GetCurrentDisplayWorkArea()) && !IsPointerHoverMode(_hoverMode))
             {
                 _dockedHoverDelayTimer.Stop();
@@ -117,6 +130,51 @@ namespace island
             {
                 _hoverDebounceTimer.Start();
             }
+        }
+
+        private void IslandContextFlyout_Opening(object sender, object e)
+        {
+            _isContextFlyoutOpen = true;
+            _hoverModeBeforeContextFlyout = _hoverMode;
+            _hoverDebounceTimer.Stop();
+            _dockedHoverDelayTimer.Stop();
+        }
+
+        private void IslandContextFlyout_Closed(object sender, object e)
+        {
+            _isContextFlyoutOpen = false;
+            ReconcileHoverStateAfterContextFlyout();
+        }
+
+        private void ReconcileHoverStateAfterContextFlyout()
+        {
+            if (_isClosed)
+            {
+                return;
+            }
+
+            GetCursorPos(out var cursorPoint);
+            if (IsCursorWithinIslandBounds(cursorPoint, 0))
+            {
+                SetHoverMode(HoverMode.PointerActive);
+                return;
+            }
+
+            if (_hoverModeBeforeContextFlyout == HoverMode.PointerActive)
+            {
+                _hoverDebounceTimer.Stop();
+                _hoverDebounceTimer.Start();
+                return;
+            }
+
+            if (_hoverModeBeforeContextFlyout == HoverMode.PointerPending
+                || IsLineHoverMode(_hoverModeBeforeContextFlyout))
+            {
+                SetHoverMode(HoverMode.None);
+                return;
+            }
+
+            UpdateState();
         }
     }
 }

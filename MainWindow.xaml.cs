@@ -57,9 +57,11 @@ namespace island
         private readonly ShellVisibilityService _shellVisibilityService = new();
         private readonly DispatcherTimer _cursorTrackerTimer;
         private HoverMode _hoverMode = HoverMode.None;
+        private HoverMode _hoverModeBeforeContextFlyout = HoverMode.None;
         private int _lineHoverElapsedMs = 0;
         private int _lineExitElapsedMs = 0;
         private CancellationTokenSource? _notificationCts;
+        private bool _isContextFlyoutOpen;
         private bool _isClosed;
         private BackdropType _currentBackdropType = BackdropType.Mica;
 
@@ -69,7 +71,6 @@ namespace island
 
         // --- OS Window Sync State ---
         private int _lastPhysX, _lastPhysY, _lastPhysW, _lastPhysH;
-        private double _lastProgressBottomBleed = -1;
         private int _anchorPhysicalX;
         private int _anchorPhysicalY;
         private bool _hasAnchorPhysicalPoint;

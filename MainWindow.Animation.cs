@@ -58,14 +58,6 @@ namespace island
             double renderHeight = GetLogicalPixels(physHeight, _dpiScale);
             double physicalPixelLogical = GetLogicalPixels(1, _dpiScale);
 
-            if (Math.Abs(_lastProgressBottomBleed - physicalPixelLogical) > 0.0001)
-            {
-                IslandProgressBar.Margin = new Thickness(0, 0, 0, -physicalPixelLogical);
-                _lastProgressBottomBleed = physicalPixelLogical;
-            }
-
-            IslandProgressBar.Update(dt, t, GetDisplayedProgress(), renderWidth, renderHeight);
-
             if (Math.Abs(renderWidth - _lastRenderedIslandWidth) > 0.01)
             {
                 IslandBorder.Width = renderWidth;
@@ -84,6 +76,15 @@ namespace island
                 && !_controller.IsDragging
                 && !shouldDisplayDockedLineNow
                 && state.Height <= IslandConfig.CompactHeight + 1;
+
+            double progressTopBleed = isDockPeekState ? physicalPixelLogical : 0;
+            if (Math.Abs(IslandProgressBar.Margin.Top + progressTopBleed) > 0.0001
+                || Math.Abs(IslandProgressBar.Margin.Bottom + physicalPixelLogical) > 0.0001)
+            {
+                IslandProgressBar.Margin = new Thickness(0, -progressTopBleed, 0, -physicalPixelLogical);
+            }
+
+            IslandProgressBar.Update(dt, t, GetDisplayedProgress(), renderWidth, renderHeight);
 
             double radius = Math.Min(renderHeight / 2.0, 20.0);
             bool cornerShapeChanged = !_lastRenderedDockPeekState.HasValue
