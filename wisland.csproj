@@ -4,13 +4,18 @@
     <TargetFramework>net8.0-windows10.0.19041.0</TargetFramework>
     <TargetPlatformMinVersion>10.0.17763.0</TargetPlatformMinVersion>
     <RootNamespace>wisland</RootNamespace>
+    <VersionPrefix>1.0.0</VersionPrefix>
+    <VersionSuffix>alpha</VersionSuffix>
+    <AssemblyVersion>1.0.0.0</AssemblyVersion>
+    <FileVersion>1.0.0.0</FileVersion>
+    <InformationalVersion>$(VersionPrefix)-$(VersionSuffix)</InformationalVersion>
     <ApplicationManifest>app.manifest</ApplicationManifest>
     <Platforms>x86;x64;ARM64</Platforms>
     <RuntimeIdentifiers>win-x86;win-x64;win-arm64</RuntimeIdentifiers>
     <Platform Condition=" '$(Platform)' == '' ">x64</Platform>
     <PublishProfile>Properties\PublishProfiles\win-$(Platform).pubxml</PublishProfile>
     <UseWinUI>true</UseWinUI>
-    <EnableMsixTooling>false</EnableMsixTooling>
+    <EnableMsixTooling>true</EnableMsixTooling>
     <Nullable>enable</Nullable>
     
     <UseXamlCompilerExecutable>false</UseXamlCompilerExecutable>
@@ -19,7 +24,7 @@
     <WindowsAppSDKSelfContained>true</WindowsAppSDKSelfContained>
 
     <!-- 2026 Best Practice: Exclude local source clones from build -->
-    <DefaultItemExcludes>$(DefaultItemExcludes);WinUIEx\**</DefaultItemExcludes>
+    <DefaultItemExcludes>$(DefaultItemExcludes);WinUIEx\**;build-verification\**;artifacts\**</DefaultItemExcludes>
   </PropertyGroup>
 
   <ItemGroup>
