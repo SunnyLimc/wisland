@@ -7,5 +7,6 @@ namespace island.Models
         Color PrimaryTextColor,
         Color SecondaryTextColor,
         Color IconColor,
-        ProgressBarPalette ProgressBarPalette);
+        ProgressBarPalette ProgressBarPalette,
+        LinePalette LinePalette);
 }

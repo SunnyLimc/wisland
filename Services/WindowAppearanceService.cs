@@ -18,7 +18,7 @@ namespace island.Services
         private MicaBackdrop? _micaBackdrop;
         private DesktopAcrylicBackdrop? _acrylicBackdrop;
 
-        public void ApplyAppearance(
+        public IslandVisualTokens ApplyAppearance(
             Window window,
             Border hostSurface,
             Border islandBorder,
@@ -37,6 +37,7 @@ namespace island.Services
             compactView.SetTextColor(tokens.PrimaryTextColor);
             expandedView.SetColors(tokens.PrimaryTextColor, tokens.SecondaryTextColor, tokens.IconColor);
             progressBar.ApplyPalette(tokens.ProgressBarPalette);
+            return tokens;
         }
 
         public void ApplyWindowCornerPreference(Window window, bool isHiddenLine)
@@ -117,7 +118,8 @@ namespace island.Services
                     WithAlpha(accent, 26),
                     WithAlpha(accentTail, 102),
                     WithAlpha(accentHighlight, 214),
-                    WithAlpha(accentHighlight, 255)));
+                    WithAlpha(accentHighlight, 255)),
+                CreateLinePalette(accent, themeKind: IslandThemeKind.Light));
         }
 
         private static IslandVisualTokens CreateDarkTokens(BackdropType backdropType, Color accent)
@@ -151,7 +153,33 @@ namespace island.Services
                     WithAlpha(accent, 18),
                     WithAlpha(accentTail, 78),
                     WithAlpha(accentHighlight, 188),
-                    WithAlpha(Blend(accentHighlight, Microsoft.UI.Colors.White, 0.10), 242)));
+                    WithAlpha(Blend(accentHighlight, Microsoft.UI.Colors.White, 0.10), 242)),
+                CreateLinePalette(accent, themeKind: IslandThemeKind.Dark));
+        }
+
+        private static LinePalette CreateLinePalette(Color accent, IslandThemeKind themeKind)
+        {
+            Color progressFill = themeKind == IslandThemeKind.Dark
+                ? Blend(accent, Microsoft.UI.Colors.White, 0.18)
+                : Blend(accent, Color.FromArgb(255, 20, 40, 76), 0.08);
+
+            Color progressHead = Blend(progressFill, Microsoft.UI.Colors.White, themeKind == IslandThemeKind.Dark ? 0.34 : 0.28);
+
+            return themeKind == IslandThemeKind.Dark
+                ? new LinePalette(
+                    Color.FromArgb(86, 255, 255, 255),
+                    Color.FromArgb(58, 216, 226, 238),
+                    Color.FromArgb(214, progressFill.R, progressFill.G, progressFill.B),
+                    Color.FromArgb(248, progressHead.R, progressHead.G, progressHead.B),
+                    Color.FromArgb(96, 0, 0, 0),
+                    Color.FromArgb(78, 238, 244, 252))
+                : new LinePalette(
+                    Color.FromArgb(108, 255, 255, 255),
+                    Color.FromArgb(78, 104, 118, 138),
+                    Color.FromArgb(224, progressFill.R, progressFill.G, progressFill.B),
+                    Color.FromArgb(252, progressHead.R, progressHead.G, progressHead.B),
+                    Color.FromArgb(96, 0, 0, 0),
+                    Color.FromArgb(92, 72, 84, 100));
         }
 
         private static Color NormalizeAccent(Color accentColor, IslandThemeKind themeKind)

@@ -79,6 +79,7 @@ ShellVisibilityService
   -> owns NativeLineWindow
   -> shows and hides the docked line overlay
   -> translates logical shell line requests into DPI-aware Win32 overlay geometry
+  -> applies palette-driven native line appearance without coupling line rendering to MainWindow
 
 Views / Controls
   -> render compact content, expanded media content, and liquid progress visuals
@@ -316,6 +317,7 @@ Owns the docked line overlay abstraction:
 - lifetime of `NativeLineWindow`
 - DPI-aware geometry for the 1px line overlay
 - progress updates for the line surface
+- theme-aware line palette updates
 - line hide/show calls from the shell
 
 This keeps `MainWindow` from directly managing the Win32 overlay window instance.
@@ -352,7 +354,7 @@ Its colors are now palette-driven rather than hardcoded, so theme changes do not
 
 ### `NativeLineWindow`
 
-Raw Win32 overlay window used only for the fully tucked docked state. It paints progress directly via `WM_PAINT` and is owned by `ShellVisibilityService`.
+Raw Win32 overlay window used only for the fully tucked docked state. It now renders a small layered edge rail with per-pixel alpha, rather than a flat two-color `WM_PAINT` strip, and is owned by `ShellVisibilityService`.
 
 ### `WindowInterop`
 

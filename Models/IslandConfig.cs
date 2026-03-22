@@ -23,6 +23,7 @@ namespace island.Models
         public const double DockThreshold = 15;
         public const double DockPeekOffset = 5; // Reduced from 6 for "just progress" look
         public const double MaximizedDockPeekOffset = 1; // Ultra-thin line
+        public const int NativeLinePhysicalHeight = 3;
 
         // --- Timing ---
         public const int ForegroundCheckIntervalMs = 500;

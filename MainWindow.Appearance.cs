@@ -29,7 +29,7 @@ namespace island
                 return;
             }
 
-            _appearanceService.ApplyAppearance(
+            IslandVisualTokens tokens = _appearanceService.ApplyAppearance(
                 this,
                 HostSurface,
                 IslandBorder,
@@ -39,6 +39,8 @@ namespace island
                 _currentBackdropType,
                 GetThemeKind(),
                 _uiSettings.GetColorValue(UIColorType.Accent));
+
+            _shellVisibilityService.ApplyAppearance(tokens.LinePalette, IslandConfig.NativeLinePhysicalHeight);
         }
 
         private void RootGrid_ActualThemeChanged(FrameworkElement sender, object args)
