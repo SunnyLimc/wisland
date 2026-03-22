@@ -57,6 +57,7 @@ namespace island
         private readonly ShellVisibilityService _shellVisibilityService = new();
         private readonly DispatcherTimer _cursorTrackerTimer;
         private int _hoverTicks = 0;
+        private bool _lineWakeRequiresExitReset;
         private CancellationTokenSource? _notificationCts;
         private bool _isClosed;
         private BackdropType _currentBackdropType = BackdropType.Mica;

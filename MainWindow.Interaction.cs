@@ -83,6 +83,13 @@ namespace island
         {
             _hoverDebounceTimer.Stop();
 
+            if (SupportsDockedLinePresentation(GetCurrentDisplayWorkArea()))
+            {
+                _controller.IsHoverPending = false;
+                _dockedHoverDelayTimer.Stop();
+                return;
+            }
+
             if (_controller.IsDocked && !_controller.IsDragging && _controller.IsForegroundMaximized)
             {
                 _controller.IsHoverPending = true;
@@ -97,6 +104,13 @@ namespace island
 
         private void RootGrid_PointerExited(object sender, Microsoft.UI.Xaml.Input.PointerRoutedEventArgs e)
         {
+            if (SupportsDockedLinePresentation(GetCurrentDisplayWorkArea()))
+            {
+                _controller.IsHoverPending = false;
+                _dockedHoverDelayTimer.Stop();
+                return;
+            }
+
             if (_controller.IsHoverPending)
             {
                 _controller.IsHoverPending = false;

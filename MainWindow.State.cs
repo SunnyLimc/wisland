@@ -36,14 +36,15 @@ namespace island
             RectInt32 displayWorkArea = GetCurrentDisplayWorkArea();
             _appearanceService.ApplyWindowCornerPreference(
                 this,
-                _controller.IsOffscreen() || ShouldUseDockedLinePresentation(displayWorkArea));
+                _controller.IsOffscreen() || ShouldDisplayDockedLineNow(displayWorkArea));
         }
 
         private void CursorTrackerTimer_Tick(object? sender, object e)
         {
             RectInt32 displayWorkArea = GetCurrentDisplayWorkArea();
-            if (!ShouldUseDockedLinePresentation(displayWorkArea) || _controller.IsHovered)
+            if (!SupportsDockedLinePresentation(displayWorkArea))
             {
+                _hoverTicks = 0;
                 _cursorTrackerTimer.Stop();
                 return;
             }
@@ -52,17 +53,42 @@ namespace island
             int activationTopPhys = displayWorkArea.Y + 1;
             int lineLeftPhys = _lastPhysX;
             int lineRightPhys = _lastPhysX + _lastPhysW;
-
-            if (pt.Y <= activationTopPhys
+            bool isInActivationBand = pt.Y <= activationTopPhys
                 && pt.Y >= displayWorkArea.Y - 1
                 && pt.X >= lineLeftPhys
-                && pt.X <= lineRightPhys)
+                && pt.X <= lineRightPhys;
+
+            if (_controller.IsHovered)
+            {
+                _hoverTicks = 0;
+                if (!IsCursorWithinIslandBounds(pt, 8))
+                {
+                    _controller.IsHovered = false;
+                    _controller.IsHoverPending = false;
+                    _lineWakeRequiresExitReset = true;
+                    UpdateState();
+                }
+
+                return;
+            }
+
+            if (_lineWakeRequiresExitReset)
+            {
+                if (isInActivationBand)
+                {
+                    _hoverTicks = 0;
+                    return;
+                }
+
+                _lineWakeRequiresExitReset = false;
+            }
+
+            if (isInActivationBand)
             {
                 _hoverTicks++;
                 if (_hoverTicks * IslandConfig.CursorTrackerIntervalMs >= IslandConfig.DockedHoverDelayMs)
                 {
                     _hoverTicks = 0;
-                    _cursorTrackerTimer.Stop();
                     _controller.Current.Height = 1;
                     _controller.IsHovered = true;
                     UpdateState();
@@ -87,7 +113,6 @@ namespace island
         private void HideLineWindow()
         {
             _hoverTicks = 0;
-            _cursorTrackerTimer.Stop();
             _shellVisibilityService.HideDockedLine();
         }
 
@@ -107,7 +132,7 @@ namespace island
 
         private void UpdateCursorTrackerState()
         {
-            if (ShouldUseDockedLinePresentation(GetCurrentDisplayWorkArea()))
+            if (SupportsDockedLinePresentation(GetCurrentDisplayWorkArea()))
             {
                 if (!_cursorTrackerTimer.IsEnabled)
                 {
@@ -119,6 +144,31 @@ namespace island
                 _hoverTicks = 0;
                 _cursorTrackerTimer.Stop();
             }
+        }
+
+        private bool IsCursorWithinIslandBounds(POINT point, int marginPhysical)
+        {
+            int left = _lastPhysX - marginPhysical;
+            int top = _lastPhysY - marginPhysical;
+            int right = _lastPhysX + _lastPhysW + marginPhysical;
+            int bottom = _lastPhysY + _lastPhysH + marginPhysical;
+
+            return point.X >= left
+                && point.X <= right
+                && point.Y >= top
+                && point.Y <= bottom;
+        }
+
+        private bool ShouldDisplayDockedLineNow(RectInt32 workArea)
+        {
+            if (!ShouldUseDockedLinePresentation(workArea))
+            {
+                return false;
+            }
+
+            return _controller.Current.Height <= IslandConfig.CompactHeight + 1.0
+                && Math.Abs(_controller.Current.Y - _controller.TargetY) < 1.0
+                && _controller.Current.ExpandedOpacity < 0.05;
         }
     }
 }

@@ -50,7 +50,7 @@ namespace island
             var state = _controller.Current;
             ClampControllerPositionToDisplay(displayWorkArea, state.Width, state.Height, _dpiScale);
             _controller.UpdateTargetState();
-            bool useDockedLinePresentation = ShouldUseDockedLinePresentation(displayWorkArea);
+            bool shouldDisplayDockedLineNow = ShouldDisplayDockedLineNow(displayWorkArea);
 
             int physWidth = GetPhysicalPixels(state.Width, _dpiScale);
             int physHeight = GetPhysicalPixels(state.Height, _dpiScale);
@@ -73,7 +73,7 @@ namespace island
                 && !_controller.IsHovered
                 && !_controller.IsNotifying
                 && !_controller.IsDragging
-                && !useDockedLinePresentation
+                && !shouldDisplayDockedLineNow
                 && state.Height <= IslandConfig.CompactHeight + 1;
 
             double radius = Math.Min(renderHeight / 2.0, 20.0);
@@ -134,7 +134,7 @@ namespace island
                 physY = displayWorkArea.Y + (int)Math.Round(state.Y * _dpiScale);
             }
 
-            if (_controller.IsOffscreen() || useDockedLinePresentation)
+            if (_controller.IsOffscreen() || shouldDisplayDockedLineNow)
             {
                 RectInt32 virtualScreen = WindowInterop.GetVirtualScreenBounds();
                 physY = virtualScreen.Y - physHeight - 64;

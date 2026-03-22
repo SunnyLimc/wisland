@@ -105,10 +105,9 @@ namespace island
             return false;
         }
 
-        private bool ShouldUseDockedLinePresentation(RectInt32 workArea)
+        private bool SupportsDockedLinePresentation(RectInt32 workArea)
         {
             if (!_controller.IsDocked
-                || _controller.IsHovered
                 || _controller.IsNotifying
                 || _controller.IsDragging)
             {
@@ -117,6 +116,9 @@ namespace island
 
             return _controller.IsForegroundMaximized || ActiveDisplayHasScreenAbove(workArea);
         }
+
+        private bool ShouldUseDockedLinePresentation(RectInt32 workArea)
+            => SupportsDockedLinePresentation(workArea) && !_controller.IsHovered;
 
         private double GetDisplayDpiScale(RectInt32 workArea)
         {
