@@ -83,38 +83,35 @@ namespace island
         {
             _hoverDebounceTimer.Stop();
 
-            if (SupportsDockedLinePresentation(GetCurrentDisplayWorkArea()))
+            if (SupportsDockedLinePresentation(GetCurrentDisplayWorkArea()) && !IsPointerHoverMode(_hoverMode))
             {
-                _controller.IsHoverPending = false;
                 _dockedHoverDelayTimer.Stop();
                 return;
             }
 
             if (_controller.IsDocked && !_controller.IsDragging && _controller.IsForegroundMaximized)
             {
-                _controller.IsHoverPending = true;
+                SetHoverMode(HoverMode.PointerPending, updateState: false);
                 _dockedHoverDelayTimer.Start();
             }
             else
             {
-                _controller.IsHovered = true;
-                UpdateState();
+                SetHoverMode(HoverMode.PointerActive);
             }
         }
 
         private void RootGrid_PointerExited(object sender, Microsoft.UI.Xaml.Input.PointerRoutedEventArgs e)
         {
-            if (SupportsDockedLinePresentation(GetCurrentDisplayWorkArea()))
+            if (SupportsDockedLinePresentation(GetCurrentDisplayWorkArea()) && !IsPointerHoverMode(_hoverMode))
             {
-                _controller.IsHoverPending = false;
                 _dockedHoverDelayTimer.Stop();
                 return;
             }
 
-            if (_controller.IsHoverPending)
+            if (_hoverMode == HoverMode.PointerPending)
             {
-                _controller.IsHoverPending = false;
                 _dockedHoverDelayTimer.Stop();
+                SetHoverMode(HoverMode.None, updateState: false);
             }
             else
             {

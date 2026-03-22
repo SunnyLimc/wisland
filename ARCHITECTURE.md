@@ -99,6 +99,7 @@ island/
 │   media, tray, appearance, and lifetime concerns.
 ├── Models/
 │   ├── BackdropType.cs
+│   ├── HoverMode.cs
 │   ├── IslandConfig.cs
 │   ├── IslandState.cs
 │   ├── IslandThemeKind.cs
@@ -382,6 +383,8 @@ Boolean mode flags on `IslandController`:
 - notification
 - foreground maximized
 - hover pending
+
+`MainWindow` now also owns an explicit `HoverMode` runtime state for shell orchestration. This is especially important for docked line mode, where pointer-driven hover and global cursor-tracked hover do not share the same event source.
 
 ### Render state
 

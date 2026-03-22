@@ -56,8 +56,9 @@ namespace island
         // --- Line Mode State ---
         private readonly ShellVisibilityService _shellVisibilityService = new();
         private readonly DispatcherTimer _cursorTrackerTimer;
-        private int _hoverTicks = 0;
-        private bool _lineWakeRequiresExitReset;
+        private HoverMode _hoverMode = HoverMode.None;
+        private int _lineHoverElapsedMs = 0;
+        private int _lineExitElapsedMs = 0;
         private CancellationTokenSource? _notificationCts;
         private bool _isClosed;
         private BackdropType _currentBackdropType = BackdropType.Mica;

@@ -30,6 +30,8 @@ namespace island.Models
         public const int CursorTrackerIntervalMs = 50;
         public const int HoverDebounceMs = 100;
         public const int DockedHoverDelayMs = 750; // 0.75s delay to trigger expansion when docked
+        public const int DockedLineExitHysteresisMs = 150;
+        public const int DockedLineBoundsMarginPhysical = 8;
         public const int DefaultNotificationDurationMs = 3000;
         public const int TrackChangeNotificationDurationMs = 4000;
 

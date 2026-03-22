@@ -9,17 +9,13 @@ namespace island
         private void HoverDebounceTimer_Tick(object? sender, object e)
         {
             _hoverDebounceTimer.Stop();
-            _controller.IsHovered = false;
-            _controller.IsHoverPending = false;
-            UpdateState();
+            SetHoverMode(HoverMode.None);
         }
 
         private void DockedHoverDelayTimer_Tick(object? sender, object e)
         {
             _dockedHoverDelayTimer.Stop();
-            _controller.IsHoverPending = false;
-            _controller.IsHovered = true;
-            UpdateState();
+            SetHoverMode(HoverMode.PointerActive);
         }
 
         private void OnForegroundMaximizedChanged(bool isForegroundMaximized)
@@ -44,7 +40,22 @@ namespace island
             RectInt32 displayWorkArea = GetCurrentDisplayWorkArea();
             if (!SupportsDockedLinePresentation(displayWorkArea))
             {
-                _hoverTicks = 0;
+                _lineHoverElapsedMs = 0;
+                _lineExitElapsedMs = 0;
+
+                if (_hoverMode == HoverMode.LineActive)
+                {
+                    GetCursorPos(out var fallbackPoint);
+                    SetHoverMode(
+                        IsCursorWithinIslandBounds(fallbackPoint, IslandConfig.DockedLineBoundsMarginPhysical)
+                            ? HoverMode.PointerActive
+                            : HoverMode.None);
+                }
+                else if (IsLineHoverMode(_hoverMode))
+                {
+                    SetHoverMode(HoverMode.None);
+                }
+
                 _cursorTrackerTimer.Stop();
                 return;
             }
@@ -58,46 +69,72 @@ namespace island
                 && pt.X >= lineLeftPhys
                 && pt.X <= lineRightPhys;
 
-            if (_controller.IsHovered)
+            switch (_hoverMode)
             {
-                _hoverTicks = 0;
-                if (!IsCursorWithinIslandBounds(pt, 8))
-                {
-                    _controller.IsHovered = false;
-                    _controller.IsHoverPending = false;
-                    _lineWakeRequiresExitReset = true;
-                    UpdateState();
-                }
+                case HoverMode.LineActive:
+                    _lineHoverElapsedMs = 0;
+                    if (IsCursorWithinIslandBounds(pt, IslandConfig.DockedLineBoundsMarginPhysical))
+                    {
+                        _lineExitElapsedMs = 0;
+                        return;
+                    }
 
-                return;
-            }
-
-            if (_lineWakeRequiresExitReset)
-            {
-                if (isInActivationBand)
-                {
-                    _hoverTicks = 0;
+                    _lineExitElapsedMs += IslandConfig.CursorTrackerIntervalMs;
+                    if (_lineExitElapsedMs >= IslandConfig.DockedLineExitHysteresisMs)
+                    {
+                        SetHoverMode(HoverMode.LineExitCooldown);
+                    }
                     return;
-                }
 
-                _lineWakeRequiresExitReset = false;
-            }
+                case HoverMode.LineExitCooldown:
+                    _lineHoverElapsedMs = 0;
+                    _lineExitElapsedMs = 0;
+                    if (!isInActivationBand)
+                    {
+                        SetHoverMode(HoverMode.None, updateState: false);
+                    }
+                    return;
 
-            if (isInActivationBand)
-            {
-                _hoverTicks++;
-                if (_hoverTicks * IslandConfig.CursorTrackerIntervalMs >= IslandConfig.DockedHoverDelayMs)
-                {
-                    _hoverTicks = 0;
-                    _controller.Current.Height = 1;
-                    _controller.IsHovered = true;
-                    UpdateState();
-                    UpdateShadowState();
-                }
-            }
-            else
-            {
-                _hoverTicks = 0;
+                case HoverMode.LinePending:
+                    if (isInActivationBand)
+                    {
+                        _lineHoverElapsedMs += IslandConfig.CursorTrackerIntervalMs;
+                        if (_lineHoverElapsedMs >= IslandConfig.DockedHoverDelayMs)
+                        {
+                            _controller.Current.Height = 1;
+                            SetHoverMode(HoverMode.LineActive);
+                            UpdateShadowState();
+                        }
+                    }
+                    else
+                    {
+                        SetHoverMode(HoverMode.None, updateState: false);
+                    }
+                    return;
+
+                default:
+                    if (isInActivationBand)
+                    {
+                        if (_hoverMode != HoverMode.LinePending)
+                        {
+                            _lineHoverElapsedMs = 0;
+                            SetHoverMode(HoverMode.LinePending, updateState: false);
+                        }
+
+                        _lineHoverElapsedMs += IslandConfig.CursorTrackerIntervalMs;
+                        if (_lineHoverElapsedMs >= IslandConfig.DockedHoverDelayMs)
+                        {
+                            _controller.Current.Height = 1;
+                            SetHoverMode(HoverMode.LineActive);
+                            UpdateShadowState();
+                        }
+                    }
+                    else if (_hoverMode == HoverMode.LinePending)
+                    {
+                        SetHoverMode(HoverMode.None, updateState: false);
+                    }
+
+                    return;
             }
         }
 
@@ -112,7 +149,7 @@ namespace island
 
         private void HideLineWindow()
         {
-            _hoverTicks = 0;
+            _lineHoverElapsedMs = 0;
             _shellVisibilityService.HideDockedLine();
         }
 
@@ -132,7 +169,7 @@ namespace island
 
         private void UpdateCursorTrackerState()
         {
-            if (SupportsDockedLinePresentation(GetCurrentDisplayWorkArea()))
+            if (SupportsDockedLinePresentation(GetCurrentDisplayWorkArea()) && !IsPointerHoverMode(_hoverMode))
             {
                 if (!_cursorTrackerTimer.IsEnabled)
                 {
@@ -141,7 +178,8 @@ namespace island
             }
             else
             {
-                _hoverTicks = 0;
+                _lineHoverElapsedMs = 0;
+                _lineExitElapsedMs = 0;
                 _cursorTrackerTimer.Stop();
             }
         }
@@ -158,6 +196,48 @@ namespace island
                 && point.Y >= top
                 && point.Y <= bottom;
         }
+
+        private void SetHoverMode(HoverMode mode, bool updateState = true)
+        {
+            HoverMode previousMode = _hoverMode;
+            _hoverMode = mode;
+
+            if (mode != HoverMode.LinePending)
+            {
+                _lineHoverElapsedMs = 0;
+            }
+
+            if (mode != HoverMode.LineActive)
+            {
+                _lineExitElapsedMs = 0;
+            }
+
+            if (!IsLineHoverMode(mode) && IsLineHoverMode(previousMode))
+            {
+                _lineHoverElapsedMs = 0;
+                _lineExitElapsedMs = 0;
+            }
+
+            _controller.IsHovered = IsActiveHoverMode(mode);
+            _controller.IsHoverPending = IsPendingHoverMode(mode);
+
+            if (updateState)
+            {
+                UpdateState();
+            }
+        }
+
+        private static bool IsPointerHoverMode(HoverMode mode)
+            => mode == HoverMode.PointerPending || mode == HoverMode.PointerActive;
+
+        private static bool IsLineHoverMode(HoverMode mode)
+            => mode == HoverMode.LinePending || mode == HoverMode.LineActive || mode == HoverMode.LineExitCooldown;
+
+        private static bool IsActiveHoverMode(HoverMode mode)
+            => mode == HoverMode.PointerActive || mode == HoverMode.LineActive;
+
+        private static bool IsPendingHoverMode(HoverMode mode)
+            => mode == HoverMode.PointerPending || mode == HoverMode.LinePending;
 
         private bool ShouldDisplayDockedLineNow(RectInt32 workArea)
         {
