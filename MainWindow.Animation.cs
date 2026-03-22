@@ -66,8 +66,17 @@ namespace island
 
             IslandProgressBar.Update(dt, t, GetDisplayedProgress(), renderWidth, renderHeight);
 
-            IslandBorder.Width = renderWidth;
-            IslandBorder.Height = renderHeight;
+            if (Math.Abs(renderWidth - _lastRenderedIslandWidth) > 0.01)
+            {
+                IslandBorder.Width = renderWidth;
+                _lastRenderedIslandWidth = renderWidth;
+            }
+
+            if (Math.Abs(renderHeight - _lastRenderedIslandHeight) > 0.01)
+            {
+                IslandBorder.Height = renderHeight;
+                _lastRenderedIslandHeight = renderHeight;
+            }
 
             bool isDockPeekState = _controller.IsDocked
                 && !_controller.IsHovered
@@ -77,28 +86,59 @@ namespace island
                 && state.Height <= IslandConfig.CompactHeight + 1;
 
             double radius = Math.Min(renderHeight / 2.0, 20.0);
-            IslandBorder.CornerRadius = isDockPeekState
-                ? new CornerRadius(0)
-                : new CornerRadius(radius);
-            HostSurface.CornerRadius = IslandBorder.CornerRadius;
+            bool cornerShapeChanged = !_lastRenderedDockPeekState.HasValue
+                || _lastRenderedDockPeekState.Value != isDockPeekState
+                || Math.Abs(radius - _lastRenderedCornerRadius) > 0.01;
+            if (cornerShapeChanged)
+            {
+                CornerRadius cornerRadius = isDockPeekState
+                    ? new CornerRadius(0)
+                    : new CornerRadius(radius);
+                IslandBorder.CornerRadius = cornerRadius;
+                HostSurface.CornerRadius = cornerRadius;
 
-            var vecRadius = new Vector2((float)radius);
-            _contentClip.TopLeftRadius = isDockPeekState ? Vector2.Zero : vecRadius;
-            _contentClip.TopRightRadius = isDockPeekState ? Vector2.Zero : vecRadius;
-            _contentClip.BottomLeftRadius = isDockPeekState ? Vector2.Zero : vecRadius;
-            _contentClip.BottomRightRadius = isDockPeekState ? Vector2.Zero : vecRadius;
-            _contentClip.Right = (float)renderWidth;
-            _contentClip.Bottom = (float)(renderHeight + physicalPixelLogical);
+                Vector2 clipRadius = isDockPeekState ? Vector2.Zero : new Vector2((float)radius);
+                _contentClip.TopLeftRadius = clipRadius;
+                _contentClip.TopRightRadius = clipRadius;
+                _contentClip.BottomLeftRadius = clipRadius;
+                _contentClip.BottomRightRadius = clipRadius;
+
+                _lastRenderedDockPeekState = isDockPeekState;
+                _lastRenderedCornerRadius = radius;
+            }
+
+            float clipRight = (float)renderWidth;
+            if (float.IsNaN(_lastClipRight) || Math.Abs(_lastClipRight - clipRight) > 0.01f)
+            {
+                _contentClip.Right = clipRight;
+                _lastClipRight = clipRight;
+            }
+
+            float clipBottom = (float)(renderHeight + physicalPixelLogical);
+            if (float.IsNaN(_lastClipBottom) || Math.Abs(_lastClipBottom - clipBottom) > 0.01f)
+            {
+                _contentClip.Bottom = clipBottom;
+                _lastClipBottom = clipBottom;
+            }
 
             if (isDockPeekState)
             {
                 int visiblePhys = GetDockPeekPhysicalPixels(_dpiScale);
                 double visibleLogical = GetLogicalPixels(visiblePhys, _dpiScale);
-                _contentClip.Top = (float)(renderHeight - visibleLogical);
+                float clipTop = (float)(renderHeight - visibleLogical);
+                if (float.IsNaN(_lastClipTop) || Math.Abs(_lastClipTop - clipTop) > 0.01f)
+                {
+                    _contentClip.Top = clipTop;
+                    _lastClipTop = clipTop;
+                }
             }
             else
             {
-                _contentClip.Top = 0;
+                if (float.IsNaN(_lastClipTop) || Math.Abs(_lastClipTop) > 0.01f)
+                {
+                    _contentClip.Top = 0;
+                    _lastClipTop = 0;
+                }
             }
 
             if (CompactContent.Opacity != state.CompactOpacity)
@@ -115,7 +155,12 @@ namespace island
             if (ExpandedContent.IsHitTestVisible != isExpandedActive)
             {
                 ExpandedContent.IsHitTestVisible = isExpandedActive;
-                CompactContent.IsHitTestVisible = !isExpandedActive && state.IsHitTestVisible;
+            }
+
+            bool compactHitTestVisible = !isExpandedActive && state.IsHitTestVisible;
+            if (CompactContent.IsHitTestVisible != compactHitTestVisible)
+            {
+                CompactContent.IsHitTestVisible = compactHitTestVisible;
             }
 
             int physX = displayWorkArea.X + (int)Math.Round((state.CenterX * _dpiScale) - (physWidth / 2.0));
@@ -152,6 +197,7 @@ namespace island
             }
 
             UpdateAnchorPhysicalPoint(displayWorkArea, state, physWidth, physHeight);
+            UpdateRenderLoopState();
         }
 
         private int GetDockPeekPhysicalPixels(double dpiScale)
@@ -165,6 +211,62 @@ namespace island
 
         private static double GetLogicalPixels(int physicalPixels, double dpiScale)
             => physicalPixels / dpiScale;
+
+        private void StartRenderLoop()
+        {
+            if (_isClosed || _isRenderLoopActive)
+            {
+                return;
+            }
+
+            _lastRenderTime = TimeSpan.Zero;
+            CompositionTarget.Rendering += OnCompositionTargetRendering;
+            _isRenderLoopActive = true;
+        }
+
+        private void StopRenderLoop()
+        {
+            if (!_isRenderLoopActive)
+            {
+                return;
+            }
+
+            CompositionTarget.Rendering -= OnCompositionTargetRendering;
+            _isRenderLoopActive = false;
+            _lastRenderTime = TimeSpan.Zero;
+        }
+
+        private void UpdateRenderLoopState()
+        {
+            if (NeedsRenderLoop())
+            {
+                StartRenderLoop();
+            }
+            else
+            {
+                StopRenderLoop();
+            }
+        }
+
+        private bool NeedsRenderLoop()
+        {
+            if (_isClosed)
+            {
+                return false;
+            }
+
+            if (_controller.HasPendingAnimation())
+            {
+                return true;
+            }
+
+            if (_mediaService.ShouldAnimateProgress)
+            {
+                return true;
+            }
+
+            return IslandProgressBar.IsAnimationActive;
+        }
 
     }
 }

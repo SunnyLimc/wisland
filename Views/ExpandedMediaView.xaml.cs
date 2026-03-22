@@ -19,11 +19,32 @@ namespace island.Views
 
         public void Update(string title, string artist, string header, bool isPlaying)
         {
-            MusicTitleText.Text = title;
-            ArtistNameText.Text = artist;
-            HeaderStatusText.Text = header;
-            ArtistNameText.Visibility = string.IsNullOrWhiteSpace(artist) ? Visibility.Collapsed : Visibility.Visible;
-            IconPlayPause.Symbol = isPlaying ? Symbol.Pause : Symbol.Play;
+            if (MusicTitleText.Text != title)
+            {
+                MusicTitleText.Text = title;
+            }
+
+            if (ArtistNameText.Text != artist)
+            {
+                ArtistNameText.Text = artist;
+            }
+
+            if (HeaderStatusText.Text != header)
+            {
+                HeaderStatusText.Text = header;
+            }
+
+            Visibility artistVisibility = string.IsNullOrWhiteSpace(artist) ? Visibility.Collapsed : Visibility.Visible;
+            if (ArtistNameText.Visibility != artistVisibility)
+            {
+                ArtistNameText.Visibility = artistVisibility;
+            }
+
+            Symbol playPauseSymbol = isPlaying ? Symbol.Pause : Symbol.Play;
+            if (IconPlayPause.Symbol != playPauseSymbol)
+            {
+                IconPlayPause.Symbol = playPauseSymbol;
+            }
         }
 
         public void SetColors(Color main, Color sub, Color icon)

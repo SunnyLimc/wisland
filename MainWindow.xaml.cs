@@ -73,6 +73,14 @@ namespace island
         private int _anchorPhysicalX;
         private int _anchorPhysicalY;
         private bool _hasAnchorPhysicalPoint;
+        private bool _isRenderLoopActive;
+        private double _lastRenderedIslandWidth = -1;
+        private double _lastRenderedIslandHeight = -1;
+        private double _lastRenderedCornerRadius = -1;
+        private bool? _lastRenderedDockPeekState;
+        private float _lastClipTop = float.NaN;
+        private float _lastClipRight = float.NaN;
+        private float _lastClipBottom = float.NaN;
 
         public MainWindow()
         {
@@ -122,7 +130,7 @@ namespace island
                 _cursorTrackerTimer.Tick += CursorTrackerTimer_Tick;
                 _foregroundWindowMonitor.SetActive(_controller.IsDocked);
 
-                CompositionTarget.Rendering += OnCompositionTargetRendering;
+                StartRenderLoop();
                 this.Closed += OnWindowClosed;
                 UpdateState();
 

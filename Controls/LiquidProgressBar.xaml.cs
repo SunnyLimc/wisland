@@ -11,6 +11,7 @@ namespace island.Controls
         private double _currentProgressWidth = 0;
         private double _previousProgressWidth = 0;
         private double _smoothedVelocity = 0;
+        private double _targetProgressWidth = 0;
 
         // Last-rendered values for dirty checking
         private double _lastRenderedWidth = -1;
@@ -23,6 +24,9 @@ namespace island.Controls
             this.InitializeComponent();
             ShimmerStoryboard.Begin();
         }
+
+        public bool IsAnimationActive
+            => Math.Abs(_currentProgressWidth - _targetProgressWidth) > 0.05 || _smoothedVelocity > 0.01;
 
         public void ApplyPalette(ProgressBarPalette palette)
         {
@@ -52,6 +56,7 @@ namespace island.Controls
             double horizontalInset = 6.0;
             double availableWidth = Math.Max(0, containerWidth - (horizontalInset * 2));
             double targetProgressWidth = (availableWidth * targetProgress) + horizontalInset;
+            _targetProgressWidth = targetProgressWidth;
 
             _previousProgressWidth = _currentProgressWidth;
             _currentProgressWidth += (targetProgressWidth - _currentProgressWidth) * t;

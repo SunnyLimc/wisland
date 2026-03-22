@@ -29,6 +29,7 @@ namespace island.Services
 
         /// <summary>Current media progress from 0.0 to 1.0.</summary>
         public double Progress { get; private set; }
+        public bool ShouldAnimateProgress => IsPlaying && _durationSeconds > 0;
 
         private double _currentPositionSeconds = 0;
         private double _durationSeconds = 0;
@@ -68,7 +69,7 @@ namespace island.Services
         /// </summary>
         public void Tick(double dt)
         {
-            if (IsPlaying && _durationSeconds > 0)
+            if (ShouldAnimateProgress)
             {
                 _currentPositionSeconds = Math.Min(_durationSeconds, _currentPositionSeconds + dt);
                 Progress = _currentPositionSeconds / _durationSeconds;
@@ -183,11 +184,19 @@ namespace island.Services
 
                 var newTitle = string.IsNullOrEmpty(props.Title) ? "Unknown Track" : props.Title;
                 var newArtist = string.IsNullOrEmpty(props.Artist) ? "Unknown Artist" : props.Artist;
+                const string nowPlayingHeader = "Now Playing";
                 var titleChanged = newTitle != CurrentTitle;
+                var artistChanged = newArtist != CurrentArtist;
+                var headerChanged = HeaderStatus != nowPlayingHeader;
+
+                if (!titleChanged && !artistChanged && !headerChanged)
+                {
+                    return;
+                }
 
                 CurrentTitle = newTitle;
                 CurrentArtist = newArtist;
-                HeaderStatus = "Now Playing";
+                HeaderStatus = nowPlayingHeader;
 
                 MediaChanged?.Invoke();
 
@@ -208,7 +217,13 @@ namespace island.Services
                     return;
 
                 var info = session.GetPlaybackInfo();
-                IsPlaying = info?.PlaybackStatus == GlobalSystemMediaTransportControlsSessionPlaybackStatus.Playing;
+                bool isPlaying = info?.PlaybackStatus == GlobalSystemMediaTransportControlsSessionPlaybackStatus.Playing;
+                if (IsPlaying == isPlaying)
+                {
+                    return;
+                }
+
+                IsPlaying = isPlaying;
                 MediaChanged?.Invoke();
             }
             catch (Exception ex)
@@ -246,6 +261,17 @@ namespace island.Services
 
         private void SetNoMedia()
         {
+            if (CurrentTitle == "No Media"
+                && CurrentArtist == "Waiting for music..."
+                && HeaderStatus == "Dynamic Island"
+                && !IsPlaying
+                && _currentPositionSeconds == 0
+                && _durationSeconds == 0
+                && Progress == 0)
+            {
+                return;
+            }
+
             CurrentTitle = "No Media";
             CurrentArtist = "Waiting for music...";
             HeaderStatus = "Dynamic Island";

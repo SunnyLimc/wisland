@@ -70,11 +70,13 @@ namespace island
         public void SetTaskProgress(double progress)
         {
             _taskProgress = Math.Clamp(progress, 0.0, 1.0);
+            UpdateRenderLoopState();
         }
 
         public void ClearTaskProgress()
         {
             _taskProgress = null;
+            UpdateRenderLoopState();
         }
 
         private void ClearNotificationState()

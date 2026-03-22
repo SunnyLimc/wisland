@@ -165,6 +165,7 @@ namespace island
             }
 
             UpdateShadowState();
+            UpdateRenderLoopState();
         }
 
         private void UpdateCursorTrackerState()

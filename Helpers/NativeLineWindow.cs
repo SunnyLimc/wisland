@@ -16,6 +16,9 @@ namespace island.Helpers
         private int _lastY;
         private int _lastWidth;
         private int _lastHeight;
+        private int[]? _pixelBuffer;
+        private int _lastRenderedProgressWidth = -1;
+        private bool _renderDirty = true;
         private LinePalette _palette = new(
             Color.FromArgb(96, 255, 255, 255),
             Color.FromArgb(78, 104, 118, 138),
@@ -217,7 +220,13 @@ namespace island.Helpers
 
         public void ApplyPalette(LinePalette palette)
         {
+            if (_palette == palette)
+            {
+                return;
+            }
+
             _palette = palette;
+            _renderDirty = true;
 
             if (_isVisible)
             {
@@ -234,6 +243,13 @@ namespace island.Helpers
             }
 
             _progress = clamped;
+            int progressWidth = Math.Clamp((int)Math.Round(_lastWidth * _progress), 0, _lastWidth);
+            if (!_renderDirty && progressWidth == _lastRenderedProgressWidth)
+            {
+                return;
+            }
+
+            _renderDirty = true;
 
             if (_isVisible)
             {
@@ -248,15 +264,41 @@ namespace island.Helpers
                 return;
             }
 
+            int nextWidth = Math.Max(1, width);
+            int nextHeight = Math.Max(1, height);
+            bool geometryChanged = x != _lastX
+                || y != _lastY
+                || nextWidth != _lastWidth
+                || nextHeight != _lastHeight;
+            bool sizeChanged = nextWidth != _lastWidth || nextHeight != _lastHeight;
+
             _lastX = x;
             _lastY = y;
-            _lastWidth = Math.Max(1, width);
-            _lastHeight = Math.Max(1, height);
+            _lastWidth = nextWidth;
+            _lastHeight = nextHeight;
 
-            SetWindowPos(_hwnd, HWND_TOPMOST, _lastX, _lastY, _lastWidth, _lastHeight, SWP_NOACTIVATE);
-            RenderLayeredWindow();
-            ShowWindow(_hwnd, SW_SHOWNA);
-            _isVisible = true;
+            if (sizeChanged)
+            {
+                _pixelBuffer = null;
+                _lastRenderedProgressWidth = -1;
+                _renderDirty = true;
+            }
+
+            if (geometryChanged || !_isVisible)
+            {
+                SetWindowPos(_hwnd, HWND_TOPMOST, _lastX, _lastY, _lastWidth, _lastHeight, SWP_NOACTIVATE);
+            }
+
+            if (_renderDirty)
+            {
+                RenderLayeredWindow();
+            }
+
+            if (!_isVisible)
+            {
+                ShowWindow(_hwnd, SW_SHOWNA);
+                _isVisible = true;
+            }
         }
 
         public void Hide()
@@ -326,7 +368,8 @@ namespace island.Helpers
 
             try
             {
-                int[] pixels = BuildPixelBuffer(_lastWidth, _lastHeight);
+                int[] pixels = EnsurePixelBuffer(_lastWidth, _lastHeight);
+                BuildPixelBuffer(pixels, _lastWidth, _lastHeight);
                 Marshal.Copy(pixels, 0, pixelBuffer, pixels.Length);
 
                 POINT destination = new POINT { X = _lastX, Y = _lastY };
@@ -341,6 +384,8 @@ namespace island.Helpers
                 };
 
                 UpdateLayeredWindow(_hwnd, screenDc, ref destination, ref size, memoryDc, ref source, 0, ref blend, ULW_ALPHA);
+                _lastRenderedProgressWidth = Math.Clamp((int)Math.Round(_lastWidth * _progress), 0, _lastWidth);
+                _renderDirty = false;
             }
             finally
             {
@@ -351,9 +396,19 @@ namespace island.Helpers
             }
         }
 
-        private int[] BuildPixelBuffer(int width, int height)
+        private int[] EnsurePixelBuffer(int width, int height)
         {
-            int[] pixels = new int[width * height];
+            int requiredLength = width * height;
+            if (_pixelBuffer == null || _pixelBuffer.Length != requiredLength)
+            {
+                _pixelBuffer = new int[requiredLength];
+            }
+
+            return _pixelBuffer;
+        }
+
+        private void BuildPixelBuffer(int[] pixels, int width, int height)
+        {
             int progressWidth = Math.Clamp((int)Math.Round(width * _progress), 0, width);
             int headWidth = progressWidth > 0 ? Math.Min(2, progressWidth) : 0;
             int headStart = Math.Max(0, progressWidth - headWidth);
@@ -369,8 +424,6 @@ namespace island.Helpers
                     pixels[(y * width) + x] = unchecked((int)ToPremultipliedArgb(color, edgeOpacity));
                 }
             }
-
-            return pixels;
         }
 
         private Color ResolvePixelColor(int column, int row, int width, int height, bool isActive, bool isHead)

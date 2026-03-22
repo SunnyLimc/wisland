@@ -38,7 +38,7 @@ namespace island
 
             RootGrid.ActualThemeChanged -= RootGrid_ActualThemeChanged;
             _uiSettings.ColorValuesChanged -= UiSettings_ColorValuesChanged;
-            CompositionTarget.Rendering -= OnCompositionTargetRendering;
+            StopRenderLoop();
             _hoverDebounceTimer.Tick -= HoverDebounceTimer_Tick;
             _dockedHoverDelayTimer.Tick -= DockedHoverDelayTimer_Tick;
             _cursorTrackerTimer.Tick -= CursorTrackerTimer_Tick;

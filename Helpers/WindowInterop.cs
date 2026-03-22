@@ -80,6 +80,10 @@ namespace island.Helpers
         private const int SM_YVIRTUALSCREEN = 77;
         private const int SM_CXVIRTUALSCREEN = 78;
         private const int SM_CYVIRTUALSCREEN = 79;
+        private const int DisplayWorkAreaCacheLifetimeMs = 1000;
+        private static readonly object s_displayWorkAreaLock = new();
+        private static RectInt32[]? s_cachedDisplayWorkAreas;
+        private static long s_cachedDisplayWorkAreasTick;
 
         /// <summary>
         /// Checks if the provided window handle represents a maximized window.
@@ -119,6 +123,17 @@ namespace island.Helpers
 
         public static IReadOnlyList<RectInt32> GetDisplayWorkAreas()
         {
+            long now = Environment.TickCount64;
+
+            lock (s_displayWorkAreaLock)
+            {
+                if (s_cachedDisplayWorkAreas != null
+                    && now - s_cachedDisplayWorkAreasTick < DisplayWorkAreaCacheLifetimeMs)
+                {
+                    return s_cachedDisplayWorkAreas;
+                }
+            }
+
             List<RectInt32> workAreas = new();
 
             EnumDisplayMonitors(
@@ -146,7 +161,15 @@ namespace island.Helpers
                 },
                 IntPtr.Zero);
 
-            return workAreas;
+            RectInt32[] snapshot = workAreas.ToArray();
+
+            lock (s_displayWorkAreaLock)
+            {
+                s_cachedDisplayWorkAreas = snapshot;
+                s_cachedDisplayWorkAreasTick = now;
+            }
+
+            return snapshot;
         }
 
         public static RectInt32 GetPrimaryDisplayWorkArea()

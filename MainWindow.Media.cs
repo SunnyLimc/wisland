@@ -15,7 +15,11 @@ namespace island
 
         private void OnMediaServiceChanged()
         {
-            this.DispatcherQueue?.TryEnqueue(SyncMediaUI);
+            this.DispatcherQueue?.TryEnqueue(() =>
+            {
+                SyncMediaUI();
+                UpdateRenderLoopState();
+            });
         }
 
         private void OnTrackChanged(string title, string artist)
