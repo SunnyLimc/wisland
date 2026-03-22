@@ -8,10 +8,14 @@ namespace island.Controls
 {
     public sealed partial class LiquidProgressBar : UserControl
     {
+        private const double HorizontalInset = 6.0;
         private double _currentProgressWidth = 0;
         private double _previousProgressWidth = 0;
         private double _smoothedVelocity = 0;
         private double _targetProgressWidth = 0;
+        private bool _isEffectVisible;
+        private bool _isShimmerActive;
+        private bool _shouldSnapToTargetWidth;
 
         // Last-rendered values for dirty checking
         private double _lastRenderedWidth = -1;
@@ -22,11 +26,72 @@ namespace island.Controls
         public LiquidProgressBar()
         {
             this.InitializeComponent();
-            ShimmerStoryboard.Begin();
+            _isEffectVisible = Visibility == Visibility.Visible;
+            if (_isEffectVisible)
+            {
+                SetShimmerActive(true);
+            }
         }
 
+        public bool IsEffectVisible => _isEffectVisible;
+        public bool IsShimmerActive => _isShimmerActive;
+
         public bool IsAnimationActive
-            => Math.Abs(_currentProgressWidth - _targetProgressWidth) > 0.05 || _smoothedVelocity > 0.01;
+            => _isEffectVisible
+                && (_shouldSnapToTargetWidth
+                    || Math.Abs(_currentProgressWidth - _targetProgressWidth) > 0.05
+                    || _smoothedVelocity > 0.01);
+
+        public bool IsSettledAtZero
+            => !_shouldSnapToTargetWidth
+                && Math.Abs(_targetProgressWidth - HorizontalInset) <= 0.05
+                && Math.Abs(_currentProgressWidth - HorizontalInset) <= 0.25
+                && _smoothedVelocity <= 0.01;
+
+        public void SetEffectVisible(bool isVisible)
+        {
+            if (_isEffectVisible == isVisible)
+            {
+                return;
+            }
+
+            _isEffectVisible = isVisible;
+            Visibility = isVisible ? Visibility.Visible : Visibility.Collapsed;
+
+            if (isVisible)
+            {
+                _shouldSnapToTargetWidth = true;
+            }
+            else
+            {
+                SetShimmerActive(false);
+                _smoothedVelocity = 0;
+                _lastRenderedVelocity = -1;
+            }
+        }
+
+        public void SetShimmerActive(bool isActive)
+        {
+            bool targetState = _isEffectVisible && isActive;
+            if (_isShimmerActive == targetState)
+            {
+                return;
+            }
+
+            _isShimmerActive = targetState;
+
+            if (_isShimmerActive)
+            {
+                ShimmerTransform.X = -100;
+                ShimmerStoryboard.Begin();
+            }
+            else
+            {
+                ShimmerStoryboard.Stop();
+                ShimmerTransform.X = -100;
+                ProgressShimmer.Opacity = 0;
+            }
+        }
 
         public void ApplyPalette(ProgressBarPalette palette)
         {
@@ -50,18 +115,33 @@ namespace island.Controls
         /// <param name="containerWidth">Current width of the island.</param>
         public void Update(double dt, double t, double targetProgress, double containerWidth, double currentHeight)
         {
+            if (!_isEffectVisible)
+            {
+                return;
+            }
+
             if (double.IsNaN(targetProgress) || double.IsInfinity(targetProgress)) targetProgress = 0;
 
             // 1. Position Calculation with Horizontal Inset
-            double horizontalInset = 6.0;
-            double availableWidth = Math.Max(0, containerWidth - (horizontalInset * 2));
-            double targetProgressWidth = (availableWidth * targetProgress) + horizontalInset;
+            double availableWidth = Math.Max(0, containerWidth - (HorizontalInset * 2));
+            double targetProgressWidth = (availableWidth * targetProgress) + HorizontalInset;
             _targetProgressWidth = targetProgressWidth;
 
-            _previousProgressWidth = _currentProgressWidth;
-            _currentProgressWidth += (targetProgressWidth - _currentProgressWidth) * t;
+            if (_shouldSnapToTargetWidth)
+            {
+                _currentProgressWidth = targetProgressWidth;
+                _previousProgressWidth = targetProgressWidth;
+                _smoothedVelocity = 0;
+                _lastRenderedVelocity = -1;
+                _shouldSnapToTargetWidth = false;
+            }
+            else
+            {
+                _previousProgressWidth = _currentProgressWidth;
+                _currentProgressWidth += (targetProgressWidth - _currentProgressWidth) * t;
+            }
 
-            double finalProgressWidth = Math.Max(horizontalInset, _currentProgressWidth);
+            double finalProgressWidth = Math.Max(HorizontalInset, _currentProgressWidth);
 
             // 2. Velocity-based visual mapping (The "Liquid" feel)
             double instantVelocity = Math.Abs(_currentProgressWidth - _previousProgressWidth) / dt;
@@ -83,12 +163,16 @@ namespace island.Controls
             {
                 ProgressTail.Width = 60 + (_smoothedVelocity * 140);
                 ProgressTail.Opacity = 0.2 + (_smoothedVelocity * 0.4);
-                
+                 
                 ProgressLaserCore.Opacity = 0.7 + (_smoothedVelocity * 0.3);
                 ProgressLaserCore.Width = 1.5 + (_smoothedVelocity * 2.0);
-
-                ProgressShimmer.Opacity = 0.15 + (_smoothedVelocity * 0.2);
                 _lastRenderedVelocity = _smoothedVelocity;
+            }
+
+            double shimmerOpacity = _isShimmerActive ? 0.15 + (_smoothedVelocity * 0.2) : 0;
+            if (Math.Abs(ProgressShimmer.Opacity - shimmerOpacity) > 0.005)
+            {
+                ProgressShimmer.Opacity = shimmerOpacity;
             }
 
             // 4. Height Scaling (Leading Edge Core)

@@ -10,6 +10,7 @@ namespace island
         {
             _mediaService.MediaChanged += OnMediaServiceChanged;
             _mediaService.TrackChanged += OnTrackChanged;
+            _mediaService.ProgressTransitionRequested += OnMediaProgressTransitionRequested;
             await _mediaService.InitializeAsync();
         }
 
@@ -30,6 +31,29 @@ namespace island
                 {
                     ShowNotification(title, artist, IslandConfig.TrackChangeNotificationDurationMs, "New Track");
                 }
+            });
+        }
+
+        private void OnMediaProgressTransitionRequested(bool hideAfterReset)
+        {
+            this.DispatcherQueue?.TryEnqueue(() =>
+            {
+                if (_isClosed || _taskProgress.HasValue)
+                {
+                    return;
+                }
+
+                if (!IslandProgressBar.IsEffectVisible)
+                {
+                    _isMediaProgressResetPending = false;
+                    _hideMediaProgressWhenResetCompletes = false;
+                    UpdateRenderLoopState();
+                    return;
+                }
+
+                _isMediaProgressResetPending = true;
+                _hideMediaProgressWhenResetCompletes = hideAfterReset;
+                UpdateRenderLoopState();
             });
         }
 

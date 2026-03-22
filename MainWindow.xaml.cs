@@ -60,6 +60,8 @@ namespace island
         private HoverMode _hoverModeBeforeContextFlyout = HoverMode.None;
         private int _lineHoverElapsedMs = 0;
         private int _lineExitElapsedMs = 0;
+        private bool _isMediaProgressResetPending;
+        private bool _hideMediaProgressWhenResetCompletes;
         private CancellationTokenSource? _notificationCts;
         private bool _isContextFlyoutOpen;
         private bool _isClosed;
@@ -144,6 +146,17 @@ namespace island
             }
         }
 
-        private double GetDisplayedProgress() => _taskProgress ?? _mediaService.Progress;
+        private double GetDisplayedProgress()
+            => _taskProgress ?? (_isMediaProgressResetPending ? 0.0 : _mediaService.Progress);
+
+        private bool ShouldShowProgressEffect()
+            => _taskProgress.HasValue
+                || _isMediaProgressResetPending
+                || _mediaService.HasMediaSource
+                || IslandProgressBar.IsEffectVisible;
+
+        private bool ShouldAnimateProgressShimmer()
+            => _taskProgress.HasValue
+                || (_mediaService.HasMediaSource && _mediaService.IsPlaying && !_isMediaProgressResetPending);
     }
 }

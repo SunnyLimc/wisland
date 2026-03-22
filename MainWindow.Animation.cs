@@ -77,6 +77,10 @@ namespace island
                 && !shouldDisplayDockedLineNow
                 && state.Height <= IslandConfig.CompactHeight + 1;
 
+            bool shouldShowProgressEffect = ShouldShowProgressEffect();
+            IslandProgressBar.SetEffectVisible(shouldShowProgressEffect);
+            IslandProgressBar.SetShimmerActive(ShouldAnimateProgressShimmer());
+
             double progressTopBleed = isDockPeekState ? physicalPixelLogical : 0;
             if (Math.Abs(IslandProgressBar.Margin.Top + progressTopBleed) > 0.0001
                 || Math.Abs(IslandProgressBar.Margin.Bottom + physicalPixelLogical) > 0.0001)
@@ -85,6 +89,21 @@ namespace island
             }
 
             IslandProgressBar.Update(dt, t, GetDisplayedProgress(), renderWidth, renderHeight);
+
+            if (_isMediaProgressResetPending && IslandProgressBar.IsSettledAtZero)
+            {
+                _isMediaProgressResetPending = false;
+
+                if (_hideMediaProgressWhenResetCompletes && !_taskProgress.HasValue && !_mediaService.HasMediaSource)
+                {
+                    _hideMediaProgressWhenResetCompletes = false;
+                    IslandProgressBar.SetEffectVisible(false);
+                }
+                else
+                {
+                    _hideMediaProgressWhenResetCompletes = false;
+                }
+            }
 
             double radius = Math.Min(renderHeight / 2.0, 20.0);
             bool cornerShapeChanged = !_lastRenderedDockPeekState.HasValue
@@ -257,6 +276,21 @@ namespace island
             }
 
             if (_controller.HasPendingAnimation())
+            {
+                return true;
+            }
+
+            if (_isMediaProgressResetPending)
+            {
+                return true;
+            }
+
+            if (ShouldShowProgressEffect() != IslandProgressBar.IsEffectVisible)
+            {
+                return true;
+            }
+
+            if (ShouldAnimateProgressShimmer() != IslandProgressBar.IsShimmerActive)
             {
                 return true;
             }

@@ -51,6 +51,7 @@ namespace island
 
             _mediaService.MediaChanged -= OnMediaServiceChanged;
             _mediaService.TrackChanged -= OnTrackChanged;
+            _mediaService.ProgressTransitionRequested -= OnMediaProgressTransitionRequested;
             _mediaService.Dispose();
 
             _shellVisibilityService.Dispose();

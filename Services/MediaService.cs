@@ -29,6 +29,7 @@ namespace island.Services
 
         /// <summary>Current media progress from 0.0 to 1.0.</summary>
         public double Progress { get; private set; }
+        public bool HasMediaSource => _currentSession != null;
         public bool ShouldAnimateProgress => IsPlaying && _durationSeconds > 0;
 
         private double _currentPositionSeconds = 0;
@@ -39,6 +40,11 @@ namespace island.Services
 
         /// <summary>Fired specifically when a new track starts (for notification trigger).</summary>
         public event Action<string, string>? TrackChanged;
+
+        /// <summary>
+        /// Requests a progress-bar reset before either hiding (`true`) or showing the next media source (`false`).
+        /// </summary>
+        public event Action<bool>? ProgressTransitionRequested;
 
         /// <summary>
         /// Initialize the media manager and subscribe to session changes.
@@ -146,6 +152,11 @@ namespace island.Services
             if (!ReferenceEquals(previousSession, newSession))
             {
                 DetachSession(previousSession);
+
+                if (previousSession != null)
+                {
+                    ProgressTransitionRequested?.Invoke(newSession == null);
+                }
             }
 
             if (_currentSession != null)
@@ -185,6 +196,7 @@ namespace island.Services
                 var newTitle = string.IsNullOrEmpty(props.Title) ? "Unknown Track" : props.Title;
                 var newArtist = string.IsNullOrEmpty(props.Artist) ? "Unknown Artist" : props.Artist;
                 const string nowPlayingHeader = "Now Playing";
+                string previousTitle = CurrentTitle;
                 var titleChanged = newTitle != CurrentTitle;
                 var artistChanged = newArtist != CurrentArtist;
                 var headerChanged = HeaderStatus != nowPlayingHeader;
@@ -197,6 +209,11 @@ namespace island.Services
                 CurrentTitle = newTitle;
                 CurrentArtist = newArtist;
                 HeaderStatus = nowPlayingHeader;
+
+                if (titleChanged && !string.Equals(previousTitle, "No Media", StringComparison.Ordinal))
+                {
+                    ProgressTransitionRequested?.Invoke(false);
+                }
 
                 MediaChanged?.Invoke();
 
