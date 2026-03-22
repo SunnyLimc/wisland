@@ -1,13 +1,13 @@
 using System;
 using System.IO;
 using System.Text.Json;
-using island.Helpers;
-using island.Models;
+using wisland.Helpers;
+using wisland.Models;
 
-namespace island.Services
+namespace wisland.Services
 {
     /// <summary>
-    /// JSON-based settings persistence to %LocalAppData%/Island/settings.json.
+    /// JSON-based settings persistence to %LocalAppData%/Wisland/settings.json.
     /// Saves user preferences (backdrop, window position, dock state).
     /// </summary>
     public sealed class SettingsService
@@ -16,7 +16,7 @@ namespace island.Services
         private static readonly JsonSerializerOptions JsonOptions = new() { WriteIndented = true };
         private static readonly string SettingsPath = Path.Combine(
             Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
-            "Island", "settings.json");
+            "Wisland", "settings.json");
 
         /// <summary>User's selected backdrop type name ("Mica", "Acrylic", "None").</summary>
         public BackdropType BackdropType { get; set; } = BackdropType.Mica;

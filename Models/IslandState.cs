@@ -1,4 +1,4 @@
-namespace island.Models
+namespace wisland.Models
 {
     /// <summary>
     /// Represents the visual state of the Island at a specific point in time.

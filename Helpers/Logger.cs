@@ -1,10 +1,10 @@
 using System;
 using System.IO;
 
-namespace island.Helpers
+namespace wisland.Helpers
 {
     /// <summary>
-    /// Structured file logger that writes to %LocalAppData%/Island/logs/.
+    /// Structured file logger that writes to %LocalAppData%/Wisland/logs/.
     /// Thread-safe via lock. Rolling daily log files.
     /// </summary>
     public static class Logger
@@ -16,7 +16,7 @@ namespace island.Helpers
         {
             _logDirectory = Path.Combine(
                 Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
-                "Island", "logs");
+                "Wisland", "logs");
             Directory.CreateDirectory(_logDirectory);
         }
 
@@ -35,7 +35,7 @@ namespace island.Helpers
         {
             try
             {
-                var fileName = $"island_{DateTime.Now:yyyy-MM-dd}.log";
+                var fileName = $"wisland_{DateTime.Now:yyyy-MM-dd}.log";
                 var filePath = Path.Combine(_logDirectory, fileName);
                 var line = $"[{DateTime.Now:HH:mm:ss.fff}] [{level}] {message}{Environment.NewLine}";
 

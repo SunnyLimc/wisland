@@ -3,7 +3,7 @@ using System.Collections.Generic;
 using System.Runtime.InteropServices;
 using Windows.Graphics;
 
-namespace island.Helpers
+namespace wisland.Helpers
 {
     /// <summary>
     /// Helper class encapsulating native Windows API calls (P/Invoke) for window state monitoring and DWM attributes.

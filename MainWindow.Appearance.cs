@@ -1,9 +1,9 @@
 using Microsoft.UI.Xaml;
 using Windows.UI;
 using Windows.UI.ViewManagement;
-using island.Models;
+using wisland.Models;
 
-namespace island
+namespace wisland
 {
     public sealed partial class MainWindow
     {

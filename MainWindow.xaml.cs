@@ -12,11 +12,11 @@ using System.Numerics;
 using System.Threading;
 using Windows.UI.ViewManagement;
 using WinUIEx;
-using island.Helpers;
-using island.Models;
-using island.Services;
+using wisland.Helpers;
+using wisland.Models;
+using wisland.Services;
 
-namespace island
+namespace wisland
 {
     /// <summary>
     /// Main window implementing a macOS-style Dynamic Island widget for Windows.

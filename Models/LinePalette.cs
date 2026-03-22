@@ -1,6 +1,6 @@
 using Windows.UI;
 
-namespace island.Models
+namespace wisland.Models
 {
     public readonly record struct LinePalette(
         Color TopHighlightColor,

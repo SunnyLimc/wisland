@@ -1,0 +1,64 @@
+name: Build Release
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - main
+    tags:
+      - "v*"
+
+jobs:
+  publish:
+    runs-on: windows-2022
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - platform: x64
+            rid: win-x64
+            profile: win-x64.pubxml
+          - platform: x86
+            rid: win-x86
+            profile: win-x86.pubxml
+          - platform: ARM64
+            rid: win-arm64
+            profile: win-arm64.pubxml
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup .NET
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: 8.0.x
+
+      - name: Restore
+        run: dotnet restore wisland.csproj
+
+      - name: Publish ${{ matrix.rid }}
+        shell: pwsh
+        run: >
+          dotnet publish wisland.csproj
+          -c Release
+          -p:Platform=${{ matrix.platform }}
+          -p:PublishProfile=Properties\PublishProfiles\${{ matrix.profile }}
+          -o artifacts\publish\${{ matrix.rid }}
+
+      - name: Archive ${{ matrix.rid }}
+        shell: pwsh
+        run: |
+          $source = Join-Path $PWD "artifacts\publish\${{ matrix.rid }}\*"
+          $destination = Join-Path $PWD "artifacts\wisland-${{ matrix.rid }}.zip"
+          if (Test-Path $destination) {
+            Remove-Item $destination -Force
+          }
+          Compress-Archive -Path $source -DestinationPath $destination
+
+      - name: Upload artifact ${{ matrix.rid }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: wisland-${{ matrix.rid }}
+          path: artifacts/wisland-${{ matrix.rid }}.zip
+          if-no-files-found: error

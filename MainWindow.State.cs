@@ -1,8 +1,8 @@
 using System;
 using Windows.Graphics;
-using island.Models;
+using wisland.Models;
 
-namespace island
+namespace wisland
 {
     public sealed partial class MainWindow
     {

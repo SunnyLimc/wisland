@@ -2,7 +2,7 @@ using Microsoft.UI.Xaml.Controls;
 using Microsoft.UI.Xaml.Media;
 using Windows.UI;
 
-namespace island.Views
+namespace wisland.Views
 {
     public sealed partial class CompactView : UserControl
     {

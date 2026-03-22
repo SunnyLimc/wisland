@@ -4,12 +4,12 @@ using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
 using Microsoft.UI.Xaml.Media;
 using Windows.UI;
-using island.Controls;
-using island.Helpers;
-using island.Models;
-using island.Views;
+using wisland.Controls;
+using wisland.Helpers;
+using wisland.Models;
+using wisland.Views;
 
-namespace island.Services
+namespace wisland.Services
 {
     public sealed class WindowAppearanceService
     {

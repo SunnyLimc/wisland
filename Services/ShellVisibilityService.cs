@@ -1,8 +1,8 @@
 using System;
-using island.Helpers;
-using island.Models;
+using wisland.Helpers;
+using wisland.Models;
 
-namespace island.Services
+namespace wisland.Services
 {
     /// <summary>
     /// Higher-level shell visibility facade for docked line mode.

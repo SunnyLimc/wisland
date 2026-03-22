@@ -1,15 +1,15 @@
 using System;
 using System.Runtime.InteropServices;
 using Windows.UI;
-using island.Models;
+using wisland.Models;
 
-namespace island.Helpers
+namespace wisland.Helpers
 {
     public sealed class NativeLineWindow : IDisposable
     {
         private IntPtr _hwnd;
         private readonly WndProcDelegate _wndProc;
-        private readonly string _className = "DynamicIslandLineClass";
+        private readonly string _className = "WislandLineClass";
         private double _progress;
         private bool _isVisible;
         private int _lastX;
@@ -206,7 +206,7 @@ namespace island.Helpers
             _hwnd = CreateWindowEx(
                 WS_EX_LAYERED | WS_EX_TRANSPARENT | WS_EX_TOPMOST | WS_EX_TOOLWINDOW | WS_EX_NOACTIVATE,
                 _className,
-                "IslandLine",
+                "WislandLine",
                 WS_POPUP,
                 0,
                 0,

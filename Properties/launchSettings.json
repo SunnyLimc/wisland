@@ -1,9 +1,9 @@
 {
   "profiles": {
-    "island (Package)": {
+    "wisland (Package)": {
       "commandName": "MsixPackage"
     },
-    "island (Unpackaged)": {
+    "wisland (Unpackaged)": {
       "commandName": "Project"
     }
   }

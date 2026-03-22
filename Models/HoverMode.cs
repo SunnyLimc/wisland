@@ -1,4 +1,4 @@
-namespace island.Models
+namespace wisland.Models
 {
     public enum HoverMode
     {

@@ -1,8 +1,8 @@
 using Microsoft.UI.Xaml;
 using System;
-using island.Helpers;
+using wisland.Helpers;
 
-namespace island
+namespace wisland
 {
     public partial class App : Application
     {

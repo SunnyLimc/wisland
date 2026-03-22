@@ -1,4 +1,4 @@
-namespace island.Models
+namespace wisland.Models
 {
     /// <summary>
     /// Centralized constants for the Island widget. All magic numbers live here.

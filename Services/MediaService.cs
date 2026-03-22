@@ -1,9 +1,9 @@
 using System;
 using System.Threading.Tasks;
-using island.Helpers;
+using wisland.Helpers;
 using Windows.Media.Control;
 
-namespace island.Services
+namespace wisland.Services
 {
     /// <summary>
     /// Encapsulates Windows GSMTC (Global System Media Transport Controls) API.
@@ -21,8 +21,8 @@ namespace island.Services
         /// <summary>Current track artist, or "Waiting for music..." if no session.</summary>
         public string CurrentArtist { get; private set; } = "Waiting for music...";
 
-        /// <summary>Header status text (e.g. "Now Playing", "Dynamic Island").</summary>
-        public string HeaderStatus { get; private set; } = "Dynamic Island";
+        /// <summary>Header status text (e.g. "Now Playing", "Wisland").</summary>
+        public string HeaderStatus { get; private set; } = "Wisland";
 
         /// <summary>Whether the current session is actively playing.</summary>
         public bool IsPlaying { get; private set; }
@@ -280,7 +280,7 @@ namespace island.Services
         {
             if (CurrentTitle == "No Media"
                 && CurrentArtist == "Waiting for music..."
-                && HeaderStatus == "Dynamic Island"
+                && HeaderStatus == "Wisland"
                 && !IsPlaying
                 && _currentPositionSeconds == 0
                 && _durationSeconds == 0
@@ -291,7 +291,7 @@ namespace island.Services
 
             CurrentTitle = "No Media";
             CurrentArtist = "Waiting for music...";
-            HeaderStatus = "Dynamic Island";
+            HeaderStatus = "Wisland";
             IsPlaying = false;
             _currentPositionSeconds = 0;
             _durationSeconds = 0;

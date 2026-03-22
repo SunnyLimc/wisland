@@ -2,7 +2,7 @@ using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Media;
 using Windows.Graphics;
 
-namespace island
+namespace wisland
 {
     public sealed partial class MainWindow
     {

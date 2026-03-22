@@ -1,4 +1,4 @@
-# Island Architecture
+# Wisland Architecture
 
 This document is the implementation-facing map of the project. It is written for both human contributors and AI coding agents.
 
@@ -6,7 +6,7 @@ If you only need the quick entrypoint, start with `README.md`. If you need to ch
 
 ## 1. Product Summary
 
-Island is a Windows desktop recreation of the "Dynamic Island" interaction pattern:
+Wisland is a Windows desktop recreation of the "Dynamic Island" interaction pattern:
 
 - It renders as a compact always-on-top floating widget.
 - It expands on hover and during notifications.
@@ -91,7 +91,7 @@ Helpers
 ## 4. Repository Layout
 
 ```text
-island/
+wisland/
 ├── App.xaml / App.xaml.cs
 │   Startup and unhandled exception logging.
 ├── MainWindow.xaml / MainWindow.*.cs
@@ -136,7 +136,7 @@ island/
    - not resizable/minimizable/maximizable
    - hidden from task switchers
    - visible in system tray
-3. Saved settings are loaded from `%LocalAppData%/Island/settings.json`.
+3. Saved settings are loaded from `%LocalAppData%/Wisland/settings.json`.
 4. The controller is initialized with starting position and docked state.
 5. Backdrop is restored.
 6. Media integration, timers, composition clipping, shell visibility services, and theme listeners are initialized.
@@ -367,7 +367,7 @@ Thin Win32/DWM interop wrapper used for:
 
 ### `Logger`
 
-Writes daily log files under `%LocalAppData%/Island/logs/`. Logging must never crash the app.
+Writes daily log files under `%LocalAppData%/Wisland/logs/`. Logging must never crash the app.
 
 ## 8. State Model
 

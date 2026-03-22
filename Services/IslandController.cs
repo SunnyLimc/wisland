@@ -1,7 +1,7 @@
 using System;
-using island.Models;
+using wisland.Models;
 
-namespace island.Services
+namespace wisland.Services
 {
     /// <summary>
     /// Pure logic controller for the Island's state machine and physics.

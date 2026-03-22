@@ -1,10 +1,10 @@
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
 using System.Threading.Tasks;
-using island.Models;
+using wisland.Models;
 using WinUIEx;
 
-namespace island
+namespace wisland
 {
     public sealed partial class MainWindow
     {
@@ -12,7 +12,7 @@ namespace island
         {
             var menu = new MenuFlyout();
 
-            var showItem = new MenuFlyoutItem { Text = "Show Island" };
+            var showItem = new MenuFlyoutItem { Text = "Show Wisland" };
             showItem.Click += ShowIsland_Click;
             menu.Items.Add(showItem);
 
@@ -63,7 +63,7 @@ namespace island
         }
 
         private void TestNotification_Click(object sender, RoutedEventArgs e)
-            => ShowNotification("Dynamic Island", "Flawless Physics!", header: "Test Notification");
+            => ShowNotification("Wisland", "Flawless Physics!", header: "Test Notification");
 
         private async void TestProgress_Click(object sender, RoutedEventArgs e)
         {

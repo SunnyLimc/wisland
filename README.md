@@ -1,6 +1,6 @@
-# Island
+# Wisland
 
-Island is a WinUI 3 desktop widget that recreates the Dynamic Island interaction pattern on Windows.
+Wisland is a WinUI 3 desktop widget that recreates the Dynamic Island interaction pattern on Windows.
 
 It supports:
 
@@ -22,8 +22,8 @@ It supports:
 ## Run Locally
 
 ```powershell
-dotnet build island.csproj -c Debug -p:Platform=x64
-dotnet run --project island.csproj -c Debug -p:Platform=x64
+dotnet build wisland.csproj -c Debug -p:Platform=x64
+dotnet run --project wisland.csproj -c Debug -p:Platform=x64
 ```
 
 ## Documentation Map

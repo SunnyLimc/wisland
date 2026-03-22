@@ -4,7 +4,7 @@ using Microsoft.UI.Xaml.Media;
 using Windows.UI;
 using System;
 
-namespace island.Views
+namespace wisland.Views
 {
     public sealed partial class ExpandedMediaView : UserControl
     {

@@ -1,8 +1,8 @@
 using Microsoft.UI.Xaml;
 using System;
-using island.Helpers;
+using wisland.Helpers;
 
-namespace island.Services
+namespace wisland.Services
 {
     public sealed class ForegroundWindowMonitor : IDisposable
     {
