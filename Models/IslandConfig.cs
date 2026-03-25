@@ -25,6 +25,9 @@ namespace wisland.Models
         public const float TrackSwitchIncomingDelayProgress = 0.18f;
         public const float TrackSwitchOutgoingFadeEndProgress = 0.58f;
         public const float TrackSwitchOutgoingTravelProgress = 0.72f;
+        public const double TrackSwitchClipInsetRatio = 0.16;
+        public const double TrackSwitchClipInsetMin = 22;
+        public const double TrackSwitchClipInsetMax = 58;
 
         // --- Positioning ---
         public const double DefaultY = 10;

@@ -19,6 +19,8 @@ namespace wisland.Views
         private Compositor? _compositor;
         private Visual? _primaryVisual;
         private Visual? _secondaryVisual;
+        private InsetClip? _primaryClip;
+        private InsetClip? _secondaryClip;
         private CubicBezierEasingFunction? _enterEasing;
         private CubicBezierEasingFunction? _exitEasing;
         private int _activeSlotIndex;
@@ -116,11 +118,17 @@ namespace wisland.Views
             _primaryVisual = ElementCompositionPreview.GetElementVisual(MetadataSlotPrimary);
             _secondaryVisual = ElementCompositionPreview.GetElementVisual(MetadataSlotSecondary);
             _compositor = _primaryVisual.Compositor;
+            _primaryClip = _compositor.CreateInsetClip();
+            _secondaryClip = _compositor.CreateInsetClip();
+            _primaryVisual.Clip = _primaryClip;
+            _secondaryVisual.Clip = _secondaryClip;
             _enterEasing = _compositor.CreateCubicBezierEasingFunction(new Vector2(0.18f, 1.0f), new Vector2(0.32f, 1.0f));
             _exitEasing = _compositor.CreateCubicBezierEasingFunction(new Vector2(0.42f, 0.0f), new Vector2(0.92f, 0.52f));
 
             ResetVisual(_primaryVisual, visible: true);
             ResetVisual(_secondaryVisual, visible: false);
+            ResetClip(_primaryClip);
+            ResetClip(_secondaryClip);
             UpdateSlotCenterPoints();
         }
 
@@ -138,17 +146,23 @@ namespace wisland.Views
 
             Visual outgoingVisual = GetVisual(outgoingIndex);
             Visual incomingVisual = GetVisual(incomingIndex);
+            InsetClip outgoingClip = GetClip(outgoingIndex);
+            InsetClip incomingClip = GetClip(incomingIndex);
 
             float outgoingOffset = (float)(IslandConfig.TrackSwitchOutgoingOffset * motionSign);
             float incomingStartOffset = (float)(-IslandConfig.TrackSwitchIncomingOffset * motionSign);
+            float clipInset = GetClipInsetDistance();
 
             outgoingVisual.Opacity = 1.0f;
             outgoingVisual.Scale = Vector3.One;
             outgoingVisual.Offset = Vector3.Zero;
+            ResetClip(outgoingClip);
 
             incomingVisual.Opacity = 0.0f;
             incomingVisual.Scale = new Vector3(IslandConfig.TrackSwitchIncomingScale, IslandConfig.TrackSwitchIncomingScale, 1.0f);
             incomingVisual.Offset = new Vector3(incomingStartOffset, 0.0f, 0.0f);
+            PrepareIncomingClip(incomingClip, direction, clipInset);
+            SetSlotZOrder(outgoingIndex, incomingIndex);
 
             CompositionScopedBatch batch = _compositor!.CreateScopedBatch(CompositionBatchTypes.Animation);
             long transitionToken = ++_transitionToken;
@@ -161,12 +175,15 @@ namespace wisland.Views
 
                 ResetVisual(outgoingVisual, visible: false);
                 ResetVisual(incomingVisual, visible: true);
+                ResetClip(outgoingClip);
+                ResetClip(incomingClip);
                 SetSlotVisibility(outgoingIndex, false);
                 SetSlotVisibility(incomingIndex, true);
+                SetSlotZOrder(incomingIndex, outgoingIndex);
             };
 
-            StartOutgoingAnimations(outgoingVisual, outgoingOffset);
-            StartIncomingAnimations(incomingVisual);
+            StartOutgoingAnimations(outgoingVisual, outgoingClip, direction, outgoingOffset, clipInset);
+            StartIncomingAnimations(incomingVisual, incomingClip, direction, clipInset);
             _activeSlotIndex = incomingIndex;
             batch.End();
         }
@@ -187,6 +204,19 @@ namespace wisland.Views
                 ResetVisual(_secondaryVisual, _activeSlotIndex == 1);
             }
 
+            if (_primaryClip != null)
+            {
+                StopClipAnimations(_primaryClip);
+                ResetClip(_primaryClip);
+            }
+
+            if (_secondaryClip != null)
+            {
+                StopClipAnimations(_secondaryClip);
+                ResetClip(_secondaryClip);
+            }
+
+            SetSlotZOrder(_activeSlotIndex, GetInactiveSlotIndex());
             HideInactiveSlot();
         }
 
@@ -197,19 +227,21 @@ namespace wisland.Views
             SetSlotVisibility(inactiveIndex, false);
         }
 
-        private void StartOutgoingAnimations(Visual visual, float targetOffset)
+        private void StartOutgoingAnimations(Visual visual, InsetClip clip, TrackSwitchDirection direction, float targetOffset, float clipInset)
         {
             visual.StartAnimation("Offset", CreateOutgoingOffsetAnimation(targetOffset));
             visual.StartAnimation("Opacity", CreateOutgoingOpacityAnimation());
             visual.StartAnimation("Scale", CreateOutgoingScaleAnimation());
+            StartDirectionalClipAnimation(clip, direction, clipInset, isIncoming: false);
         }
 
-        private void StartIncomingAnimations(Visual visual)
+        private void StartIncomingAnimations(Visual visual, InsetClip clip, TrackSwitchDirection direction, float clipInset)
         {
             // Delay the reveal slightly so the next track feels handed off, not overpainted on top.
             visual.StartAnimation("Offset", CreateIncomingOffsetAnimation(visual.Offset));
             visual.StartAnimation("Opacity", CreateIncomingOpacityAnimation());
             visual.StartAnimation("Scale", CreateIncomingScaleAnimation());
+            StartDirectionalClipAnimation(clip, direction, clipInset, isIncoming: true);
         }
 
         private Vector3KeyFrameAnimation CreateOutgoingOffsetAnimation(float targetOffset)
@@ -283,11 +315,31 @@ namespace wisland.Views
             visual.StopAnimation("Scale");
         }
 
+        private static void StopClipAnimations(InsetClip clip)
+        {
+            clip.StopAnimation("LeftInset");
+            clip.StopAnimation("RightInset");
+        }
+
         private void ResetVisual(Visual visual, bool visible)
         {
             visual.Offset = Vector3.Zero;
             visual.Scale = Vector3.One;
             visual.Opacity = visible ? 1.0f : 0.0f;
+        }
+
+        private static void ResetClip(InsetClip clip)
+        {
+            clip.LeftInset = 0.0f;
+            clip.RightInset = 0.0f;
+            clip.TopInset = 0.0f;
+            clip.BottomInset = 0.0f;
+        }
+
+        private void SetSlotZOrder(int frontSlotIndex, int backSlotIndex)
+        {
+            Canvas.SetZIndex(frontSlotIndex == 0 ? MetadataSlotPrimary : MetadataSlotSecondary, 1);
+            Canvas.SetZIndex(backSlotIndex == 0 ? MetadataSlotPrimary : MetadataSlotSecondary, 0);
         }
 
         private void SetSlotVisibility(int slotIndex, bool isVisible)
@@ -356,11 +408,72 @@ namespace wisland.Views
         private static int GetMotionSign(TrackSwitchDirection direction)
             => direction == TrackSwitchDirection.Previous ? 1 : -1;
 
+        private float GetClipInsetDistance()
+        {
+            double width = MetadataViewport.ActualWidth > 0 ? MetadataViewport.ActualWidth : IslandConfig.ExpandedWidth;
+            return (float)Math.Clamp(
+                width * IslandConfig.TrackSwitchClipInsetRatio,
+                IslandConfig.TrackSwitchClipInsetMin,
+                IslandConfig.TrackSwitchClipInsetMax);
+        }
+
+        private static void PrepareIncomingClip(InsetClip clip, TrackSwitchDirection direction, float clipInset)
+        {
+            ResetClip(clip);
+            if (GetClipPropertyName(direction, isIncoming: true) == "RightInset")
+            {
+                clip.RightInset = clipInset;
+            }
+            else
+            {
+                clip.LeftInset = clipInset;
+            }
+        }
+
+        private void StartDirectionalClipAnimation(InsetClip clip, TrackSwitchDirection direction, float clipInset, bool isIncoming)
+        {
+            string property = GetClipPropertyName(direction, isIncoming);
+            ScalarKeyFrameAnimation animation = isIncoming
+                ? CreateIncomingClipAnimation(clipInset)
+                : CreateOutgoingClipAnimation(clipInset);
+            clip.StartAnimation(property, animation);
+        }
+
+        private static string GetClipPropertyName(TrackSwitchDirection direction, bool isIncoming)
+        {
+            bool useLeftInset = direction == TrackSwitchDirection.Next
+                ? !isIncoming
+                : isIncoming;
+            return useLeftInset ? "LeftInset" : "RightInset";
+        }
+
+        private ScalarKeyFrameAnimation CreateOutgoingClipAnimation(float clipInset)
+        {
+            ScalarKeyFrameAnimation animation = _compositor!.CreateScalarKeyFrameAnimation();
+            animation.InsertKeyFrame(0.10f, 0.0f);
+            animation.InsertKeyFrame(IslandConfig.TrackSwitchOutgoingTravelProgress, clipInset, _exitEasing!);
+            animation.InsertKeyFrame(1.0f, clipInset, _exitEasing!);
+            animation.Duration = GetTrackSwitchDuration();
+            return animation;
+        }
+
+        private ScalarKeyFrameAnimation CreateIncomingClipAnimation(float clipInset)
+        {
+            ScalarKeyFrameAnimation animation = _compositor!.CreateScalarKeyFrameAnimation();
+            animation.InsertKeyFrame(IslandConfig.TrackSwitchIncomingDelayProgress, clipInset);
+            animation.InsertKeyFrame(1.0f, 0.0f, _enterEasing!);
+            animation.Duration = GetTrackSwitchDuration();
+            return animation;
+        }
+
         private Grid GetSlot(int slotIndex)
             => slotIndex == 0 ? MetadataSlotPrimary : MetadataSlotSecondary;
 
         private Visual GetVisual(int slotIndex)
             => slotIndex == 0 ? _primaryVisual! : _secondaryVisual!;
+
+        private InsetClip GetClip(int slotIndex)
+            => slotIndex == 0 ? _primaryClip! : _secondaryClip!;
 
         private TextBlock GetHeaderText(int slotIndex)
             => slotIndex == 0 ? HeaderStatusTextPrimary : HeaderStatusTextSecondary;
