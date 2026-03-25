@@ -82,7 +82,8 @@ ShellVisibilityService
   -> applies palette-driven native line appearance without coupling line rendering to MainWindow
 
 Views / Controls
-  -> render compact content, expanded media content, and liquid progress visuals
+  -> render compact content, expanded media content, liquid progress visuals,
+  -> and reusable directional content transitions shared across island surfaces
 
 Helpers
   -> logging, native line overlay window, Win32/DWM interop
@@ -99,6 +100,8 @@ wisland/
 │   media, tray, appearance, and lifetime concerns.
 ├── Models/
 │   ├── BackdropType.cs
+│   ├── ContentTransitionDirection.cs
+│   ├── DirectionalTransitionProfile.cs
 │   ├── HoverMode.cs
 │   ├── IslandConfig.cs
 │   ├── IslandState.cs
@@ -116,6 +119,7 @@ wisland/
 │   ├── CompactView.xaml(.cs)
 │   └── ExpandedMediaView.xaml(.cs)
 ├── Controls/
+│   ├── DirectionalContentTransitionCoordinator.cs
 │   └── LiquidProgressBar.xaml(.cs)
 ├── Helpers/
 │   ├── Logger.cs
@@ -325,7 +329,7 @@ This keeps `MainWindow` from directly managing the Win32 overlay window instance
 
 ### `CompactView`
 
-Minimal compact content surface. Right now it only shows text and text color.
+Minimal compact content surface. It now keeps its own two-slot text surface wired to the shared directional transition coordinator, so compact-state track or status animations can be added later without re-implementing composition choreography.
 
 ### `ExpandedMediaView`
 
@@ -337,7 +341,21 @@ Expanded content surface for:
 - direction-aware metadata transition animation for previous / next track changes
 - previous / play-pause / next controls
 
-It raises button events and leaves command behavior to the parent window.
+It raises button events and leaves command behavior to the parent window. It no longer owns low-level composition choreography directly; instead it supplies metadata snapshots to the shared directional transition coordinator.
+
+### `DirectionalContentTransitionCoordinator`
+
+Reusable WinUI composition coordinator for two-slot horizontal content transitions.
+
+It owns:
+
+- outgoing / incoming slot swapping
+- z-order handoff
+- offset, opacity, and scale timing
+- directional clip choreography
+- viewport clipping and center-point updates
+
+This is the preferred place for future collapsed / compact directional content animations, rather than duplicating composition code inside each view.
 
 ### `LiquidProgressBar`
 
@@ -425,8 +443,8 @@ Use this table before editing:
 | Change animation feel | `Models/IslandConfig.cs`, `Services/IslandController.cs`, `Controls/LiquidProgressBar.xaml.cs` | Shell motion and progress motion are separate concerns. |
 | Change docking behavior | `Services/IslandController.cs`, `Services/ForegroundWindowMonitor.cs`, `MainWindow.State.cs`, `MainWindow.Animation.cs` | Controller handles logical targets, monitor handles foreground polling, MainWindow handles physical anchoring. |
 | Change hidden line mode | `MainWindow.State.cs`, `MainWindow.Animation.cs`, `Services/ShellVisibilityService.cs`, `Helpers/NativeLineWindow.cs`, `Services/WindowAppearanceService.cs` | Be careful with DPI, monitor math, and corner state transitions. |
-| Change compact UI | `Views/CompactView.xaml`, `Views/CompactView.xaml.cs` | Keep the view lightweight. |
-| Change expanded media UI | `Views/ExpandedMediaView.xaml`, `Views/ExpandedMediaView.xaml.cs` | Event surface lives here, command behavior lives in MainWindow. |
+| Change compact UI | `Views/CompactView.xaml`, `Views/CompactView.xaml.cs`, `Controls/DirectionalContentTransitionCoordinator.cs` | Compact content owns text/content decisions; shared directional motion lives in the coordinator. |
+| Change expanded media UI | `Views/ExpandedMediaView.xaml`, `Views/ExpandedMediaView.xaml.cs`, `Controls/DirectionalContentTransitionCoordinator.cs` | View owns metadata/control structure; shared directional motion lives in the coordinator. |
 | Change tray actions | `MainWindow.Tray.cs` | `CreateTrayMenu()` is the entrypoint. |
 | Add a persisted setting | `Services/SettingsService.cs`, `Models/BackdropType.cs`, `MainWindow.Lifetime.cs`, `MainWindow.Appearance.cs` | Keep persisted values typed at the shell boundary whenever possible. |
 | Change media behavior | `Services/MediaService.cs`, `MainWindow.Media.cs`, `MainWindow.Notifications.cs` | Service owns GSMTC; window decides how UI responds. |

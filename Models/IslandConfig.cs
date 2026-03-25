@@ -17,17 +17,30 @@ namespace wisland.Models
         public const double AnimationSpeed = 25.0;
         public const double MaxDeltaTime = 0.1;
         public const double FallbackDeltaTime = 0.016;
-        public const int TrackSwitchAnimationDurationMs = 340;
-        public const double TrackSwitchOutgoingOffset = 64;
-        public const double TrackSwitchIncomingOffset = 28;
-        public const float TrackSwitchOutgoingScale = 0.982f;
-        public const float TrackSwitchIncomingScale = 0.994f;
-        public const float TrackSwitchIncomingDelayProgress = 0.18f;
-        public const float TrackSwitchOutgoingFadeEndProgress = 0.58f;
-        public const float TrackSwitchOutgoingTravelProgress = 0.72f;
-        public const double TrackSwitchClipInsetRatio = 0.16;
-        public const double TrackSwitchClipInsetMin = 22;
-        public const double TrackSwitchClipInsetMax = 58;
+        public static readonly DirectionalTransitionProfile ExpandedMediaTransitionProfile = new(
+            DurationMs: 340,
+            OutgoingOffset: 64.0f,
+            IncomingOffset: 28.0f,
+            OutgoingScale: 0.982f,
+            IncomingScale: 0.994f,
+            IncomingDelayProgress: 0.18f,
+            OutgoingFadeEndProgress: 0.58f,
+            OutgoingTravelProgress: 0.72f,
+            ClipInsetRatio: 0.16f,
+            ClipInsetMin: 22.0f,
+            ClipInsetMax: 58.0f);
+        public static readonly DirectionalTransitionProfile CompactContentTransitionProfile = new(
+            DurationMs: 300,
+            OutgoingOffset: 32.0f,
+            IncomingOffset: 18.0f,
+            OutgoingScale: 0.988f,
+            IncomingScale: 0.997f,
+            IncomingDelayProgress: 0.14f,
+            OutgoingFadeEndProgress: 0.52f,
+            OutgoingTravelProgress: 0.68f,
+            ClipInsetRatio: 0.12f,
+            ClipInsetMin: 12.0f,
+            ClipInsetMax: 24.0f);
 
         // --- Positioning ---
         public const double DefaultY = 10;

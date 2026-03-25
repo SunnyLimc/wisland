@@ -8,14 +8,33 @@
     mc:Ignorable="d">
 
     <Grid x:Name="RootGrid" Opacity="1">
-        <TextBlock x:Name="CompactText" 
-                   Text="Wisland" 
-                   Foreground="White" 
-                   HorizontalAlignment="Center" 
-                   VerticalAlignment="Center" 
-                   FontSize="12"
-                   TextAlignment="Center"
-                   TextTrimming="CharacterEllipsis"
-                   MaxWidth="160"/>
+        <Grid x:Name="TextViewport"
+              HorizontalAlignment="Stretch"
+              VerticalAlignment="Stretch"
+              SizeChanged="TextViewport_SizeChanged">
+            <Grid x:Name="CompactTextSlotPrimary">
+                <TextBlock x:Name="CompactTextPrimary"
+                           Text="Wisland"
+                           Foreground="White"
+                           HorizontalAlignment="Center"
+                           VerticalAlignment="Center"
+                           FontSize="12"
+                           TextAlignment="Center"
+                           TextTrimming="CharacterEllipsis"
+                           MaxWidth="160"/>
+            </Grid>
+
+            <Grid x:Name="CompactTextSlotSecondary" Visibility="Collapsed">
+                <TextBlock x:Name="CompactTextSecondary"
+                           Text="Wisland"
+                           Foreground="White"
+                           HorizontalAlignment="Center"
+                           VerticalAlignment="Center"
+                           FontSize="12"
+                           TextAlignment="Center"
+                           TextTrimming="CharacterEllipsis"
+                           MaxWidth="160"/>
+            </Grid>
+        </Grid>
     </Grid>
 </UserControl>

@@ -43,7 +43,7 @@ MainWindow.xaml + MainWindow.*.cs
 Models/                  Shared constants, typed config values, and render state
 Services/                Controller, media integration, settings, window monitoring, appearance
 Views/                   Compact and expanded content views
-Controls/                Custom liquid progress bar
+Controls/                Custom liquid progress bar and reusable content transitions
 Helpers/                 Logging and native window interop
 ```
 

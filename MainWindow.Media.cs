@@ -6,8 +6,8 @@ namespace wisland
 {
     public sealed partial class MainWindow
     {
-        private TrackSwitchDirection _pendingTrackSwitchDirection = TrackSwitchDirection.None;
-        private long _pendingTrackSwitchTimestamp;
+        private ContentTransitionDirection _pendingMediaTransitionDirection = ContentTransitionDirection.None;
+        private long _pendingMediaTransitionTimestamp;
 
         private async Task InitializeMediaAsync()
         {
@@ -63,7 +63,7 @@ namespace wisland
         /// <summary>Sync UI elements with current MediaService state.</summary>
         private void SyncMediaUI()
         {
-            TrackSwitchDirection directionHint = GetTrackSwitchDirectionHint();
+            ContentTransitionDirection directionHint = GetPendingMediaTransitionDirection();
             bool metadataChanged = ExpandedContent.Update(
                 _mediaService.CurrentTitle,
                 _mediaService.CurrentArtist,
@@ -73,50 +73,50 @@ namespace wisland
 
             if (metadataChanged)
             {
-                ClearTrackSwitchDirectionHint();
+                ClearPendingMediaTransitionDirection();
             }
         }
 
         private async void PlayPause_Click(object? sender, EventArgs e) => await _mediaService.PlayPauseAsync();
         private async void SkipNext_Click(object? sender, EventArgs e)
         {
-            RegisterTrackSwitchDirectionHint(TrackSwitchDirection.Next);
+            RegisterPendingMediaTransitionDirection(ContentTransitionDirection.Forward);
             await _mediaService.SkipNextAsync();
         }
 
         private async void SkipPrevious_Click(object? sender, EventArgs e)
         {
-            RegisterTrackSwitchDirectionHint(TrackSwitchDirection.Previous);
+            RegisterPendingMediaTransitionDirection(ContentTransitionDirection.Backward);
             await _mediaService.SkipPreviousAsync();
         }
 
-        private void RegisterTrackSwitchDirectionHint(TrackSwitchDirection direction)
+        private void RegisterPendingMediaTransitionDirection(ContentTransitionDirection direction)
         {
-            _pendingTrackSwitchDirection = direction;
-            _pendingTrackSwitchTimestamp = Environment.TickCount64;
+            _pendingMediaTransitionDirection = direction;
+            _pendingMediaTransitionTimestamp = Environment.TickCount64;
         }
 
-        private TrackSwitchDirection GetTrackSwitchDirectionHint()
+        private ContentTransitionDirection GetPendingMediaTransitionDirection()
         {
-            if (_pendingTrackSwitchDirection == TrackSwitchDirection.None)
+            if (_pendingMediaTransitionDirection == ContentTransitionDirection.None)
             {
-                return TrackSwitchDirection.None;
+                return ContentTransitionDirection.None;
             }
 
-            long elapsed = Environment.TickCount64 - _pendingTrackSwitchTimestamp;
+            long elapsed = Environment.TickCount64 - _pendingMediaTransitionTimestamp;
             if (elapsed > IslandConfig.TrackSwitchIntentWindowMs)
             {
-                ClearTrackSwitchDirectionHint();
-                return TrackSwitchDirection.None;
+                ClearPendingMediaTransitionDirection();
+                return ContentTransitionDirection.None;
             }
 
-            return _pendingTrackSwitchDirection;
+            return _pendingMediaTransitionDirection;
         }
 
-        private void ClearTrackSwitchDirectionHint()
+        private void ClearPendingMediaTransitionDirection()
         {
-            _pendingTrackSwitchDirection = TrackSwitchDirection.None;
-            _pendingTrackSwitchTimestamp = 0;
+            _pendingMediaTransitionDirection = ContentTransitionDirection.None;
+            _pendingMediaTransitionTimestamp = 0;
         }
     }
 }
