@@ -8,43 +8,38 @@
     mc:Ignorable="d">
 
     <Grid x:Name="RootGrid">
-        <Grid.RowDefinitions>
-            <RowDefinition Height="*" />
-            <RowDefinition Height="Auto" />
-        </Grid.RowDefinitions>
+        <StackPanel VerticalAlignment="Center" HorizontalAlignment="Center">
+            <Grid x:Name="MetadataViewport"
+                  Margin="18,0,18,0"
+                  SizeChanged="MetadataViewport_SizeChanged">
+                <Grid x:Name="MetadataSlotPrimary">
+                    <StackPanel VerticalAlignment="Center" HorizontalAlignment="Center">
+                        <TextBlock x:Name="HeaderStatusTextPrimary" Text="Now Playing" Foreground="Gray" FontSize="10" HorizontalAlignment="Center" TextAlignment="Center" TextTrimming="CharacterEllipsis" MaxWidth="320"/>
+                        <TextBlock x:Name="MusicTitleTextPrimary" Text="No Media" Foreground="White" FontSize="16" FontWeight="Bold" HorizontalAlignment="Center" TextAlignment="Center" TextTrimming="CharacterEllipsis" MaxWidth="320"/>
+                        <TextBlock x:Name="ArtistNameTextPrimary" Text="Artist Name" Foreground="LightGray" FontSize="12" HorizontalAlignment="Center" TextAlignment="Center" TextTrimming="CharacterEllipsis" MaxWidth="320"/>
+                    </StackPanel>
+                </Grid>
 
-        <Grid x:Name="MetadataViewport"
-              Grid.Row="0"
-              Margin="18,10,18,0"
-              VerticalAlignment="Center"
-              SizeChanged="MetadataViewport_SizeChanged">
-            <Grid x:Name="MetadataSlotPrimary">
-                <StackPanel VerticalAlignment="Center" HorizontalAlignment="Center">
-                    <TextBlock x:Name="HeaderStatusTextPrimary" Text="Now Playing" Foreground="Gray" FontSize="10" HorizontalAlignment="Center" TextAlignment="Center" TextTrimming="CharacterEllipsis" MaxWidth="320"/>
-                    <TextBlock x:Name="MusicTitleTextPrimary" Text="No Media" Foreground="White" FontSize="16" FontWeight="Bold" HorizontalAlignment="Center" TextAlignment="Center" TextTrimming="CharacterEllipsis" MaxWidth="320"/>
-                    <TextBlock x:Name="ArtistNameTextPrimary" Text="Artist Name" Foreground="LightGray" FontSize="12" HorizontalAlignment="Center" TextAlignment="Center" TextTrimming="CharacterEllipsis" MaxWidth="320"/>
-                </StackPanel>
+                <Grid x:Name="MetadataSlotSecondary" Visibility="Collapsed">
+                    <StackPanel VerticalAlignment="Center" HorizontalAlignment="Center">
+                        <TextBlock x:Name="HeaderStatusTextSecondary" Text="Now Playing" Foreground="Gray" FontSize="10" HorizontalAlignment="Center" TextAlignment="Center" TextTrimming="CharacterEllipsis" MaxWidth="320"/>
+                        <TextBlock x:Name="MusicTitleTextSecondary" Text="No Media" Foreground="White" FontSize="16" FontWeight="Bold" HorizontalAlignment="Center" TextAlignment="Center" TextTrimming="CharacterEllipsis" MaxWidth="320"/>
+                        <TextBlock x:Name="ArtistNameTextSecondary" Text="Artist Name" Foreground="LightGray" FontSize="12" HorizontalAlignment="Center" TextAlignment="Center" TextTrimming="CharacterEllipsis" MaxWidth="320"/>
+                    </StackPanel>
+                </Grid>
             </Grid>
 
-            <Grid x:Name="MetadataSlotSecondary" Visibility="Collapsed">
-                <StackPanel VerticalAlignment="Center" HorizontalAlignment="Center">
-                    <TextBlock x:Name="HeaderStatusTextSecondary" Text="Now Playing" Foreground="Gray" FontSize="10" HorizontalAlignment="Center" TextAlignment="Center" TextTrimming="CharacterEllipsis" MaxWidth="320"/>
-                    <TextBlock x:Name="MusicTitleTextSecondary" Text="No Media" Foreground="White" FontSize="16" FontWeight="Bold" HorizontalAlignment="Center" TextAlignment="Center" TextTrimming="CharacterEllipsis" MaxWidth="320"/>
-                    <TextBlock x:Name="ArtistNameTextSecondary" Text="Artist Name" Foreground="LightGray" FontSize="12" HorizontalAlignment="Center" TextAlignment="Center" TextTrimming="CharacterEllipsis" MaxWidth="320"/>
-                </StackPanel>
-            </Grid>
-        </Grid>
-
-        <StackPanel Grid.Row="1" Orientation="Horizontal" HorizontalAlignment="Center" Margin="0,8,0,10" Spacing="20">
-            <Button x:Name="BtnBack" Background="Transparent" BorderThickness="0" Padding="4" Click="OnBack_Click">
-                <SymbolIcon x:Name="IconBack" Symbol="Back" Foreground="White"/>
-            </Button>
-            <Button x:Name="BtnPlayPause" Background="Transparent" BorderThickness="0" Padding="4" Click="OnPlayPause_Click">
-                <SymbolIcon x:Name="IconPlayPause" Symbol="Pause" Foreground="White"/>
-            </Button>
-            <Button x:Name="BtnForward" Background="Transparent" BorderThickness="0" Padding="4" Click="OnForward_Click">
-                <SymbolIcon x:Name="IconForward" Symbol="Forward" Foreground="White"/>
-            </Button>
+            <StackPanel Orientation="Horizontal" HorizontalAlignment="Center" Margin="0,10,0,0" Spacing="20">
+                <Button x:Name="BtnBack" Background="Transparent" BorderThickness="0" Padding="4" Click="OnBack_Click">
+                    <SymbolIcon x:Name="IconBack" Symbol="Back" Foreground="White"/>
+                </Button>
+                <Button x:Name="BtnPlayPause" Background="Transparent" BorderThickness="0" Padding="4" Click="OnPlayPause_Click">
+                    <SymbolIcon x:Name="IconPlayPause" Symbol="Pause" Foreground="White"/>
+                </Button>
+                <Button x:Name="BtnForward" Background="Transparent" BorderThickness="0" Padding="4" Click="OnForward_Click">
+                    <SymbolIcon x:Name="IconForward" Symbol="Forward" Foreground="White"/>
+                </Button>
+            </StackPanel>
         </StackPanel>
     </Grid>
 </UserControl>
