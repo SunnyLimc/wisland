@@ -7,6 +7,7 @@ It supports:
 - a compact always-on-top shell
 - hover-based expansion
 - system media metadata and playback controls
+- direction-aware track switch animation in the expanded media panel
 - drag-to-reposition and top-edge docking
 - a thin hidden progress line when docked over maximized apps
 - tray actions, backdrop switching, saved settings, and local logging

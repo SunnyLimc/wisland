@@ -334,6 +334,7 @@ Expanded content surface for:
 - header text
 - title
 - artist
+- direction-aware metadata transition animation for previous / next track changes
 - previous / play-pause / next controls
 
 It raises button events and leaves command behavior to the parent window.

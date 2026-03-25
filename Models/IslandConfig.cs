@@ -17,6 +17,14 @@ namespace wisland.Models
         public const double AnimationSpeed = 25.0;
         public const double MaxDeltaTime = 0.1;
         public const double FallbackDeltaTime = 0.016;
+        public const int TrackSwitchAnimationDurationMs = 340;
+        public const double TrackSwitchOutgoingOffset = 64;
+        public const double TrackSwitchIncomingOffset = 28;
+        public const float TrackSwitchOutgoingScale = 0.982f;
+        public const float TrackSwitchIncomingScale = 0.994f;
+        public const float TrackSwitchIncomingDelayProgress = 0.18f;
+        public const float TrackSwitchOutgoingFadeEndProgress = 0.58f;
+        public const float TrackSwitchOutgoingTravelProgress = 0.72f;
 
         // --- Positioning ---
         public const double DefaultY = 10;
@@ -34,6 +42,7 @@ namespace wisland.Models
         public const int DockedLineBoundsMarginPhysical = 8;
         public const int DefaultNotificationDurationMs = 3000;
         public const int TrackChangeNotificationDurationMs = 4000;
+        public const int TrackSwitchIntentWindowMs = 1600;
 
         // --- Opacity Thresholds ---
         public const double HitTestOpacityThreshold = 0.5;

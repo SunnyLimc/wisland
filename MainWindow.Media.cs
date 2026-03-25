@@ -6,6 +6,9 @@ namespace wisland
 {
     public sealed partial class MainWindow
     {
+        private TrackSwitchDirection _pendingTrackSwitchDirection = TrackSwitchDirection.None;
+        private long _pendingTrackSwitchTimestamp;
+
         private async Task InitializeMediaAsync()
         {
             _mediaService.MediaChanged += OnMediaServiceChanged;
@@ -60,15 +63,60 @@ namespace wisland
         /// <summary>Sync UI elements with current MediaService state.</summary>
         private void SyncMediaUI()
         {
-            ExpandedContent.Update(
+            TrackSwitchDirection directionHint = GetTrackSwitchDirectionHint();
+            bool metadataChanged = ExpandedContent.Update(
                 _mediaService.CurrentTitle,
                 _mediaService.CurrentArtist,
                 _mediaService.HeaderStatus,
-                _mediaService.IsPlaying);
+                _mediaService.IsPlaying,
+                directionHint);
+
+            if (metadataChanged)
+            {
+                ClearTrackSwitchDirectionHint();
+            }
         }
 
         private async void PlayPause_Click(object? sender, EventArgs e) => await _mediaService.PlayPauseAsync();
-        private async void SkipNext_Click(object? sender, EventArgs e) => await _mediaService.SkipNextAsync();
-        private async void SkipPrevious_Click(object? sender, EventArgs e) => await _mediaService.SkipPreviousAsync();
+        private async void SkipNext_Click(object? sender, EventArgs e)
+        {
+            RegisterTrackSwitchDirectionHint(TrackSwitchDirection.Next);
+            await _mediaService.SkipNextAsync();
+        }
+
+        private async void SkipPrevious_Click(object? sender, EventArgs e)
+        {
+            RegisterTrackSwitchDirectionHint(TrackSwitchDirection.Previous);
+            await _mediaService.SkipPreviousAsync();
+        }
+
+        private void RegisterTrackSwitchDirectionHint(TrackSwitchDirection direction)
+        {
+            _pendingTrackSwitchDirection = direction;
+            _pendingTrackSwitchTimestamp = Environment.TickCount64;
+        }
+
+        private TrackSwitchDirection GetTrackSwitchDirectionHint()
+        {
+            if (_pendingTrackSwitchDirection == TrackSwitchDirection.None)
+            {
+                return TrackSwitchDirection.None;
+            }
+
+            long elapsed = Environment.TickCount64 - _pendingTrackSwitchTimestamp;
+            if (elapsed > IslandConfig.TrackSwitchIntentWindowMs)
+            {
+                ClearTrackSwitchDirectionHint();
+                return TrackSwitchDirection.None;
+            }
+
+            return _pendingTrackSwitchDirection;
+        }
+
+        private void ClearTrackSwitchDirectionHint()
+        {
+            _pendingTrackSwitchDirection = TrackSwitchDirection.None;
+            _pendingTrackSwitchTimestamp = 0;
+        }
     }
 }
