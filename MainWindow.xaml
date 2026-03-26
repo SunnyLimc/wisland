@@ -12,6 +12,7 @@
           PointerPressed="RootGrid_PointerPressed"
           PointerMoved="RootGrid_PointerMoved"
           PointerReleased="RootGrid_PointerReleased"
+          PointerWheelChanged="RootGrid_PointerWheelChanged"
           PointerEntered="RootGrid_PointerEntered"
           PointerExited="RootGrid_PointerExited">
 

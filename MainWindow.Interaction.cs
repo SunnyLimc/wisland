@@ -1,5 +1,6 @@
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
+using Microsoft.UI.Xaml.Media;
 using System;
 using Windows.Graphics;
 using wisland.Helpers;
@@ -11,7 +12,7 @@ namespace wisland
     {
         private void RootGrid_PointerPressed(object sender, Microsoft.UI.Xaml.Input.PointerRoutedEventArgs e)
         {
-            if (e.OriginalSource is FrameworkElement fe && (fe is Button || fe.Parent is Button))
+            if (e.OriginalSource is DependencyObject origin && IsWithinButton(origin))
             {
                 return;
             }
@@ -175,6 +176,21 @@ namespace wisland
             }
 
             UpdateState();
+        }
+
+        private static bool IsWithinButton(DependencyObject? element)
+        {
+            while (element != null)
+            {
+                if (element is Button)
+                {
+                    return true;
+                }
+
+                element = VisualTreeHelper.GetParent(element);
+            }
+
+            return false;
         }
     }
 }

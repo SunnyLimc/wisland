@@ -42,16 +42,18 @@ namespace wisland
             _hoverDebounceTimer.Tick -= HoverDebounceTimer_Tick;
             _dockedHoverDelayTimer.Tick -= DockedHoverDelayTimer_Tick;
             _cursorTrackerTimer.Tick -= CursorTrackerTimer_Tick;
+            _selectionLockTimer.Tick -= SelectionLockTimer_Tick;
+            ExpandedContent.SessionSelected -= OnExpandedContentSessionSelected;
 
             _hoverDebounceTimer.Stop();
             _dockedHoverDelayTimer.Stop();
             _cursorTrackerTimer.Stop();
+            _selectionLockTimer.Stop();
             _foregroundWindowMonitor.ForegroundMaximizedChanged -= OnForegroundMaximizedChanged;
             _foregroundWindowMonitor.Dispose();
 
-            _mediaService.MediaChanged -= OnMediaServiceChanged;
+            _mediaService.SessionsChanged -= OnMediaServiceChanged;
             _mediaService.TrackChanged -= OnTrackChanged;
-            _mediaService.ProgressTransitionRequested -= OnMediaProgressTransitionRequested;
             _mediaService.Dispose();
 
             _shellVisibilityService.Dispose();

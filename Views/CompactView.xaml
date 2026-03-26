@@ -36,5 +36,20 @@
                            MaxWidth="160"/>
             </Grid>
         </Grid>
+
+        <Border x:Name="SessionCountBadge"
+                HorizontalAlignment="Right"
+                VerticalAlignment="Center"
+                Margin="0,0,10,0"
+                Padding="6,1,6,1"
+                CornerRadius="9"
+                BorderThickness="1"
+                Visibility="Collapsed">
+            <TextBlock x:Name="CompactSessionCountText"
+                       Text="2/2"
+                       FontSize="10"
+                       FontWeight="SemiBold"
+                       TextAlignment="Center"/>
+        </Border>
     </Grid>
 </UserControl>

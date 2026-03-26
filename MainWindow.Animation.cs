@@ -94,7 +94,7 @@ namespace wisland
             {
                 _isMediaProgressResetPending = false;
 
-                if (_hideMediaProgressWhenResetCompletes && !_taskProgress.HasValue && !_mediaService.HasMediaSource)
+                if (_hideMediaProgressWhenResetCompletes && !_taskProgress.HasValue)
                 {
                     _hideMediaProgressWhenResetCompletes = false;
                     IslandProgressBar.SetEffectVisible(false);
@@ -295,7 +295,7 @@ namespace wisland
                 return true;
             }
 
-            if (_mediaService.ShouldAnimateProgress)
+            if (_mediaService.ShouldAnimateProgress(_displayedSessionKey))
             {
                 return true;
             }

@@ -36,7 +36,7 @@ namespace wisland
                         return;
                     }
 
-                    ExpandedContent.Update(title, message, header, false);
+                    ExpandedContent.ShowNotification(title, message, header);
                     _controller.IsNotifying = true;
                     UpdateState();
                 });

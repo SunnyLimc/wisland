@@ -52,6 +52,7 @@ namespace wisland
 
         // --- Context-Aware UX State ---
         private readonly DispatcherTimer _dockedHoverDelayTimer;
+        private readonly DispatcherTimer _selectionLockTimer;
 
         // --- Line Mode State ---
         private readonly ShellVisibilityService _shellVisibilityService = new();
@@ -131,7 +132,10 @@ namespace wisland
 
                 _cursorTrackerTimer = new DispatcherTimer { Interval = TimeSpan.FromMilliseconds(IslandConfig.CursorTrackerIntervalMs) };
                 _cursorTrackerTimer.Tick += CursorTrackerTimer_Tick;
+                _selectionLockTimer = new DispatcherTimer();
+                _selectionLockTimer.Tick += SelectionLockTimer_Tick;
                 _foregroundWindowMonitor.SetActive(_controller.IsDocked);
+                ExpandedContent.SessionSelected += OnExpandedContentSessionSelected;
 
                 StartRenderLoop();
                 this.Closed += OnWindowClosed;
@@ -147,16 +151,29 @@ namespace wisland
         }
 
         private double GetDisplayedProgress()
-            => _taskProgress ?? (_isMediaProgressResetPending ? 0.0 : _mediaService.Progress);
+        {
+            MediaSessionSnapshot? displayedSession = GetDisplayedMediaSessionSnapshot();
+            return _taskProgress ?? (_isMediaProgressResetPending ? 0.0 : displayedSession?.Progress ?? 0.0);
+        }
 
         private bool ShouldShowProgressEffect()
-            => _taskProgress.HasValue
+        {
+            MediaSessionSnapshot? displayedSession = GetDisplayedMediaSessionSnapshot();
+            bool hasDisplayedTimeline = displayedSession.HasValue && displayedSession.Value.HasTimeline;
+            return _taskProgress.HasValue
                 || _isMediaProgressResetPending
-                || _mediaService.HasMediaSource
+                || hasDisplayedTimeline
                 || IslandProgressBar.IsEffectVisible;
+        }
 
         private bool ShouldAnimateProgressShimmer()
-            => _taskProgress.HasValue
-                || (_mediaService.HasMediaSource && _mediaService.IsPlaying && !_isMediaProgressResetPending);
+        {
+            MediaSessionSnapshot? displayedSession = GetDisplayedMediaSessionSnapshot();
+            return _taskProgress.HasValue
+                || (displayedSession.HasValue
+                    && displayedSession.Value.HasTimeline
+                    && displayedSession.Value.IsPlaying
+                    && !_isMediaProgressResetPending);
+        }
     }
 }

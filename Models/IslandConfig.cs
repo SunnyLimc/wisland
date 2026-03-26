@@ -41,6 +41,18 @@ namespace wisland.Models
             ClipInsetRatio: 0.12f,
             ClipInsetMin: 12.0f,
             ClipInsetMax: 24.0f);
+        public static readonly DirectionalTransitionProfile HeaderChipTransitionProfile = new(
+            DurationMs: 260,
+            OutgoingOffset: 24.0f,
+            IncomingOffset: 12.0f,
+            OutgoingScale: 0.99f,
+            IncomingScale: 0.997f,
+            IncomingDelayProgress: 0.10f,
+            OutgoingFadeEndProgress: 0.48f,
+            OutgoingTravelProgress: 0.64f,
+            ClipInsetRatio: 0.10f,
+            ClipInsetMin: 8.0f,
+            ClipInsetMax: 18.0f);
 
         // --- Positioning ---
         public const double DefaultY = 10;
@@ -59,6 +71,10 @@ namespace wisland.Models
         public const int DefaultNotificationDurationMs = 3000;
         public const int TrackChangeNotificationDurationMs = 4000;
         public const int TrackSwitchIntentWindowMs = 1600;
+        public const int SelectionLockDurationMs = 10000;
+        public const int SessionPickerMaxVisibleItems = 5;
+        public const int CompactSessionCountVisibleThreshold = 2;
+        public const double SessionPickerEstimatedRowHeight = 60.0;
 
         // --- Opacity Thresholds ---
         public const double HitTestOpacityThreshold = 0.5;

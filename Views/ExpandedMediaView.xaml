@@ -9,12 +9,235 @@
 
     <Grid x:Name="RootGrid">
         <StackPanel VerticalAlignment="Center" HorizontalAlignment="Center">
+            <Button x:Name="SessionHeaderButton"
+                    HorizontalAlignment="Center"
+                    Background="Transparent"
+                    BorderThickness="0"
+                    Padding="0"
+                    MinWidth="0"
+                    MinHeight="0"
+                    Margin="0,0,0,5"
+                    Click="OnSessionHeader_Click">
+                <Button.Flyout>
+                    <Flyout x:Name="SessionPickerFlyout"
+                            Placement="Bottom"
+                            Opening="SessionPickerFlyout_Opening"
+                            Closed="SessionPickerFlyout_Closed">
+                        <Border x:Name="SessionPickerBorder"
+                                Padding="6"
+                                CornerRadius="18"
+                                BorderThickness="1">
+                            <ListView x:Name="SessionPickerList"
+                                      MinWidth="300"
+                                      IsItemClickEnabled="True"
+                                      SelectionMode="Single"
+                                      HorizontalContentAlignment="Stretch"
+                                      ItemClick="SessionPickerList_ItemClick"/>
+                        </Border>
+                    </Flyout>
+                </Button.Flyout>
+
+                <Border x:Name="HeaderChipBorder"
+                        Padding="7,1,8,1"
+                        CornerRadius="11"
+                        BorderThickness="1">
+                    <Grid x:Name="HeaderContentViewport"
+                          Height="20"
+                          SizeChanged="HeaderContentViewport_SizeChanged">
+                        <Grid x:Name="HeaderSlotPrimary">
+                            <Grid VerticalAlignment="Center">
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="34" />
+                                    <ColumnDefinition Width="Auto" />
+                                </Grid.ColumnDefinitions>
+
+                                <Grid Grid.Column="0"
+                                      Width="34"
+                                      Height="16"
+                                      VerticalAlignment="Center">
+                                    <Border x:Name="HeaderAvatarPrimary0"
+                                            Width="16"
+                                            Height="16"
+                                            CornerRadius="8"
+                                            HorizontalAlignment="Left"
+                                            VerticalAlignment="Center">
+                                        <Grid>
+                                            <Image x:Name="HeaderAvatarPrimary0Image"
+                                                   Stretch="Uniform"
+                                                   Margin="2"/>
+                                            <TextBlock x:Name="HeaderAvatarPrimary0Fallback"
+                                                       HorizontalAlignment="Center"
+                                                       VerticalAlignment="Center"
+                                                       FontSize="8.5"
+                                                       FontWeight="Bold"/>
+                                        </Grid>
+                                    </Border>
+
+                                    <Border x:Name="HeaderAvatarPrimary1"
+                                            Width="13"
+                                            Height="13"
+                                            CornerRadius="6.5"
+                                            HorizontalAlignment="Left"
+                                            VerticalAlignment="Center"
+                                            Margin="10,0,0,0">
+                                        <Grid>
+                                            <Image x:Name="HeaderAvatarPrimary1Image"
+                                                   Stretch="Uniform"
+                                                   Margin="2"/>
+                                            <TextBlock x:Name="HeaderAvatarPrimary1Fallback"
+                                                       HorizontalAlignment="Center"
+                                                       VerticalAlignment="Center"
+                                                       FontSize="7.5"
+                                                       FontWeight="Bold"/>
+                                        </Grid>
+                                    </Border>
+
+                                    <Border x:Name="HeaderAvatarPrimary2"
+                                            Width="10"
+                                            Height="10"
+                                            CornerRadius="5"
+                                            HorizontalAlignment="Left"
+                                            VerticalAlignment="Center"
+                                            Margin="18,0,0,0">
+                                        <Grid>
+                                            <Image x:Name="HeaderAvatarPrimary2Image"
+                                                   Stretch="Uniform"
+                                                   Margin="2"/>
+                                            <TextBlock x:Name="HeaderAvatarPrimary2Fallback"
+                                                       HorizontalAlignment="Center"
+                                                       VerticalAlignment="Center"
+                                                       FontSize="6.5"
+                                                       FontWeight="Bold"/>
+                                        </Grid>
+                                    </Border>
+
+                                    <Rectangle x:Name="HeaderAvatarOverflowFadePrimary"
+                                               Width="8"
+                                               HorizontalAlignment="Right"
+                                               VerticalAlignment="Stretch"
+                                               Visibility="Collapsed"/>
+                                </Grid>
+
+                                <StackPanel Grid.Column="1"
+                                            Orientation="Horizontal"
+                                            Spacing="4"
+                                            VerticalAlignment="Center">
+                                    <TextBlock x:Name="HeaderLabelPrimary"
+                                               VerticalAlignment="Center"
+                                               FontSize="10.5"
+                                               FontWeight="SemiBold"
+                                               TextTrimming="CharacterEllipsis"
+                                               MaxWidth="176"/>
+                                    <FontIcon x:Name="HeaderExpandGlyphPrimary"
+                                              Glyph="&#xE70D;"
+                                              FontSize="9"
+                                              VerticalAlignment="Center"
+                                              Visibility="Collapsed"/>
+                                </StackPanel>
+                            </Grid>
+                        </Grid>
+
+                        <Grid x:Name="HeaderSlotSecondary" Visibility="Collapsed">
+                            <Grid VerticalAlignment="Center">
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="34" />
+                                    <ColumnDefinition Width="Auto" />
+                                </Grid.ColumnDefinitions>
+
+                                <Grid Grid.Column="0"
+                                      Width="34"
+                                      Height="16"
+                                      VerticalAlignment="Center">
+                                    <Border x:Name="HeaderAvatarSecondary0"
+                                            Width="16"
+                                            Height="16"
+                                            CornerRadius="8"
+                                            HorizontalAlignment="Left"
+                                            VerticalAlignment="Center">
+                                        <Grid>
+                                            <Image x:Name="HeaderAvatarSecondary0Image"
+                                                   Stretch="Uniform"
+                                                   Margin="2"/>
+                                            <TextBlock x:Name="HeaderAvatarSecondary0Fallback"
+                                                       HorizontalAlignment="Center"
+                                                       VerticalAlignment="Center"
+                                                       FontSize="8.5"
+                                                       FontWeight="Bold"/>
+                                        </Grid>
+                                    </Border>
+
+                                    <Border x:Name="HeaderAvatarSecondary1"
+                                            Width="13"
+                                            Height="13"
+                                            CornerRadius="6.5"
+                                            HorizontalAlignment="Left"
+                                            VerticalAlignment="Center"
+                                            Margin="10,0,0,0">
+                                        <Grid>
+                                            <Image x:Name="HeaderAvatarSecondary1Image"
+                                                   Stretch="Uniform"
+                                                   Margin="2"/>
+                                            <TextBlock x:Name="HeaderAvatarSecondary1Fallback"
+                                                       HorizontalAlignment="Center"
+                                                       VerticalAlignment="Center"
+                                                       FontSize="7.5"
+                                                       FontWeight="Bold"/>
+                                        </Grid>
+                                    </Border>
+
+                                    <Border x:Name="HeaderAvatarSecondary2"
+                                            Width="10"
+                                            Height="10"
+                                            CornerRadius="5"
+                                            HorizontalAlignment="Left"
+                                            VerticalAlignment="Center"
+                                            Margin="18,0,0,0">
+                                        <Grid>
+                                            <Image x:Name="HeaderAvatarSecondary2Image"
+                                                   Stretch="Uniform"
+                                                   Margin="2"/>
+                                            <TextBlock x:Name="HeaderAvatarSecondary2Fallback"
+                                                       HorizontalAlignment="Center"
+                                                       VerticalAlignment="Center"
+                                                       FontSize="6.5"
+                                                       FontWeight="Bold"/>
+                                        </Grid>
+                                    </Border>
+
+                                    <Rectangle x:Name="HeaderAvatarOverflowFadeSecondary"
+                                               Width="8"
+                                               HorizontalAlignment="Right"
+                                               VerticalAlignment="Stretch"
+                                               Visibility="Collapsed"/>
+                                </Grid>
+
+                                <StackPanel Grid.Column="1"
+                                            Orientation="Horizontal"
+                                            Spacing="4"
+                                            VerticalAlignment="Center">
+                                    <TextBlock x:Name="HeaderLabelSecondary"
+                                               VerticalAlignment="Center"
+                                               FontSize="10.5"
+                                               FontWeight="SemiBold"
+                                               TextTrimming="CharacterEllipsis"
+                                               MaxWidth="176"/>
+                                    <FontIcon x:Name="HeaderExpandGlyphSecondary"
+                                              Glyph="&#xE70D;"
+                                              FontSize="9"
+                                              VerticalAlignment="Center"
+                                              Visibility="Collapsed"/>
+                                </StackPanel>
+                            </Grid>
+                        </Grid>
+                    </Grid>
+                </Border>
+            </Button>
+
             <Grid x:Name="MetadataViewport"
                   Margin="18,0,18,0"
                   SizeChanged="MetadataViewport_SizeChanged">
                 <Grid x:Name="MetadataSlotPrimary">
                     <StackPanel VerticalAlignment="Center" HorizontalAlignment="Center">
-                        <TextBlock x:Name="HeaderStatusTextPrimary" Text="Now Playing" Foreground="Gray" FontSize="10" HorizontalAlignment="Center" TextAlignment="Center" TextTrimming="CharacterEllipsis" MaxWidth="320"/>
                         <TextBlock x:Name="MusicTitleTextPrimary" Text="No Media" Foreground="White" FontSize="16" FontWeight="Bold" HorizontalAlignment="Center" TextAlignment="Center" TextTrimming="CharacterEllipsis" MaxWidth="320"/>
                         <TextBlock x:Name="ArtistNameTextPrimary" Text="Artist Name" Foreground="LightGray" FontSize="12" HorizontalAlignment="Center" TextAlignment="Center" TextTrimming="CharacterEllipsis" MaxWidth="320"/>
                     </StackPanel>
@@ -22,7 +245,6 @@
 
                 <Grid x:Name="MetadataSlotSecondary" Visibility="Collapsed">
                     <StackPanel VerticalAlignment="Center" HorizontalAlignment="Center">
-                        <TextBlock x:Name="HeaderStatusTextSecondary" Text="Now Playing" Foreground="Gray" FontSize="10" HorizontalAlignment="Center" TextAlignment="Center" TextTrimming="CharacterEllipsis" MaxWidth="320"/>
                         <TextBlock x:Name="MusicTitleTextSecondary" Text="No Media" Foreground="White" FontSize="16" FontWeight="Bold" HorizontalAlignment="Center" TextAlignment="Center" TextTrimming="CharacterEllipsis" MaxWidth="320"/>
                         <TextBlock x:Name="ArtistNameTextSecondary" Text="Artist Name" Foreground="LightGray" FontSize="12" HorizontalAlignment="Center" TextAlignment="Center" TextTrimming="CharacterEllipsis" MaxWidth="320"/>
                     </StackPanel>
