@@ -25,8 +25,18 @@ It supports:
 ## Run Locally
 
 ```powershell
-dotnet build wisland.csproj -c Debug -p:Platform=x64
-dotnet run --project wisland.csproj -c Debug -p:Platform=x64
+dotnet build wisland.csproj -c Debug -p:Platform=x64 -p:SelfContained=false -p:UseAppHost=false
+dotnet run --project wisland.csproj -c Debug -p:Platform=x64 -p:SelfContained=false -p:UseAppHost=false
+```
+
+## Build Hygiene
+
+- The repo uses the standard .NET build outputs under `bin/` and `obj/`.
+- Do not introduce repo-local verification trees such as `bin_verify/`, `obj_verify/`, or `build-verification/` just to work around file locks.
+- If `wisland.dll` is locked by a running app or Visual Studio and you only need a compile/codegen check, use:
+
+```powershell
+dotnet msbuild wisland.csproj /t:Compile /p:Configuration=Debug /p:Platform=x64 /p:SelfContained=false /p:UseAppHost=false
 ```
 
 ## Documentation Map

@@ -447,6 +447,7 @@ These are the rules that contributors should preserve:
 5. Settings persistence should remain small, explicit, and tolerant of corruption.
 6. Service failures should log and degrade gracefully rather than crash the process.
 7. Transport controls and progress always follow the focused displayed session, while docked new-track notifications follow the system current session.
+8. Local development uses the standard `bin/` and `obj/` output trees; do not add repo-local alternate build-output directories to dodge file locks.
 
 ## 10. Fast Change Guide
 
@@ -475,6 +476,7 @@ If you are working quickly with an AI assistant, use this order:
 4. Preserve the current placement of responsibilities before introducing a new pattern.
 5. Prefer small, local edits over broad architectural rewrites.
 6. Update docs when you change behavior, module ownership, or a contributor-facing invariant.
+7. Prefer standard `dotnet build` outputs; if you only need a compile check while the app is running, use `dotnet msbuild /t:Compile` instead of creating ad-hoc output folders inside the repo.
 
 The best "vibe coding" approach for this codebase is not "rewrite everything into patterns". It is:
 

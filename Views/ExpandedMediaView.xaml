@@ -44,7 +44,7 @@
                         BorderThickness="1">
                     <Grid x:Name="HeaderChipContentRoot"
                           Height="20"
-                          HorizontalAlignment="Center"
+                          HorizontalAlignment="Left"
                           ColumnSpacing="4">
                         <Grid.ColumnDefinitions>
                             <ColumnDefinition Width="34" />

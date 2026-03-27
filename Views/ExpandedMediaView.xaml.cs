@@ -49,9 +49,9 @@ namespace wisland.Views
         private CubicBezierEasingFunction? _avatarEnterEasing;
         private CubicBezierEasingFunction? _avatarExitEasing;
         private long _avatarTransitionToken;
-        private Visual? _headerChipContentVisual;
-        private CubicBezierEasingFunction? _headerChipContentGrowEasing;
-        private CubicBezierEasingFunction? _headerChipContentShrinkEasing;
+        private Visual? _headerLabelShiftVisual;
+        private CubicBezierEasingFunction? _headerLabelShiftGrowEasing;
+        private CubicBezierEasingFunction? _headerLabelShiftShrinkEasing;
         private Storyboard? _headerChipWidthStoryboard;
         private double _headerChipWidth = double.NaN;
 
@@ -180,11 +180,19 @@ namespace wisland.Views
             if (direction == ContentTransitionDirection.None)
             {
                 _headerLabelTransition.ApplyImmediately(slotIndex => ApplyHeaderTextSnapshotToSlot(slotIndex, snapshot));
-                AnimateHeaderChipWidth(targetWidth, currentContentWidth, targetContentWidth, animateContentShift: true);
+                AnimateHeaderChipWidth(
+                    targetWidth,
+                    currentContentWidth,
+                    targetContentWidth,
+                    animateLabelShift: true);
                 return true;
             }
 
-            AnimateHeaderChipWidth(targetWidth, currentContentWidth, targetContentWidth, animateContentShift: false);
+            AnimateHeaderChipWidth(
+                targetWidth,
+                currentContentWidth,
+                targetContentWidth,
+                animateLabelShift: false);
             _headerLabelTransition.Transition(direction, slotIndex => ApplyHeaderTextSnapshotToSlot(slotIndex, snapshot));
             return true;
         }
@@ -259,7 +267,7 @@ namespace wisland.Views
             _metadataTransition.UpdateViewportBounds();
             _headerLabelTransition.Initialize();
             _headerLabelTransition.UpdateViewportBounds();
-            InitializeHeaderChipContentMotion();
+            InitializeHeaderLabelShiftMotion();
             InitializeHeaderAvatarStrip();
             UpdateHeaderAvatarViewportBounds();
             ApplyAvatarStripSnapshotImmediately(_avatarStripSnapshot);
@@ -280,22 +288,22 @@ namespace wisland.Views
         private void HeaderAvatarViewport_SizeChanged(object sender, SizeChangedEventArgs e)
             => UpdateHeaderAvatarViewportBounds();
 
-        private void InitializeHeaderChipContentMotion()
+        private void InitializeHeaderLabelShiftMotion()
         {
-            if (_headerChipContentVisual != null)
+            if (_headerLabelShiftVisual != null)
             {
                 return;
             }
 
-            ElementCompositionPreview.SetIsTranslationEnabled(HeaderChipContentRoot, true);
-            _headerChipContentVisual = ElementCompositionPreview.GetElementVisual(HeaderChipContentRoot);
-            Compositor compositor = _headerChipContentVisual.Compositor;
-            _headerChipContentGrowEasing = compositor.CreateCubicBezierEasingFunction(
+            ElementCompositionPreview.SetIsTranslationEnabled(HeaderLabelViewport, true);
+            _headerLabelShiftVisual = ElementCompositionPreview.GetElementVisual(HeaderLabelViewport);
+            Compositor compositor = _headerLabelShiftVisual.Compositor;
+            _headerLabelShiftGrowEasing = compositor.CreateCubicBezierEasingFunction(
                 new Vector2(0.18f, 1.0f),
                 new Vector2(0.28f, 1.0f));
-            _headerChipContentShrinkEasing = compositor.CreateCubicBezierEasingFunction(
-                new Vector2(0.18f, 1.0f),
-                new Vector2(0.28f, 1.0f));
+            _headerLabelShiftShrinkEasing = compositor.CreateCubicBezierEasingFunction(
+                new Vector2(0.32f, 0.0f),
+                new Vector2(0.18f, 1.0f));
         }
 
         private void EnsureHeaderChipWidthInitialized(double targetWidth)
@@ -313,7 +321,7 @@ namespace wisland.Views
             {
                 _headerChipWidth = width;
                 HeaderChipBorder.Width = width;
-                ResetHeaderChipContentOffset();
+                ResetHeaderLabelShift();
             }
         }
 
@@ -322,14 +330,14 @@ namespace wisland.Views
             StopHeaderChipWidthAnimation();
             _headerChipWidth = targetWidth;
             HeaderChipBorder.Width = targetWidth;
-            ResetHeaderChipContentOffset();
+            ResetHeaderLabelShift();
         }
 
         private void AnimateHeaderChipWidth(
             double targetWidth,
             double currentContentWidth,
             double targetContentWidth,
-            bool animateContentShift)
+            bool animateLabelShift)
         {
             if (targetWidth <= 0)
             {
@@ -361,30 +369,23 @@ namespace wisland.Views
             Storyboard.SetTargetProperty(animation, nameof(Width));
             storyboard.Children.Add(animation);
 
-            if (animateContentShift)
+            double shiftDelta = (targetContentWidth - currentContentWidth) * 0.5;
+            if (animateLabelShift && Math.Abs(shiftDelta) >= 0.5)
             {
-                double shiftDelta = (targetContentWidth - currentContentWidth) * 0.5;
-                if (Math.Abs(shiftDelta) >= 0.5)
-                {
-                    StartHeaderChipContentShiftAnimation(
-                        shiftDelta,
-                        targetWidth > currentWidth);
-                }
-                else
-                {
-                    ResetHeaderChipContentOffset();
-                }
+                StartHeaderLabelShiftAnimation(
+                    shiftDelta,
+                    targetWidth > currentWidth);
             }
             else
             {
-                ResetHeaderChipContentOffset();
+                ResetHeaderLabelShift();
             }
 
             storyboard.Completed += (_, _) =>
             {
                 HeaderChipBorder.Width = targetWidth;
                 _headerChipWidth = targetWidth;
-                ResetHeaderChipContentOffset();
+                ResetHeaderLabelShift();
                 if (ReferenceEquals(_headerChipWidthStoryboard, storyboard))
                 {
                     _headerChipWidthStoryboard = null;
@@ -400,7 +401,7 @@ namespace wisland.Views
         {
             _headerChipWidthStoryboard?.Stop();
             _headerChipWidthStoryboard = null;
-            StopHeaderChipContentShiftAnimation();
+            StopHeaderLabelShiftAnimation();
         }
 
         private DoubleAnimationUsingKeyFrames CreateHeaderChipWidthAnimation(double currentWidth, double targetWidth)
@@ -452,41 +453,41 @@ namespace wisland.Views
             return animation;
         }
 
-        private void StartHeaderChipContentShiftAnimation(double shiftDelta, bool isGrowing)
+        private void StartHeaderLabelShiftAnimation(double shiftDelta, bool isGrowing)
         {
-            InitializeHeaderChipContentMotion();
-            if (_headerChipContentVisual == null)
+            InitializeHeaderLabelShiftMotion();
+            if (_headerLabelShiftVisual == null)
             {
                 return;
             }
 
-            StopHeaderChipContentShiftAnimation();
-            HeaderChipContentRoot.Translation = new Vector3((float)shiftDelta, 0.0f, 0.0f);
-            _headerChipContentVisual.StartAnimation(
+            StopHeaderLabelShiftAnimation();
+            HeaderLabelViewport.Translation = new Vector3((float)shiftDelta, 0.0f, 0.0f);
+            _headerLabelShiftVisual.StartAnimation(
                 "Translation",
-                CreateHeaderChipContentShiftAnimation((float)shiftDelta, isGrowing));
+                CreateHeaderLabelShiftAnimation((float)shiftDelta, isGrowing));
         }
 
-        private void StopHeaderChipContentShiftAnimation()
+        private void StopHeaderLabelShiftAnimation()
         {
-            if (_headerChipContentVisual == null)
+            if (_headerLabelShiftVisual == null)
             {
                 return;
             }
 
-            _headerChipContentVisual.StopAnimation("Translation");
-            HeaderChipContentRoot.Translation = Vector3.Zero;
+            _headerLabelShiftVisual.StopAnimation("Translation");
+            HeaderLabelViewport.Translation = Vector3.Zero;
         }
 
-        private void ResetHeaderChipContentOffset()
+        private void ResetHeaderLabelShift()
         {
-            InitializeHeaderChipContentMotion();
-            StopHeaderChipContentShiftAnimation();
+            InitializeHeaderLabelShiftMotion();
+            StopHeaderLabelShiftAnimation();
         }
 
-        private Vector3KeyFrameAnimation CreateHeaderChipContentShiftAnimation(float shiftDelta, bool isGrowing)
+        private Vector3KeyFrameAnimation CreateHeaderLabelShiftAnimation(float shiftDelta, bool isGrowing)
         {
-            Vector3KeyFrameAnimation animation = _headerChipContentVisual!.Compositor.CreateVector3KeyFrameAnimation();
+            Vector3KeyFrameAnimation animation = _headerLabelShiftVisual!.Compositor.CreateVector3KeyFrameAnimation();
             Vector3 start = new(shiftDelta, 0.0f, 0.0f);
             TimeSpan duration = TimeSpan.FromMilliseconds(IslandConfig.HeaderChipSizeTransitionDurationMs);
             animation.Duration = duration;
@@ -494,16 +495,17 @@ namespace wisland.Views
             if (isGrowing)
             {
                 animation.InsertKeyFrame(0.0f, start);
-                animation.InsertKeyFrame(IslandConfig.HeaderChipContentGrowDelayProgress, start);
-                animation.InsertKeyFrame(1.0f, Vector3.Zero, _headerChipContentGrowEasing!);
+                animation.InsertKeyFrame(IslandConfig.HeaderLabelShiftGrowDelayProgress, start);
+                animation.InsertKeyFrame(1.0f, Vector3.Zero, _headerLabelShiftGrowEasing!);
             }
             else
             {
                 animation.InsertKeyFrame(0.0f, start);
+                animation.InsertKeyFrame(IslandConfig.HeaderChipShrinkDelayProgress, start);
                 animation.InsertKeyFrame(
-                    IslandConfig.HeaderChipContentShrinkSettleProgress,
+                    IslandConfig.HeaderLabelShiftShrinkSettleProgress,
                     Vector3.Zero,
-                    _headerChipContentShrinkEasing!);
+                    _headerLabelShiftShrinkEasing!);
                 animation.InsertKeyFrame(1.0f, Vector3.Zero);
             }
 
@@ -1393,5 +1395,6 @@ namespace wisland.Views
             Entering,
             Exiting
         }
+
     }
 }

@@ -38,12 +38,7 @@ crash_log.txt
 app_crash_log.txt
 onlaunched_crash_log.txt
 build_detailed.log
-build-verification/
-bin_verify/
-obj_verify/
 
 # Mac
 .DS_Store
 
-# WinUIEx local clone (if you kept it)
-WinUIEx/
