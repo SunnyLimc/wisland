@@ -23,8 +23,8 @@
     <WindowsPackageType>None</WindowsPackageType>
     <WindowsAppSDKSelfContained>true</WindowsAppSDKSelfContained>
 
-    <!-- 2026 Best Practice: Exclude local source clones from build -->
-    <DefaultItemExcludes>$(DefaultItemExcludes);WinUIEx\**;build-verification\**;artifacts\**</DefaultItemExcludes>
+    <!-- Exclude local clones and ad-hoc verification outputs from SDK globbing -->
+    <DefaultItemExcludes>$(DefaultItemExcludes);WinUIEx\**;build-verification\**;artifacts\**;obj_verify\**;bin_verify\**</DefaultItemExcludes>
   </PropertyGroup>
 
   <ItemGroup>

@@ -6,8 +6,10 @@ It supports:
 
 - a compact always-on-top shell
 - hover-based expansion
-- system media metadata and playback controls
+- multi-session system media metadata and playback controls
+- a focused-session model with manual lock, wheel cycling, and session picker
 - direction-aware track switch animation in the expanded media panel
+- a compact expanded-header tab strip with best-effort source app icons
 - drag-to-reposition and top-edge docking
 - a thin hidden progress line when docked over maximized apps
 - tray actions, backdrop switching, saved settings, and local logging
@@ -44,7 +46,7 @@ Models/                  Shared constants, typed config values, and render state
 Services/                Controller, media integration, settings, window monitoring, appearance
 Views/                   Compact and expanded content views
 Controls/                Custom liquid progress bar and reusable content transitions
-Helpers/                 Logging and native window interop
+Helpers/                 Logging, native window interop, and media source icon resolution
 ```
 
 ## Documentation Strategy

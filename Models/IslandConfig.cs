@@ -53,6 +53,17 @@ namespace wisland.Models
             ClipInsetRatio: 0.10f,
             ClipInsetMin: 8.0f,
             ClipInsetMax: 18.0f);
+        public const int HeaderChipSizeTransitionDurationMs = 240;
+        public const float HeaderChipGrowSettleProgress = 0.68f;
+        public const float HeaderChipGrowSettleRatio = 0.90f;
+        public const float HeaderChipShrinkDelayProgress = 0.16f;
+        public const int HeaderAvatarTransitionDurationMs = 220;
+        public const float HeaderAvatarEnterTravel = 7.0f;
+        public const float HeaderAvatarExitTravel = 9.0f;
+        public const float HeaderAvatarEntryDelayProgress = 0.12f;
+        public const float HeaderAvatarExitFadeEndProgress = 0.56f;
+        public const float HeaderAvatarEnterScaleMultiplier = 0.88f;
+        public const float HeaderAvatarExitScaleMultiplier = 0.84f;
 
         // --- Positioning ---
         public const double DefaultY = 10;

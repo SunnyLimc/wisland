@@ -13,6 +13,8 @@ Wisland is a Windows desktop recreation of the "Dynamic Island" interaction patt
 - It can be dragged and docked to the top edge of the screen.
 - When docked and another app is maximized, it can collapse into a thin progress line.
 - It integrates with Windows media sessions for track metadata, playback state, and progress.
+- It can track multiple GSMTC sessions at once while exposing a single focused session to the shell.
+- The expanded header uses a compact tab-strip metaphor with stacked source icons and a lightweight session picker.
 - It supports a custom task-progress override, tray controls, backdrop switching, persisted settings, and local logging.
 
 ## 2. Architectural Style
@@ -54,6 +56,7 @@ MainWindow
   -> delegates backdrop/corner application to WindowAppearanceService
   -> delegates docked line-overlay ownership to ShellVisibilityService
   -> syncs logical state into XAML and AppWindow geometry
+  -> owns focused-session selection, manual lock timing, and session cycling rules
 
 IslandController
   -> stores logical flags
@@ -62,7 +65,11 @@ IslandController
 
 MediaService
   -> listens to Windows GSMTC session changes
-  -> exposes track metadata, playback state, and progress
+  -> tracks all available sessions
+  -> exposes immutable media session snapshots and the system current session key
+
+MediaSourceIconResolver
+  -> resolves best-effort source app icons for the expanded header tab strip
 
 SettingsService
   -> persists backdrop + position + dock state
@@ -104,6 +111,7 @@ wisland/
 │   ├── DirectionalTransitionProfile.cs
 │   ├── HoverMode.cs
 │   ├── IslandConfig.cs
+│   ├── MediaSessionSnapshot.cs
 │   ├── IslandState.cs
 │   ├── IslandThemeKind.cs
 │   ├── IslandVisualTokens.cs
@@ -123,6 +131,7 @@ wisland/
 │   └── LiquidProgressBar.xaml(.cs)
 ├── Helpers/
 │   ├── Logger.cs
+│   ├── MediaSourceIconResolver.cs
 │   ├── NativeLineWindow.cs
 │   └── WindowInterop.cs
 └── Assets/ + Properties/
@@ -202,6 +211,7 @@ This is one of the most sensitive parts of the app because it depends on:
 
 - Compact island shell
 - Expanded media panel
+- Focused multi-session media shell
 - Hover expansion
 - Temporary notification expansion
 - Drag and drop repositioning
@@ -238,6 +248,7 @@ Owns orchestration and side effects:
 - shell visibility coordination
 - render loop
 - media UI synchronization
+- focused-session selection, lock expiry, and wheel cycling
 - tray menu wiring
 - backdrop application
 - persistence save points
@@ -271,11 +282,12 @@ This class has no WinUI dependency and should stay that way.
 
 Wraps Windows GSMTC:
 
-- obtains the current media session
-- listens for session, media, playback, and timeline changes
-- exposes title, artist, header, play state, and progress
-- provides `PlayPauseAsync`, `SkipNextAsync`, and `SkipPreviousAsync`
-- extrapolates progress locally between timeline updates
+- requests the session manager and listens for manager/session changes
+- tracks all active sessions, not just the system current one
+- exposes immutable `MediaSessionSnapshot` values and `SystemCurrentSessionKey`
+- provides transport controls against an explicit session key
+- extrapolates progress locally between timeline updates for playing sessions
+- raises track notifications only for the system current session
 
 Failure mode is intentionally soft: errors are logged and the app keeps running.
 
@@ -329,19 +341,21 @@ This keeps `MainWindow` from directly managing the Win32 overlay window instance
 
 ### `CompactView`
 
-Minimal compact content surface. It now keeps its own two-slot text surface wired to the shared directional transition coordinator, so compact-state track or status animations can be added later without re-implementing composition choreography.
+Minimal compact content surface. It now keeps its own two-slot text surface wired to the shared directional transition coordinator and exposes a lightweight session-count hint for multi-source media states.
 
 ### `ExpandedMediaView`
 
 Expanded content surface for:
 
-- header text
+- compact tab-strip header with stacked source avatars
+- best-effort source app icons with monogram fallback
+- lightweight session picker flyout
 - title
 - artist
 - direction-aware metadata transition animation for previous / next track changes
 - previous / play-pause / next controls
 
-It raises button events and leaves command behavior to the parent window. It no longer owns low-level composition choreography directly; instead it supplies metadata snapshots to the shared directional transition coordinator.
+It raises button/session-selection events and leaves command behavior to the parent window. It no longer owns low-level composition choreography directly; instead it supplies header and metadata snapshots to shared directional transition coordinators.
 
 ### `DirectionalContentTransitionCoordinator`
 
@@ -432,6 +446,7 @@ These are the rules that contributors should preserve:
 4. Docked hidden mode is a two-window system: the main island window plus a `NativeLineWindow` managed by `ShellVisibilityService`.
 5. Settings persistence should remain small, explicit, and tolerant of corruption.
 6. Service failures should log and degrade gracefully rather than crash the process.
+7. Transport controls and progress always follow the focused displayed session, while docked new-track notifications follow the system current session.
 
 ## 10. Fast Change Guide
 
@@ -443,11 +458,11 @@ Use this table before editing:
 | Change animation feel | `Models/IslandConfig.cs`, `Services/IslandController.cs`, `Controls/LiquidProgressBar.xaml.cs` | Shell motion and progress motion are separate concerns. |
 | Change docking behavior | `Services/IslandController.cs`, `Services/ForegroundWindowMonitor.cs`, `MainWindow.State.cs`, `MainWindow.Animation.cs` | Controller handles logical targets, monitor handles foreground polling, MainWindow handles physical anchoring. |
 | Change hidden line mode | `MainWindow.State.cs`, `MainWindow.Animation.cs`, `Services/ShellVisibilityService.cs`, `Helpers/NativeLineWindow.cs`, `Services/WindowAppearanceService.cs` | Be careful with DPI, monitor math, and corner state transitions. |
-| Change compact UI | `Views/CompactView.xaml`, `Views/CompactView.xaml.cs`, `Controls/DirectionalContentTransitionCoordinator.cs` | Compact content owns text/content decisions; shared directional motion lives in the coordinator. |
-| Change expanded media UI | `Views/ExpandedMediaView.xaml`, `Views/ExpandedMediaView.xaml.cs`, `Controls/DirectionalContentTransitionCoordinator.cs` | View owns metadata/control structure; shared directional motion lives in the coordinator. |
+| Change compact UI | `Views/CompactView.xaml`, `Views/CompactView.xaml.cs`, `Controls/DirectionalContentTransitionCoordinator.cs` | Compact content owns text/count-hint decisions; shared directional motion lives in the coordinator. |
+| Change expanded media UI | `Views/ExpandedMediaView.xaml`, `Views/ExpandedMediaView.xaml.cs`, `Controls/DirectionalContentTransitionCoordinator.cs`, `Helpers/MediaSourceIconResolver.cs` | View owns header/metadata/control structure; shared directional motion lives in the coordinator. |
 | Change tray actions | `MainWindow.Tray.cs` | `CreateTrayMenu()` is the entrypoint. |
 | Add a persisted setting | `Services/SettingsService.cs`, `Models/BackdropType.cs`, `MainWindow.Lifetime.cs`, `MainWindow.Appearance.cs` | Keep persisted values typed at the shell boundary whenever possible. |
-| Change media behavior | `Services/MediaService.cs`, `MainWindow.Media.cs`, `MainWindow.Notifications.cs` | Service owns GSMTC; window decides how UI responds. |
+| Change media behavior | `Services/MediaService.cs`, `MainWindow.Media.cs`, `MainWindow.Notifications.cs` | Service owns GSMTC session discovery; window decides focused-session policy and UI response. |
 | Change diagnostics | `Helpers/Logger.cs` | Logging is local-file based. |
 
 ## 11. Best Practices For Vibe Coding In This Repo
