@@ -57,6 +57,8 @@ namespace wisland.Models
         public const float HeaderChipGrowSettleProgress = 0.68f;
         public const float HeaderChipGrowSettleRatio = 0.90f;
         public const float HeaderChipShrinkDelayProgress = 0.16f;
+        public const float HeaderChipContentGrowDelayProgress = 0.06f;
+        public const float HeaderChipContentShrinkSettleProgress = 0.72f;
         public const int HeaderAvatarTransitionDurationMs = 220;
         public const float HeaderAvatarEnterTravel = 7.0f;
         public const float HeaderAvatarExitTravel = 9.0f;

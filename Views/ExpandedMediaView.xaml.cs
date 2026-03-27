@@ -49,6 +49,9 @@ namespace wisland.Views
         private CubicBezierEasingFunction? _avatarEnterEasing;
         private CubicBezierEasingFunction? _avatarExitEasing;
         private long _avatarTransitionToken;
+        private Visual? _headerChipContentVisual;
+        private CubicBezierEasingFunction? _headerChipContentGrowEasing;
+        private CubicBezierEasingFunction? _headerChipContentShrinkEasing;
         private Storyboard? _headerChipWidthStoryboard;
         private double _headerChipWidth = double.NaN;
 
@@ -164,8 +167,11 @@ namespace wisland.Views
 
         private bool ApplyHeaderTextSnapshot(HeaderTextSnapshot snapshot, ContentTransitionDirection direction)
         {
+            HeaderTextSnapshot currentSnapshot = _headerTextSnapshots[_headerLabelTransition.ActiveSlotIndex];
+            double currentContentWidth = MeasureHeaderContentWidth(currentSnapshot);
+            double targetContentWidth = MeasureHeaderContentWidth(snapshot);
             double targetWidth = MeasureHeaderChipWidth(snapshot);
-            if (_headerTextSnapshots[_headerLabelTransition.ActiveSlotIndex].Equals(snapshot))
+            if (currentSnapshot.Equals(snapshot))
             {
                 EnsureHeaderChipWidthInitialized(targetWidth);
                 return false;
@@ -174,11 +180,11 @@ namespace wisland.Views
             if (direction == ContentTransitionDirection.None)
             {
                 _headerLabelTransition.ApplyImmediately(slotIndex => ApplyHeaderTextSnapshotToSlot(slotIndex, snapshot));
-                AnimateHeaderChipWidth(targetWidth);
+                AnimateHeaderChipWidth(targetWidth, currentContentWidth, targetContentWidth, animateContentShift: true);
                 return true;
             }
 
-            AnimateHeaderChipWidth(targetWidth);
+            AnimateHeaderChipWidth(targetWidth, currentContentWidth, targetContentWidth, animateContentShift: false);
             _headerLabelTransition.Transition(direction, slotIndex => ApplyHeaderTextSnapshotToSlot(slotIndex, snapshot));
             return true;
         }
@@ -253,6 +259,7 @@ namespace wisland.Views
             _metadataTransition.UpdateViewportBounds();
             _headerLabelTransition.Initialize();
             _headerLabelTransition.UpdateViewportBounds();
+            InitializeHeaderChipContentMotion();
             InitializeHeaderAvatarStrip();
             UpdateHeaderAvatarViewportBounds();
             ApplyAvatarStripSnapshotImmediately(_avatarStripSnapshot);
@@ -273,6 +280,24 @@ namespace wisland.Views
         private void HeaderAvatarViewport_SizeChanged(object sender, SizeChangedEventArgs e)
             => UpdateHeaderAvatarViewportBounds();
 
+        private void InitializeHeaderChipContentMotion()
+        {
+            if (_headerChipContentVisual != null)
+            {
+                return;
+            }
+
+            ElementCompositionPreview.SetIsTranslationEnabled(HeaderChipContentRoot, true);
+            _headerChipContentVisual = ElementCompositionPreview.GetElementVisual(HeaderChipContentRoot);
+            Compositor compositor = _headerChipContentVisual.Compositor;
+            _headerChipContentGrowEasing = compositor.CreateCubicBezierEasingFunction(
+                new Vector2(0.18f, 1.0f),
+                new Vector2(0.28f, 1.0f));
+            _headerChipContentShrinkEasing = compositor.CreateCubicBezierEasingFunction(
+                new Vector2(0.18f, 1.0f),
+                new Vector2(0.28f, 1.0f));
+        }
+
         private void EnsureHeaderChipWidthInitialized(double targetWidth)
         {
             if (!double.IsNaN(_headerChipWidth))
@@ -288,6 +313,7 @@ namespace wisland.Views
             {
                 _headerChipWidth = width;
                 HeaderChipBorder.Width = width;
+                ResetHeaderChipContentOffset();
             }
         }
 
@@ -296,9 +322,14 @@ namespace wisland.Views
             StopHeaderChipWidthAnimation();
             _headerChipWidth = targetWidth;
             HeaderChipBorder.Width = targetWidth;
+            ResetHeaderChipContentOffset();
         }
 
-        private void AnimateHeaderChipWidth(double targetWidth)
+        private void AnimateHeaderChipWidth(
+            double targetWidth,
+            double currentContentWidth,
+            double targetContentWidth,
+            bool animateContentShift)
         {
             if (targetWidth <= 0)
             {
@@ -329,10 +360,31 @@ namespace wisland.Views
             Storyboard.SetTarget(animation, HeaderChipBorder);
             Storyboard.SetTargetProperty(animation, nameof(Width));
             storyboard.Children.Add(animation);
+
+            if (animateContentShift)
+            {
+                double shiftDelta = (targetContentWidth - currentContentWidth) * 0.5;
+                if (Math.Abs(shiftDelta) >= 0.5)
+                {
+                    StartHeaderChipContentShiftAnimation(
+                        shiftDelta,
+                        targetWidth > currentWidth);
+                }
+                else
+                {
+                    ResetHeaderChipContentOffset();
+                }
+            }
+            else
+            {
+                ResetHeaderChipContentOffset();
+            }
+
             storyboard.Completed += (_, _) =>
             {
                 HeaderChipBorder.Width = targetWidth;
                 _headerChipWidth = targetWidth;
+                ResetHeaderChipContentOffset();
                 if (ReferenceEquals(_headerChipWidthStoryboard, storyboard))
                 {
                     _headerChipWidthStoryboard = null;
@@ -346,13 +398,9 @@ namespace wisland.Views
 
         private void StopHeaderChipWidthAnimation()
         {
-            if (_headerChipWidthStoryboard == null)
-            {
-                return;
-            }
-
-            _headerChipWidthStoryboard.Stop();
+            _headerChipWidthStoryboard?.Stop();
             _headerChipWidthStoryboard = null;
+            StopHeaderChipContentShiftAnimation();
         }
 
         private DoubleAnimationUsingKeyFrames CreateHeaderChipWidthAnimation(double currentWidth, double targetWidth)
@@ -400,6 +448,64 @@ namespace wisland.Views
                     ? CreateKeySpline(0.18, 1.0, 0.28, 1.0)
                     : CreateKeySpline(0.32, 0.0, 0.18, 1.0)
             });
+
+            return animation;
+        }
+
+        private void StartHeaderChipContentShiftAnimation(double shiftDelta, bool isGrowing)
+        {
+            InitializeHeaderChipContentMotion();
+            if (_headerChipContentVisual == null)
+            {
+                return;
+            }
+
+            StopHeaderChipContentShiftAnimation();
+            HeaderChipContentRoot.Translation = new Vector3((float)shiftDelta, 0.0f, 0.0f);
+            _headerChipContentVisual.StartAnimation(
+                "Translation",
+                CreateHeaderChipContentShiftAnimation((float)shiftDelta, isGrowing));
+        }
+
+        private void StopHeaderChipContentShiftAnimation()
+        {
+            if (_headerChipContentVisual == null)
+            {
+                return;
+            }
+
+            _headerChipContentVisual.StopAnimation("Translation");
+            HeaderChipContentRoot.Translation = Vector3.Zero;
+        }
+
+        private void ResetHeaderChipContentOffset()
+        {
+            InitializeHeaderChipContentMotion();
+            StopHeaderChipContentShiftAnimation();
+        }
+
+        private Vector3KeyFrameAnimation CreateHeaderChipContentShiftAnimation(float shiftDelta, bool isGrowing)
+        {
+            Vector3KeyFrameAnimation animation = _headerChipContentVisual!.Compositor.CreateVector3KeyFrameAnimation();
+            Vector3 start = new(shiftDelta, 0.0f, 0.0f);
+            TimeSpan duration = TimeSpan.FromMilliseconds(IslandConfig.HeaderChipSizeTransitionDurationMs);
+            animation.Duration = duration;
+
+            if (isGrowing)
+            {
+                animation.InsertKeyFrame(0.0f, start);
+                animation.InsertKeyFrame(IslandConfig.HeaderChipContentGrowDelayProgress, start);
+                animation.InsertKeyFrame(1.0f, Vector3.Zero, _headerChipContentGrowEasing!);
+            }
+            else
+            {
+                animation.InsertKeyFrame(0.0f, start);
+                animation.InsertKeyFrame(
+                    IslandConfig.HeaderChipContentShrinkSettleProgress,
+                    Vector3.Zero,
+                    _headerChipContentShrinkEasing!);
+                animation.InsertKeyFrame(1.0f, Vector3.Zero);
+            }
 
             return animation;
         }
@@ -850,6 +956,14 @@ namespace wisland.Views
 
         private double MeasureHeaderChipWidth(HeaderTextSnapshot snapshot)
         {
+            Thickness padding = HeaderChipBorder.Padding;
+            Thickness borderThickness = HeaderChipBorder.BorderThickness;
+            double chromeWidth = padding.Left + padding.Right + borderThickness.Left + borderThickness.Right;
+            return Math.Ceiling(MeasureHeaderContentWidth(snapshot) + chromeWidth);
+        }
+
+        private double MeasureHeaderContentWidth(HeaderTextSnapshot snapshot)
+        {
             StackPanel labelStack = new()
             {
                 Orientation = Orientation.Horizontal,
@@ -876,12 +990,7 @@ namespace wisland.Views
             }
 
             labelStack.Measure(new Size(double.PositiveInfinity, double.PositiveInfinity));
-
-            Thickness padding = HeaderChipBorder.Padding;
-            Thickness borderThickness = HeaderChipBorder.BorderThickness;
-            double contentWidth = 34.0 + 4.0 + labelStack.DesiredSize.Width;
-            double chromeWidth = padding.Left + padding.Right + borderThickness.Left + borderThickness.Right;
-            return Math.Ceiling(contentWidth + chromeWidth);
+            return Math.Ceiling(34.0 + 4.0 + labelStack.DesiredSize.Width);
         }
 
         private HeaderTextSnapshot CreateMediaHeaderTextSnapshot(MediaSessionSnapshot? session, int sessionCount)

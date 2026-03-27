@@ -42,7 +42,8 @@
                         Padding="7,1,8,1"
                         CornerRadius="11"
                         BorderThickness="1">
-                    <Grid Height="20"
+                    <Grid x:Name="HeaderChipContentRoot"
+                          Height="20"
                           HorizontalAlignment="Center"
                           ColumnSpacing="4">
                         <Grid.ColumnDefinitions>
