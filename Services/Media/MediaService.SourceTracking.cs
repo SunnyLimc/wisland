@@ -440,6 +440,11 @@ namespace wisland.Services
             if (tracked.Presence != MediaSessionPresence.Active)
             {
                 tracked.Presence = MediaSessionPresence.Active;
+                hasChanges = true;
+            }
+
+            if (tracked.MissingSinceUtc.HasValue)
+            {
                 tracked.MissingSinceUtc = null;
                 hasChanges = true;
             }
