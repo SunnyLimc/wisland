@@ -56,7 +56,8 @@ MainWindow
   -> delegates backdrop/corner application to WindowAppearanceService
   -> delegates docked line-overlay ownership to ShellVisibilityService
   -> syncs logical state into XAML and AppWindow geometry
-  -> owns focused-session selection, manual lock timing, stable visual session ordering, and session cycling rules
+  -> owns focused-session selection, manual lock timing, auto-focus debounce, stable visual session ordering, and session cycling rules
+  -> keeps the displayed source pinned during reconnect grace while the arbiter tracks the next auto winner
 
 IslandController
   -> stores logical flags
@@ -65,8 +66,10 @@ IslandController
 
 MediaService
   -> listens to Windows GSMTC session changes
-  -> tracks all available sessions
-  -> exposes immutable media session snapshots and the system current session key
+  -> maps raw GSMTC sessions onto stable logical source keys
+  -> keeps reconnecting sources alive in a short waiting state before pruning them
+  -> exposes immutable media session snapshots and the system current logical source key
+  -> runs short refresh bursts after session churn and transport skips to reduce late GSMTC updates
 
 MediaSourceIconResolver
   -> resolves best-effort source app icons for the expanded header tab strip
@@ -249,6 +252,7 @@ Owns orchestration and side effects:
 - render loop
 - media UI synchronization
 - focused-session selection, lock expiry, stable visual session ordering, and non-loop wheel cycling
+- auto-focus debounce and reconnect waiting-state handling
 - tray menu wiring
 - backdrop application
 - persistence save points
@@ -283,10 +287,12 @@ This class has no WinUI dependency and should stay that way.
 Wraps Windows GSMTC:
 
 - requests the session manager and listens for manager/session changes
-- tracks all active sessions, not just the system current one
+- maps raw GSMTC sessions onto stable logical sources instead of one-off raw session identities
+- keeps reconnecting sources in `WaitingForReconnect` for a short grace window before pruning
 - exposes immutable `MediaSessionSnapshot` values and `SystemCurrentSessionKey`
 - provides transport controls against an explicit session key
 - extrapolates progress locally between timeline updates for playing sessions
+- runs a short refresh burst after transport skips and manager session churn
 - raises track notifications only for the system current session
 
 Failure mode is intentionally soft: errors are logged and the app keeps running.

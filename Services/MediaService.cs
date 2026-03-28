@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.Globalization;
 using System.Linq;
+using System.Threading;
 using System.Threading.Tasks;
 using wisland.Helpers;
 using wisland.Models;
@@ -11,7 +12,7 @@ namespace wisland.Services
 {
     /// <summary>
     /// Encapsulates Windows GSMTC (Global System Media Transport Controls) API.
-    /// Tracks all available sessions and exposes immutable UI snapshots.
+    /// Tracks stable logical media sources even when raw GSMTC sessions temporarily disappear.
     /// </summary>
     public sealed class MediaService : IDisposable
     {
@@ -19,17 +20,27 @@ namespace wisland.Services
         private const string UnknownArtistName = "Unknown Artist";
 
         private readonly object _gate = new();
-        private readonly Dictionary<GlobalSystemMediaTransportControlsSession, TrackedSession> _trackedSessionsBySession =
+        private readonly SemaphoreSlim _refreshSemaphore = new(1, 1);
+        private readonly Dictionary<GlobalSystemMediaTransportControlsSession, TrackedSource> _trackedSourcesBySession =
             new(ReferenceEqualityComparer.Instance);
-        private readonly Dictionary<string, TrackedSession> _trackedSessionsByKey =
+        private readonly Dictionary<string, TrackedSource> _trackedSourcesByKey =
             new(StringComparer.Ordinal);
+        private readonly Timer _waitingExpiryTimer;
+        private readonly TimeSpan _missingSourceGrace = TimeSpan.FromMilliseconds(IslandConfig.MediaMissingGraceMs);
+        private readonly TimeSpan _refreshBurstDuration = TimeSpan.FromMilliseconds(IslandConfig.MediaRefreshBurstDurationMs);
+        private readonly TimeSpan _refreshBurstInterval = TimeSpan.FromMilliseconds(IslandConfig.MediaRefreshBurstIntervalMs);
 
         private GlobalSystemMediaTransportControlsSessionManager? _manager;
         private IReadOnlyList<MediaSessionSnapshot> _sessions = Array.Empty<MediaSessionSnapshot>();
         private string? _systemCurrentSessionKey;
+        private string? _displayedSessionKey;
         private string? _lastSystemCurrentTrackSignature;
         private int _nextSessionOrdinal = 1;
+        private CancellationTokenSource? _refreshBurstCts;
         private bool _isDisposed;
+
+        public MediaService()
+            => _waitingExpiryTimer = new Timer(OnWaitingExpiryTimer);
 
         public IReadOnlyList<MediaSessionSnapshot> Sessions
         {
@@ -59,18 +70,13 @@ namespace wisland.Services
             {
                 lock (_gate)
                 {
-                    return _trackedSessionsBySession.Count > 0;
+                    return _trackedSourcesByKey.Count > 0;
                 }
             }
         }
 
-        /// <summary>Raised when the tracked session collection or any session snapshot changes.</summary>
         public event Action? MediaChanged;
-
-        /// <summary>Raised when the tracked session collection or any session snapshot changes.</summary>
         public event Action? SessionsChanged;
-
-        /// <summary>Raised when the system current session switches to a different track.</summary>
         public event Action<string, string>? TrackChanged;
 
         public async Task InitializeAsync()
@@ -90,7 +96,7 @@ namespace wisland.Services
 
                 _manager.CurrentSessionChanged += OnCurrentSessionChanged;
                 _manager.SessionsChanged += OnSessionsChanged;
-                await RefreshSessionsAsync();
+                await RefreshSessionsAndStatesAsync();
             }
             catch (Exception ex)
             {
@@ -99,7 +105,7 @@ namespace wisland.Services
         }
 
         /// <summary>
-        /// Smoothly advances tracked progress locally for playing sessions.
+        /// Smoothly advances tracked progress locally for active playing sessions.
         /// </summary>
         public void Tick(double dt)
         {
@@ -110,9 +116,10 @@ namespace wisland.Services
 
             lock (_gate)
             {
-                foreach (TrackedSession tracked in _trackedSessionsByKey.Values)
+                foreach (TrackedSource tracked in _trackedSourcesByKey.Values)
                 {
-                    if (tracked.PlaybackStatus != GlobalSystemMediaTransportControlsSessionPlaybackStatus.Playing
+                    if (tracked.Presence != MediaSessionPresence.Active
+                        || tracked.PlaybackStatus != GlobalSystemMediaTransportControlsSessionPlaybackStatus.Playing
                         || tracked.DurationSeconds <= 0)
                     {
                         continue;
@@ -139,7 +146,7 @@ namespace wisland.Services
 
             lock (_gate)
             {
-                return _trackedSessionsByKey.TryGetValue(sessionKey, out TrackedSession? tracked)
+                return _trackedSourcesByKey.TryGetValue(sessionKey, out TrackedSource? tracked)
                     ? CreateSnapshot(tracked)
                     : null;
             }
@@ -154,7 +161,7 @@ namespace wisland.Services
 
             lock (_gate)
             {
-                return _trackedSessionsByKey.ContainsKey(sessionKey);
+                return _trackedSourcesByKey.ContainsKey(sessionKey);
             }
         }
 
@@ -167,9 +174,23 @@ namespace wisland.Services
 
             lock (_gate)
             {
-                return _trackedSessionsByKey.TryGetValue(sessionKey, out TrackedSession? tracked)
+                return _trackedSourcesByKey.TryGetValue(sessionKey, out TrackedSource? tracked)
+                    && tracked.Presence == MediaSessionPresence.Active
                     && tracked.PlaybackStatus == GlobalSystemMediaTransportControlsSessionPlaybackStatus.Playing
                     && tracked.DurationSeconds > 0;
+            }
+        }
+
+        public void SetDisplayedSessionKey(string? sessionKey)
+        {
+            lock (_gate)
+            {
+                _displayedSessionKey = sessionKey;
+                if (!string.IsNullOrWhiteSpace(sessionKey)
+                    && _trackedSourcesByKey.TryGetValue(sessionKey, out TrackedSource? tracked))
+                {
+                    tracked.LastDisplayedUtc = DateTimeOffset.UtcNow;
+                }
             }
         }
 
@@ -203,6 +224,10 @@ namespace wisland.Services
             {
                 Logger.Error(ex, "SkipNext failed");
             }
+            finally
+            {
+                StartRefreshBurst();
+            }
         }
 
         public async Task SkipPreviousAsync(string? sessionKey)
@@ -219,15 +244,48 @@ namespace wisland.Services
             {
                 Logger.Error(ex, "SkipPrevious failed");
             }
+            finally
+            {
+                StartRefreshBurst();
+            }
         }
 
         private void OnCurrentSessionChanged(GlobalSystemMediaTransportControlsSessionManager sender, CurrentSessionChangedEventArgs args)
-            => _ = RefreshSessionsAsync();
+        {
+            StartRefreshBurst();
+            _ = RefreshSessionsAndStatesAsync();
+        }
 
         private void OnSessionsChanged(GlobalSystemMediaTransportControlsSessionManager sender, SessionsChangedEventArgs args)
-            => _ = RefreshSessionsAsync();
+        {
+            StartRefreshBurst();
+            _ = RefreshSessionsAndStatesAsync();
+        }
 
-        private async Task RefreshSessionsAsync()
+        private void OnWaitingExpiryTimer(object? state)
+            => _ = PruneExpiredWaitingSourcesAsync();
+
+        private async Task RefreshSessionsAndStatesAsync()
+        {
+            if (_isDisposed)
+            {
+                return;
+            }
+
+            await _refreshSemaphore.WaitAsync().ConfigureAwait(false);
+            try
+            {
+                await RefreshSessionsCoreAsync().ConfigureAwait(false);
+            }
+            finally
+            {
+                _refreshSemaphore.Release();
+            }
+
+            await RefreshActiveSourcesAsync().ConfigureAwait(false);
+        }
+
+        private async Task RefreshSessionsCoreAsync()
         {
             try
             {
@@ -244,11 +302,27 @@ namespace wisland.Services
 
                 IReadOnlyList<GlobalSystemMediaTransportControlsSession> sessions = manager.GetSessions();
                 GlobalSystemMediaTransportControlsSession? currentSession = manager.GetCurrentSession();
+                DateTimeOffset nowUtc = DateTimeOffset.UtcNow;
+
+                HashSet<GlobalSystemMediaTransportControlsSession> knownSessions;
+                lock (_gate)
+                {
+                    knownSessions = new HashSet<GlobalSystemMediaTransportControlsSession>(
+                        _trackedSourcesBySession.Keys,
+                        ReferenceEqualityComparer.Instance);
+                }
+
+                List<GlobalSystemMediaTransportControlsSession> newSessions = sessions
+                    .Where(session => !knownSessions.Contains(session))
+                    .ToList();
+                Dictionary<GlobalSystemMediaTransportControlsSession, PrefetchedSessionState> prefetchedStates =
+                    await PrefetchSessionStatesAsync(newSessions).ConfigureAwait(false);
 
                 List<GlobalSystemMediaTransportControlsSession> sessionsToAttach = new();
                 List<GlobalSystemMediaTransportControlsSession> sessionsToDetach = new();
                 ServiceChangeResult changeResult = default;
                 bool hasChanges = false;
+                bool shouldStartBurst = false;
 
                 lock (_gate)
                 {
@@ -262,45 +336,63 @@ namespace wisland.Services
 
                     foreach (GlobalSystemMediaTransportControlsSession session in sessions)
                     {
-                        if (!_trackedSessionsBySession.TryGetValue(session, out TrackedSession? tracked))
+                        if (!_trackedSourcesBySession.TryGetValue(session, out TrackedSource? tracked))
                         {
-                            tracked = new TrackedSession(
-                                session,
-                                CreateSessionKey_NoLock(),
-                                session.SourceAppUserModelId,
-                                ResolveSourceName(session.SourceAppUserModelId));
+                            PrefetchedSessionState prefetchedState = prefetchedStates.TryGetValue(session, out PrefetchedSessionState state)
+                                ? state
+                                : PrefetchedSessionState.Empty;
 
-                            _trackedSessionsBySession.Add(session, tracked);
-                            _trackedSessionsByKey.Add(tracked.SessionKey, tracked);
+                            tracked = MatchWaitingSource_NoLock(session, prefetchedState, nowUtc, out bool provisionalReconnect)
+                                ?? CreateTrackedSource_NoLock(session, nowUtc);
+
+                            BindSourceToRawSession_NoLock(tracked, session, prefetchedState, nowUtc, provisionalReconnect);
+                            _trackedSourcesBySession[session] = tracked;
                             sessionsToAttach.Add(session);
                             hasChanges = true;
                         }
-
-                        bool isSystemCurrent = ReferenceEquals(session, currentSession);
-                        if (tracked.IsSystemCurrent != isSystemCurrent)
+                        else
                         {
-                            tracked.IsSystemCurrent = isSystemCurrent;
-                            hasChanges = true;
+                            tracked.LastSeenUtc = nowUtc;
                         }
                     }
 
-                    GlobalSystemMediaTransportControlsSession[] removedSessions = _trackedSessionsBySession.Keys
+                    GlobalSystemMediaTransportControlsSession[] removedSessions = _trackedSourcesBySession.Keys
                         .Where(session => !activeSessions.Contains(session))
                         .ToArray();
 
                     foreach (GlobalSystemMediaTransportControlsSession session in removedSessions)
                     {
-                        TrackedSession tracked = _trackedSessionsBySession[session];
-                        _trackedSessionsBySession.Remove(session);
-                        _trackedSessionsByKey.Remove(tracked.SessionKey);
+                        TrackedSource tracked = _trackedSourcesBySession[session];
+                        _trackedSourcesBySession.Remove(session);
+                        if (ReferenceEquals(tracked.Session, session))
+                        {
+                            tracked.Session = null;
+                        }
+
                         sessionsToDetach.Add(session);
+                        shouldStartBurst |= string.Equals(tracked.SessionKey, _displayedSessionKey, StringComparison.Ordinal)
+                            || tracked.IsSystemCurrent;
+                        EnterWaitingState_NoLock(tracked, nowUtc);
                         hasChanges = true;
                     }
 
-                    string? nextSystemCurrentKey = currentSession != null
-                        && _trackedSessionsBySession.TryGetValue(currentSession, out TrackedSession? currentTracked)
-                            ? currentTracked.SessionKey
-                            : null;
+                    CleanupExpiredWaitingSources_NoLock(nowUtc, ref hasChanges);
+
+                    string? nextSystemCurrentKey = ResolveSystemCurrentKey_NoLock(currentSession, nowUtc);
+                    foreach (TrackedSource tracked in _trackedSourcesByKey.Values)
+                    {
+                        bool isSystemCurrent = string.Equals(tracked.SessionKey, nextSystemCurrentKey, StringComparison.Ordinal);
+                        if (tracked.IsSystemCurrent != isSystemCurrent)
+                        {
+                            tracked.IsSystemCurrent = isSystemCurrent;
+                            hasChanges = true;
+                        }
+
+                        if (isSystemCurrent)
+                        {
+                            tracked.LastSystemCurrentUtc = nowUtc;
+                        }
+                    }
 
                     if (!string.Equals(_systemCurrentSessionKey, nextSystemCurrentKey, StringComparison.Ordinal))
                     {
@@ -322,19 +414,159 @@ namespace wisland.Services
                 foreach (GlobalSystemMediaTransportControlsSession session in sessionsToAttach)
                 {
                     AttachSession(session);
-                    UpdatePlaybackState(session);
-                    UpdateTimelineState(session);
-                    _ = UpdateMediaPropertiesAsync(session);
                 }
 
                 if (hasChanges)
                 {
                     DispatchChange(changeResult);
                 }
+
+                if (shouldStartBurst)
+                {
+                    StartRefreshBurst();
+                }
             }
             catch (Exception ex)
             {
                 Logger.Error(ex, "Failed to refresh media sessions");
+            }
+        }
+
+        private async Task RefreshActiveSourcesAsync()
+        {
+            GlobalSystemMediaTransportControlsSession[] sessions;
+            lock (_gate)
+            {
+                sessions = _trackedSourcesBySession.Keys.ToArray();
+            }
+
+            foreach (GlobalSystemMediaTransportControlsSession session in sessions)
+            {
+                UpdatePlaybackState(session);
+                UpdateTimelineState(session);
+                await UpdateMediaPropertiesAsync(session).ConfigureAwait(false);
+            }
+        }
+
+        private void StartRefreshBurst()
+        {
+            if (_isDisposed)
+            {
+                return;
+            }
+
+            CancellationTokenSource? previousCts;
+            CancellationTokenSource nextCts = new();
+            lock (_gate)
+            {
+                previousCts = _refreshBurstCts;
+                _refreshBurstCts = nextCts;
+            }
+
+            previousCts?.Cancel();
+            previousCts?.Dispose();
+            _ = RunRefreshBurstAsync(nextCts);
+        }
+
+        private async Task RunRefreshBurstAsync(CancellationTokenSource refreshBurstCts)
+        {
+            try
+            {
+                DateTimeOffset deadlineUtc = DateTimeOffset.UtcNow + _refreshBurstDuration;
+                while (!refreshBurstCts.IsCancellationRequested && !_isDisposed)
+                {
+                    await RefreshSessionsAndStatesAsync().ConfigureAwait(false);
+
+                    TimeSpan remaining = deadlineUtc - DateTimeOffset.UtcNow;
+                    if (remaining <= TimeSpan.Zero)
+                    {
+                        break;
+                    }
+
+                    TimeSpan delay = remaining < _refreshBurstInterval
+                        ? remaining
+                        : _refreshBurstInterval;
+                    await Task.Delay(delay, refreshBurstCts.Token).ConfigureAwait(false);
+                }
+            }
+            catch (OperationCanceledException)
+            {
+            }
+            catch (Exception ex)
+            {
+                Logger.Error(ex, "Refresh burst failed");
+            }
+            finally
+            {
+                lock (_gate)
+                {
+                    if (ReferenceEquals(_refreshBurstCts, refreshBurstCts))
+                    {
+                        _refreshBurstCts = null;
+                    }
+                }
+
+                refreshBurstCts.Dispose();
+            }
+        }
+
+        private static async Task<Dictionary<GlobalSystemMediaTransportControlsSession, PrefetchedSessionState>> PrefetchSessionStatesAsync(
+            IReadOnlyList<GlobalSystemMediaTransportControlsSession> sessions)
+        {
+            if (sessions.Count == 0)
+            {
+                return new Dictionary<GlobalSystemMediaTransportControlsSession, PrefetchedSessionState>(
+                    ReferenceEqualityComparer.Instance);
+            }
+
+            Task<(GlobalSystemMediaTransportControlsSession Session, PrefetchedSessionState State)>[] tasks = sessions
+                .Select(async session => (session, await CaptureSessionStateAsync(session).ConfigureAwait(false)))
+                .ToArray();
+
+            Dictionary<GlobalSystemMediaTransportControlsSession, PrefetchedSessionState> result =
+                new(ReferenceEqualityComparer.Instance);
+            foreach ((GlobalSystemMediaTransportControlsSession session, PrefetchedSessionState state) in await Task.WhenAll(tasks).ConfigureAwait(false))
+            {
+                result[session] = state;
+            }
+
+            return result;
+        }
+
+        private static async Task<PrefetchedSessionState> CaptureSessionStateAsync(GlobalSystemMediaTransportControlsSession session)
+        {
+            try
+            {
+                GlobalSystemMediaTransportControlsSessionPlaybackStatus playbackStatus =
+                    session.GetPlaybackInfo()?.PlaybackStatus
+                    ?? GlobalSystemMediaTransportControlsSessionPlaybackStatus.Closed;
+
+                GlobalSystemMediaTransportControlsSessionTimelineProperties? timeline = session.GetTimelineProperties();
+                bool hasTimeline = timeline != null && timeline.EndTime.TotalSeconds > 0;
+                double positionSeconds = hasTimeline ? timeline!.Position.TotalSeconds : 0;
+                double durationSeconds = hasTimeline ? timeline!.EndTime.TotalSeconds : 0;
+
+                GlobalSystemMediaTransportControlsSessionMediaProperties? mediaProperties =
+                    await session.TryGetMediaPropertiesAsync();
+                string title = string.IsNullOrWhiteSpace(mediaProperties?.Title)
+                    ? UnknownTrackTitle
+                    : mediaProperties!.Title;
+                string artist = string.IsNullOrWhiteSpace(mediaProperties?.Artist)
+                    ? UnknownArtistName
+                    : mediaProperties!.Artist;
+
+                return new PrefetchedSessionState(
+                    title,
+                    artist,
+                    playbackStatus,
+                    hasTimeline,
+                    positionSeconds,
+                    durationSeconds);
+            }
+            catch (Exception ex)
+            {
+                Logger.Warn($"Falling back to partial session state during prefetch: {ex.Message}");
+                return PrefetchedSessionState.Empty;
             }
         }
 
@@ -352,6 +584,24 @@ namespace wisland.Services
             }
         }
 
+        private void DetachSession(GlobalSystemMediaTransportControlsSession? session)
+        {
+            if (session == null)
+            {
+                return;
+            }
+
+            TryDetachHandler(
+                () => session.MediaPropertiesChanged -= OnMediaPropertiesChanged,
+                "MediaPropertiesChanged");
+            TryDetachHandler(
+                () => session.PlaybackInfoChanged -= OnPlaybackInfoChanged,
+                "PlaybackInfoChanged");
+            TryDetachHandler(
+                () => session.TimelinePropertiesChanged -= OnTimelinePropertiesChanged,
+                "TimelinePropertiesChanged");
+        }
+
         private void OnMediaPropertiesChanged(GlobalSystemMediaTransportControlsSession sender, MediaPropertiesChangedEventArgs args)
             => _ = UpdateMediaPropertiesAsync(sender);
 
@@ -365,32 +615,29 @@ namespace wisland.Services
         {
             try
             {
-                var props = await session.TryGetMediaPropertiesAsync();
+                GlobalSystemMediaTransportControlsSessionMediaProperties? props =
+                    await session.TryGetMediaPropertiesAsync();
                 if (props == null)
                 {
                     return;
                 }
 
+                string nextTitle = string.IsNullOrWhiteSpace(props.Title) ? UnknownTrackTitle : props.Title;
+                string nextArtist = string.IsNullOrWhiteSpace(props.Artist) ? UnknownArtistName : props.Artist;
+                DateTimeOffset nowUtc = DateTimeOffset.UtcNow;
                 ServiceChangeResult changeResult = default;
                 bool hasChanges = false;
 
                 lock (_gate)
                 {
-                    if (_isDisposed || !_trackedSessionsBySession.TryGetValue(session, out TrackedSession? tracked))
+                    if (_isDisposed || !_trackedSourcesBySession.TryGetValue(session, out TrackedSource? tracked))
                     {
                         return;
                     }
 
-                    string nextTitle = string.IsNullOrWhiteSpace(props.Title) ? UnknownTrackTitle : props.Title;
-                    string nextArtist = string.IsNullOrWhiteSpace(props.Artist) ? UnknownArtistName : props.Artist;
-
-                    if (!string.Equals(tracked.Title, nextTitle, StringComparison.Ordinal)
-                        || !string.Equals(tracked.Artist, nextArtist, StringComparison.Ordinal))
+                    hasChanges = ApplyMediaProperties_NoLock(tracked, nextTitle, nextArtist, nowUtc);
+                    if (hasChanges)
                     {
-                        tracked.Title = nextTitle;
-                        tracked.Artist = nextArtist;
-                        tracked.LastActivityUtc = DateTimeOffset.UtcNow;
-                        hasChanges = true;
                         changeResult = PrepareStateChange_NoLock();
                     }
                 }
@@ -410,25 +657,23 @@ namespace wisland.Services
         {
             try
             {
-                var info = session.GetPlaybackInfo();
                 GlobalSystemMediaTransportControlsSessionPlaybackStatus nextStatus =
-                    info?.PlaybackStatus ?? GlobalSystemMediaTransportControlsSessionPlaybackStatus.Closed;
-
+                    session.GetPlaybackInfo()?.PlaybackStatus
+                    ?? GlobalSystemMediaTransportControlsSessionPlaybackStatus.Closed;
+                DateTimeOffset nowUtc = DateTimeOffset.UtcNow;
                 ServiceChangeResult changeResult = default;
                 bool hasChanges = false;
 
                 lock (_gate)
                 {
-                    if (_isDisposed || !_trackedSessionsBySession.TryGetValue(session, out TrackedSession? tracked))
+                    if (_isDisposed || !_trackedSourcesBySession.TryGetValue(session, out TrackedSource? tracked))
                     {
                         return;
                     }
 
-                    if (tracked.PlaybackStatus != nextStatus)
+                    hasChanges = ApplyPlaybackState_NoLock(tracked, nextStatus, nowUtc);
+                    if (hasChanges)
                     {
-                        tracked.PlaybackStatus = nextStatus;
-                        tracked.LastActivityUtc = DateTimeOffset.UtcNow;
-                        hasChanges = true;
                         changeResult = PrepareStateChange_NoLock();
                     }
                 }
@@ -448,45 +693,31 @@ namespace wisland.Services
         {
             try
             {
-                var timeline = session.GetTimelineProperties();
+                GlobalSystemMediaTransportControlsSessionTimelineProperties? timeline = session.GetTimelineProperties();
                 bool hasTimeline = timeline != null && timeline.EndTime.TotalSeconds > 0;
                 double nextPositionSeconds = hasTimeline ? timeline!.Position.TotalSeconds : 0;
                 double nextDurationSeconds = hasTimeline ? timeline!.EndTime.TotalSeconds : 0;
-                double nextProgress = hasTimeline && nextDurationSeconds > 0
-                    ? nextPositionSeconds / nextDurationSeconds
-                    : 0;
-
+                DateTimeOffset nowUtc = DateTimeOffset.UtcNow;
                 ServiceChangeResult changeResult = default;
                 bool hasChanges = false;
 
                 lock (_gate)
                 {
-                    if (_isDisposed || !_trackedSessionsBySession.TryGetValue(session, out TrackedSession? tracked))
+                    if (_isDisposed || !_trackedSourcesBySession.TryGetValue(session, out TrackedSource? tracked))
                     {
                         return;
                     }
 
-                    bool timelineAvailabilityChanged = tracked.HasTimeline != hasTimeline;
-                    bool durationChanged = Math.Abs(tracked.DurationSeconds - nextDurationSeconds) > 0.001;
-                    bool positionChanged = Math.Abs(tracked.CurrentPositionSeconds - nextPositionSeconds) > 0.001;
-
-                    if (!timelineAvailabilityChanged && !durationChanged && !positionChanged)
+                    hasChanges = ApplyTimelineState_NoLock(
+                        tracked,
+                        hasTimeline,
+                        nextPositionSeconds,
+                        nextDurationSeconds,
+                        nowUtc);
+                    if (hasChanges)
                     {
-                        return;
+                        changeResult = PrepareStateChange_NoLock();
                     }
-
-                    tracked.HasTimeline = hasTimeline;
-                    tracked.CurrentPositionSeconds = nextPositionSeconds;
-                    tracked.DurationSeconds = nextDurationSeconds;
-                    tracked.Progress = nextProgress;
-
-                    if (timelineAvailabilityChanged || durationChanged)
-                    {
-                        tracked.LastActivityUtc = DateTimeOffset.UtcNow;
-                    }
-
-                    hasChanges = true;
-                    changeResult = PrepareStateChange_NoLock();
                 }
 
                 if (hasChanges)
@@ -500,9 +731,362 @@ namespace wisland.Services
             }
         }
 
+        private async Task PruneExpiredWaitingSourcesAsync()
+        {
+            ServiceChangeResult changeResult = default;
+            bool hasChanges = false;
+
+            lock (_gate)
+            {
+                if (_isDisposed)
+                {
+                    return;
+                }
+
+                CleanupExpiredWaitingSources_NoLock(DateTimeOffset.UtcNow, ref hasChanges);
+                if (hasChanges)
+                {
+                    changeResult = PrepareStateChange_NoLock();
+                }
+            }
+
+            if (hasChanges)
+            {
+                DispatchChange(changeResult);
+            }
+
+            await RefreshSessionsAndStatesAsync().ConfigureAwait(false);
+        }
+
+        private TrackedSource? MatchWaitingSource_NoLock(
+            GlobalSystemMediaTransportControlsSession session,
+            PrefetchedSessionState prefetchedState,
+            DateTimeOffset nowUtc,
+            out bool provisionalReconnect)
+        {
+            provisionalReconnect = false;
+            string sourceAppId = session.SourceAppUserModelId;
+            List<TrackedSource> waitingCandidates = _trackedSourcesByKey.Values
+                .Where(source =>
+                    source.Presence == MediaSessionPresence.WaitingForReconnect
+                    && string.Equals(source.SourceAppId, sourceAppId, StringComparison.Ordinal)
+                    && !IsMissingGraceExpired_NoLock(source, nowUtc))
+                .OrderByDescending(source => source.MissingSinceUtc)
+                .ToList();
+
+            if (waitingCandidates.Count == 0)
+            {
+                return null;
+            }
+
+            if (prefetchedState.HasConcreteMetadata)
+            {
+                TrackedSource? exactMatch = waitingCandidates.FirstOrDefault(source =>
+                    string.Equals(source.Title, prefetchedState.Title, StringComparison.Ordinal)
+                    && string.Equals(source.Artist, prefetchedState.Artist, StringComparison.Ordinal));
+                if (exactMatch != null)
+                {
+                    return exactMatch;
+                }
+            }
+
+            TrackedSource? fallbackMatch = waitingCandidates
+                .Where(source => WasReconnectHintedRecently_NoLock(source, nowUtc))
+                .OrderByDescending(GetReconnectPriority_NoLock)
+                .ThenByDescending(source => source.MissingSinceUtc)
+                .FirstOrDefault();
+
+            if (fallbackMatch != null)
+            {
+                provisionalReconnect = true;
+            }
+
+            return fallbackMatch;
+        }
+
+        private static bool WasReconnectHintedRecently_NoLock(TrackedSource source, DateTimeOffset nowUtc)
+            => source.LastDisplayedUtc.HasValue
+                || source.LastSystemCurrentUtc.HasValue
+                || (source.MissingSinceUtc.HasValue && (nowUtc - source.MissingSinceUtc.Value) <= TimeSpan.FromMilliseconds(IslandConfig.MediaMissingGraceMs));
+
+        private static long GetReconnectPriority_NoLock(TrackedSource source)
+        {
+            DateTimeOffset displayed = source.LastDisplayedUtc ?? DateTimeOffset.MinValue;
+            DateTimeOffset systemCurrent = source.LastSystemCurrentUtc ?? DateTimeOffset.MinValue;
+            DateTimeOffset missing = source.MissingSinceUtc ?? DateTimeOffset.MinValue;
+            return Math.Max(displayed.UtcTicks, Math.Max(systemCurrent.UtcTicks, missing.UtcTicks));
+        }
+
+        private TrackedSource CreateTrackedSource_NoLock(GlobalSystemMediaTransportControlsSession session, DateTimeOffset nowUtc)
+        {
+            TrackedSource tracked = new(
+                CreateSessionKey_NoLock(),
+                session.SourceAppUserModelId,
+                ResolveSourceName(session.SourceAppUserModelId),
+                nowUtc);
+
+            _trackedSourcesByKey.Add(tracked.SessionKey, tracked);
+            return tracked;
+        }
+
+        private void BindSourceToRawSession_NoLock(
+            TrackedSource tracked,
+            GlobalSystemMediaTransportControlsSession session,
+            PrefetchedSessionState prefetchedState,
+            DateTimeOffset nowUtc,
+            bool provisionalReconnect)
+        {
+            tracked.Session = session;
+            tracked.SourceAppId = session.SourceAppUserModelId;
+            tracked.SourceName = ResolveSourceName(session.SourceAppUserModelId);
+            tracked.LastSeenUtc = nowUtc;
+
+            if (!provisionalReconnect)
+            {
+                tracked.Presence = MediaSessionPresence.Active;
+                tracked.MissingSinceUtc = null;
+                ResetPendingReconnect_NoLock(tracked);
+                ApplyMediaProperties_NoLock(tracked, prefetchedState.Title, prefetchedState.Artist, nowUtc);
+                ApplyPlaybackState_NoLock(tracked, prefetchedState.PlaybackStatus, nowUtc);
+                ApplyTimelineState_NoLock(
+                    tracked,
+                    prefetchedState.HasTimeline,
+                    prefetchedState.PositionSeconds,
+                    prefetchedState.DurationSeconds,
+                    nowUtc);
+                return;
+            }
+
+            tracked.HasPendingReconnect = true;
+            tracked.PendingTitle = prefetchedState.Title;
+            tracked.PendingArtist = prefetchedState.Artist;
+            tracked.PendingPlaybackStatus = prefetchedState.PlaybackStatus;
+            tracked.PendingHasTimeline = prefetchedState.HasTimeline;
+            tracked.PendingPositionSeconds = prefetchedState.PositionSeconds;
+            tracked.PendingDurationSeconds = prefetchedState.DurationSeconds;
+            TryFinalizePendingReconnect_NoLock(tracked, nowUtc);
+        }
+
+        private void EnterWaitingState_NoLock(TrackedSource tracked, DateTimeOffset nowUtc)
+        {
+            tracked.Presence = MediaSessionPresence.WaitingForReconnect;
+            tracked.MissingSinceUtc ??= nowUtc;
+            tracked.IsSystemCurrent = false;
+            if (tracked.HasPendingReconnect)
+            {
+                tracked.Session = null;
+            }
+        }
+
+        private bool ApplyMediaProperties_NoLock(TrackedSource tracked, string nextTitle, string nextArtist, DateTimeOffset nowUtc)
+        {
+            if (tracked.HasPendingReconnect)
+            {
+                tracked.PendingTitle = nextTitle;
+                tracked.PendingArtist = nextArtist;
+                return TryFinalizePendingReconnect_NoLock(tracked, nowUtc);
+            }
+
+            if (string.Equals(tracked.Title, nextTitle, StringComparison.Ordinal)
+                && string.Equals(tracked.Artist, nextArtist, StringComparison.Ordinal))
+            {
+                return false;
+            }
+
+            tracked.Title = nextTitle;
+            tracked.Artist = nextArtist;
+            tracked.LastActivityUtc = nowUtc;
+            return true;
+        }
+
+        private bool ApplyPlaybackState_NoLock(
+            TrackedSource tracked,
+            GlobalSystemMediaTransportControlsSessionPlaybackStatus nextStatus,
+            DateTimeOffset nowUtc)
+        {
+            if (tracked.HasPendingReconnect)
+            {
+                tracked.PendingPlaybackStatus = nextStatus;
+                return TryFinalizePendingReconnect_NoLock(tracked, nowUtc);
+            }
+
+            if (tracked.PlaybackStatus == nextStatus)
+            {
+                return false;
+            }
+
+            tracked.PlaybackStatus = nextStatus;
+            tracked.LastActivityUtc = nowUtc;
+            return true;
+        }
+
+        private bool ApplyTimelineState_NoLock(
+            TrackedSource tracked,
+            bool hasTimeline,
+            double positionSeconds,
+            double durationSeconds,
+            DateTimeOffset nowUtc)
+        {
+            if (tracked.HasPendingReconnect)
+            {
+                tracked.PendingHasTimeline = hasTimeline;
+                tracked.PendingPositionSeconds = positionSeconds;
+                tracked.PendingDurationSeconds = durationSeconds;
+                return TryFinalizePendingReconnect_NoLock(tracked, nowUtc);
+            }
+
+            bool timelineAvailabilityChanged = tracked.HasTimeline != hasTimeline;
+            bool durationChanged = Math.Abs(tracked.DurationSeconds - durationSeconds) > 0.001;
+            bool positionChanged = Math.Abs(tracked.CurrentPositionSeconds - positionSeconds) > 0.001;
+
+            if (!timelineAvailabilityChanged && !durationChanged && !positionChanged)
+            {
+                return false;
+            }
+
+            tracked.HasTimeline = hasTimeline;
+            tracked.CurrentPositionSeconds = positionSeconds;
+            tracked.DurationSeconds = durationSeconds;
+            tracked.Progress = hasTimeline && durationSeconds > 0
+                ? positionSeconds / durationSeconds
+                : 0;
+
+            if (timelineAvailabilityChanged || durationChanged)
+            {
+                tracked.LastActivityUtc = nowUtc;
+            }
+
+            return true;
+        }
+
+        private bool TryFinalizePendingReconnect_NoLock(TrackedSource tracked, DateTimeOffset nowUtc)
+        {
+            if (!tracked.HasPendingReconnect)
+            {
+                return false;
+            }
+
+            bool hasConcreteMetadata = HasConcreteMetadata(tracked.PendingTitle);
+            bool shouldFinalize = hasConcreteMetadata
+                && (tracked.PendingPlaybackStatus == GlobalSystemMediaTransportControlsSessionPlaybackStatus.Playing
+                    || IsMissingGraceExpired_NoLock(tracked, nowUtc));
+            if (!shouldFinalize)
+            {
+                return false;
+            }
+
+            bool hasChanges = false;
+            if (tracked.Presence != MediaSessionPresence.Active)
+            {
+                tracked.Presence = MediaSessionPresence.Active;
+                tracked.MissingSinceUtc = null;
+                hasChanges = true;
+            }
+
+            if (!string.Equals(tracked.Title, tracked.PendingTitle, StringComparison.Ordinal)
+                || !string.Equals(tracked.Artist, tracked.PendingArtist, StringComparison.Ordinal))
+            {
+                tracked.Title = tracked.PendingTitle;
+                tracked.Artist = tracked.PendingArtist;
+                hasChanges = true;
+            }
+
+            if (tracked.PlaybackStatus != tracked.PendingPlaybackStatus)
+            {
+                tracked.PlaybackStatus = tracked.PendingPlaybackStatus;
+                hasChanges = true;
+            }
+
+            bool timelineAvailabilityChanged = tracked.HasTimeline != tracked.PendingHasTimeline;
+            bool durationChanged = Math.Abs(tracked.DurationSeconds - tracked.PendingDurationSeconds) > 0.001;
+            bool positionChanged = Math.Abs(tracked.CurrentPositionSeconds - tracked.PendingPositionSeconds) > 0.001;
+            if (timelineAvailabilityChanged || durationChanged || positionChanged)
+            {
+                tracked.HasTimeline = tracked.PendingHasTimeline;
+                tracked.CurrentPositionSeconds = tracked.PendingPositionSeconds;
+                tracked.DurationSeconds = tracked.PendingDurationSeconds;
+                tracked.Progress = tracked.PendingHasTimeline && tracked.PendingDurationSeconds > 0
+                    ? tracked.PendingPositionSeconds / tracked.PendingDurationSeconds
+                    : 0;
+                hasChanges = true;
+            }
+
+            tracked.LastActivityUtc = nowUtc;
+            ResetPendingReconnect_NoLock(tracked);
+            return hasChanges;
+        }
+
+        private void ResetPendingReconnect_NoLock(TrackedSource tracked)
+        {
+            tracked.HasPendingReconnect = false;
+            tracked.PendingTitle = UnknownTrackTitle;
+            tracked.PendingArtist = UnknownArtistName;
+            tracked.PendingPlaybackStatus = GlobalSystemMediaTransportControlsSessionPlaybackStatus.Closed;
+            tracked.PendingHasTimeline = false;
+            tracked.PendingPositionSeconds = 0;
+            tracked.PendingDurationSeconds = 0;
+        }
+
+        private void CleanupExpiredWaitingSources_NoLock(DateTimeOffset nowUtc, ref bool hasChanges)
+        {
+            string[] expiredKeys = _trackedSourcesByKey.Values
+                .Where(source =>
+                    source.Presence == MediaSessionPresence.WaitingForReconnect
+                    && IsMissingGraceExpired_NoLock(source, nowUtc)
+                    && source.Session == null)
+                .Select(source => source.SessionKey)
+                .ToArray();
+
+            foreach (string sessionKey in expiredKeys)
+            {
+                _trackedSourcesByKey.Remove(sessionKey);
+                if (string.Equals(_systemCurrentSessionKey, sessionKey, StringComparison.Ordinal))
+                {
+                    _systemCurrentSessionKey = null;
+                }
+
+                hasChanges = true;
+            }
+
+            foreach (TrackedSource provisional in _trackedSourcesByKey.Values.Where(source => source.HasPendingReconnect).ToArray())
+            {
+                if (TryFinalizePendingReconnect_NoLock(provisional, nowUtc))
+                {
+                    hasChanges = true;
+                }
+            }
+        }
+
+        private bool IsMissingGraceExpired_NoLock(TrackedSource tracked, DateTimeOffset nowUtc)
+            => tracked.MissingSinceUtc.HasValue
+                && (nowUtc - tracked.MissingSinceUtc.Value) >= _missingSourceGrace;
+
+        private string? ResolveSystemCurrentKey_NoLock(
+            GlobalSystemMediaTransportControlsSession? currentSession,
+            DateTimeOffset nowUtc)
+        {
+            if (currentSession != null
+                && _trackedSourcesBySession.TryGetValue(currentSession, out TrackedSource? currentTracked))
+            {
+                return currentTracked.SessionKey;
+            }
+
+            if (_systemCurrentSessionKey != null
+                && _trackedSourcesByKey.TryGetValue(_systemCurrentSessionKey, out TrackedSource? previousCurrent)
+                && previousCurrent.Presence == MediaSessionPresence.WaitingForReconnect
+                && !IsMissingGraceExpired_NoLock(previousCurrent, nowUtc))
+            {
+                return previousCurrent.SessionKey;
+            }
+
+            return null;
+        }
+
         private ServiceChangeResult PrepareStateChange_NoLock()
         {
-            _sessions = _trackedSessionsByKey.Values
+            RescheduleWaitingExpiryTimer_NoLock();
+
+            _sessions = _trackedSourcesByKey.Values
                 .Select(CreateSnapshot)
                 .ToArray();
 
@@ -511,29 +1095,20 @@ namespace wisland.Services
             string trackArtist = string.Empty;
 
             if (_systemCurrentSessionKey != null
-                && _trackedSessionsByKey.TryGetValue(_systemCurrentSessionKey, out TrackedSession? tracked))
+                && _trackedSourcesByKey.TryGetValue(_systemCurrentSessionKey, out TrackedSource? tracked)
+                && tracked.Presence == MediaSessionPresence.Active
+                && HasConcreteMetadata(tracked.Title))
             {
                 string signature = CreateTrackSignature(tracked.Title, tracked.Artist);
-                bool hasConcreteTrackMetadata = !string.Equals(
-                    tracked.Title,
-                    UnknownTrackTitle,
-                    StringComparison.Ordinal);
                 if (_lastSystemCurrentTrackSignature != null
                     && !string.Equals(_lastSystemCurrentTrackSignature, signature, StringComparison.Ordinal))
                 {
-                    shouldNotifyTrack = hasConcreteTrackMetadata;
-                    if (hasConcreteTrackMetadata)
-                    {
-                        trackTitle = tracked.Title;
-                        trackArtist = tracked.Artist;
-                    }
+                    shouldNotifyTrack = true;
+                    trackTitle = tracked.Title;
+                    trackArtist = tracked.Artist;
                 }
 
                 _lastSystemCurrentTrackSignature = signature;
-            }
-            else
-            {
-                _lastSystemCurrentTrackSignature = null;
             }
 
             return new ServiceChangeResult(
@@ -541,6 +1116,32 @@ namespace wisland.Services
                 ShouldNotifyTrack: shouldNotifyTrack,
                 TrackTitle: trackTitle,
                 TrackArtist: trackArtist);
+        }
+
+        private void RescheduleWaitingExpiryTimer_NoLock()
+        {
+            DateTimeOffset? nextExpiryUtc = _trackedSourcesByKey.Values
+                .Where(source =>
+                    source.Presence == MediaSessionPresence.WaitingForReconnect
+                    && source.MissingSinceUtc.HasValue)
+                .Select(source => source.MissingSinceUtc!.Value + _missingSourceGrace)
+                .OrderBy(expiry => expiry)
+                .Cast<DateTimeOffset?>()
+                .FirstOrDefault();
+
+            if (!nextExpiryUtc.HasValue)
+            {
+                _waitingExpiryTimer.Change(Timeout.Infinite, Timeout.Infinite);
+                return;
+            }
+
+            TimeSpan dueTime = nextExpiryUtc.Value - DateTimeOffset.UtcNow;
+            if (dueTime < TimeSpan.Zero)
+            {
+                dueTime = TimeSpan.Zero;
+            }
+
+            _waitingExpiryTimer.Change(dueTime, Timeout.InfiniteTimeSpan);
         }
 
         private void DispatchChange(ServiceChangeResult changeResult)
@@ -566,16 +1167,16 @@ namespace wisland.Services
 
             lock (_gate)
             {
-                return _trackedSessionsByKey.TryGetValue(sessionKey, out TrackedSession? tracked)
+                return _trackedSourcesByKey.TryGetValue(sessionKey, out TrackedSource? tracked)
                     ? tracked.Session
                     : null;
             }
         }
 
         private string CreateSessionKey_NoLock()
-            => FormattableString.Invariant($"media-session-{_nextSessionOrdinal++}");
+            => FormattableString.Invariant($"media-source-{_nextSessionOrdinal++}");
 
-        private static MediaSessionSnapshot CreateSnapshot(TrackedSession tracked)
+        private static MediaSessionSnapshot CreateSnapshot(TrackedSource tracked)
             => new(
                 tracked.SessionKey,
                 tracked.SourceAppId,
@@ -586,10 +1187,16 @@ namespace wisland.Services
                 tracked.Progress,
                 tracked.HasTimeline,
                 tracked.IsSystemCurrent,
-                tracked.LastActivityUtc);
+                tracked.LastActivityUtc,
+                tracked.Presence,
+                tracked.LastSeenUtc,
+                tracked.MissingSinceUtc);
 
         private static string CreateTrackSignature(string title, string artist)
             => string.Concat(title, "\u001f", artist);
+
+        private static bool HasConcreteMetadata(string title)
+            => !string.Equals(title, UnknownTrackTitle, StringComparison.Ordinal);
 
         private static string ResolveSourceName(string rawSourceName)
         {
@@ -629,24 +1236,6 @@ namespace wisland.Services
             return textInfo.ToTitleCase(source.ToLowerInvariant());
         }
 
-        private void DetachSession(GlobalSystemMediaTransportControlsSession? session)
-        {
-            if (session == null)
-            {
-                return;
-            }
-
-            TryDetachHandler(
-                () => session.MediaPropertiesChanged -= OnMediaPropertiesChanged,
-                "MediaPropertiesChanged");
-            TryDetachHandler(
-                () => session.PlaybackInfoChanged -= OnPlaybackInfoChanged,
-                "PlaybackInfoChanged");
-            TryDetachHandler(
-                () => session.TimelinePropertiesChanged -= OnTimelinePropertiesChanged,
-                "TimelinePropertiesChanged");
-        }
-
         private static void TryDetachHandler(Action detach, string eventName)
         {
             try
@@ -668,6 +1257,19 @@ namespace wisland.Services
 
             _isDisposed = true;
 
+            _waitingExpiryTimer.Change(Timeout.Infinite, Timeout.Infinite);
+            _waitingExpiryTimer.Dispose();
+
+            CancellationTokenSource? refreshBurstCts;
+            lock (_gate)
+            {
+                refreshBurstCts = _refreshBurstCts;
+                _refreshBurstCts = null;
+            }
+
+            refreshBurstCts?.Cancel();
+            refreshBurstCts?.Dispose();
+
             if (_manager != null)
             {
                 _manager.CurrentSessionChanged -= OnCurrentSessionChanged;
@@ -677,12 +1279,12 @@ namespace wisland.Services
             GlobalSystemMediaTransportControlsSession[] sessionsToDetach;
             lock (_gate)
             {
-                sessionsToDetach = _trackedSessionsBySession.Keys.ToArray();
-                _trackedSessionsBySession.Clear();
-                _trackedSessionsByKey.Clear();
+                sessionsToDetach = _trackedSourcesBySession.Keys.ToArray();
+                _trackedSourcesBySession.Clear();
+                _trackedSourcesByKey.Clear();
                 _sessions = Array.Empty<MediaSessionSnapshot>();
                 _systemCurrentSessionKey = null;
-                _lastSystemCurrentTrackSignature = null;
+                _displayedSessionKey = null;
             }
 
             foreach (GlobalSystemMediaTransportControlsSession session in sessionsToDetach)
@@ -691,29 +1293,34 @@ namespace wisland.Services
             }
 
             _manager = null;
+            _refreshSemaphore.Dispose();
         }
 
-        private sealed class TrackedSession
+        private sealed class TrackedSource
         {
-            public TrackedSession(
-                GlobalSystemMediaTransportControlsSession session,
+            public TrackedSource(
                 string sessionKey,
                 string sourceAppId,
-                string sourceName)
+                string sourceName,
+                DateTimeOffset nowUtc)
             {
-                Session = session;
                 SessionKey = sessionKey;
                 SourceAppId = sourceAppId;
                 SourceName = sourceName;
                 Title = UnknownTrackTitle;
                 Artist = UnknownArtistName;
-                LastActivityUtc = DateTimeOffset.UtcNow;
+                LastActivityUtc = nowUtc;
+                LastSeenUtc = nowUtc;
+                Presence = MediaSessionPresence.Active;
+                PendingTitle = UnknownTrackTitle;
+                PendingArtist = UnknownArtistName;
+                PendingPlaybackStatus = GlobalSystemMediaTransportControlsSessionPlaybackStatus.Closed;
             }
 
-            public GlobalSystemMediaTransportControlsSession Session { get; }
+            public GlobalSystemMediaTransportControlsSession? Session { get; set; }
             public string SessionKey { get; }
-            public string SourceAppId { get; }
-            public string SourceName { get; }
+            public string SourceAppId { get; set; }
+            public string SourceName { get; set; }
             public string Title { get; set; }
             public string Artist { get; set; }
             public GlobalSystemMediaTransportControlsSessionPlaybackStatus PlaybackStatus { get; set; }
@@ -721,8 +1328,39 @@ namespace wisland.Services
             public bool HasTimeline { get; set; }
             public bool IsSystemCurrent { get; set; }
             public DateTimeOffset LastActivityUtc { get; set; }
+            public DateTimeOffset LastSeenUtc { get; set; }
+            public DateTimeOffset? MissingSinceUtc { get; set; }
+            public MediaSessionPresence Presence { get; set; }
             public double CurrentPositionSeconds { get; set; }
             public double DurationSeconds { get; set; }
+            public DateTimeOffset? LastDisplayedUtc { get; set; }
+            public DateTimeOffset? LastSystemCurrentUtc { get; set; }
+            public bool HasPendingReconnect { get; set; }
+            public string PendingTitle { get; set; }
+            public string PendingArtist { get; set; }
+            public GlobalSystemMediaTransportControlsSessionPlaybackStatus PendingPlaybackStatus { get; set; }
+            public bool PendingHasTimeline { get; set; }
+            public double PendingPositionSeconds { get; set; }
+            public double PendingDurationSeconds { get; set; }
+        }
+
+        private readonly record struct PrefetchedSessionState(
+            string Title,
+            string Artist,
+            GlobalSystemMediaTransportControlsSessionPlaybackStatus PlaybackStatus,
+            bool HasTimeline,
+            double PositionSeconds,
+            double DurationSeconds)
+        {
+            public static readonly PrefetchedSessionState Empty = new(
+                UnknownTrackTitle,
+                UnknownArtistName,
+                GlobalSystemMediaTransportControlsSessionPlaybackStatus.Closed,
+                HasTimeline: false,
+                PositionSeconds: 0,
+                DurationSeconds: 0);
+
+            public bool HasConcreteMetadata => MediaService.HasConcreteMetadata(Title);
         }
 
         private readonly record struct ServiceChangeResult(

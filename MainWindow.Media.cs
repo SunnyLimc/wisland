@@ -3,11 +3,15 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Threading.Tasks;
 using wisland.Models;
+using wisland.Services;
 
 namespace wisland
 {
     public sealed partial class MainWindow
     {
+        private readonly MediaFocusArbiter _focusArbiter = new(
+            TimeSpan.FromMilliseconds(IslandConfig.MediaAutoSwitchDebounceMs),
+            TimeSpan.FromMilliseconds(IslandConfig.MediaMissingGraceMs));
         private ContentTransitionDirection _pendingMediaTransitionDirection = ContentTransitionDirection.None;
         private long _pendingMediaTransitionTimestamp;
         private string? _selectedSessionKey;
@@ -58,6 +62,7 @@ namespace wisland
                 : ContentTransitionDirection.None;
 
             _displayedSessionKey = context.DisplayedSession?.SessionKey;
+            _mediaService.SetDisplayedSessionKey(_displayedSessionKey);
 
             if (progressSourceChanged)
             {
@@ -90,8 +95,7 @@ namespace wisland
 
         private IReadOnlyList<MediaSessionSnapshot> GetPriorityOrderedSessions()
             => _mediaService.Sessions
-                .OrderByDescending(session => session.IsSystemCurrent)
-                .ThenBy(session => GetPlaybackRank(session))
+                .OrderBy(session => GetSessionPriorityRank(session))
                 .ThenByDescending(session => session.LastActivityUtc)
                 .ThenBy(session => session.SourceName, StringComparer.OrdinalIgnoreCase)
                 .ThenBy(session => session.SessionKey, StringComparer.Ordinal)
@@ -104,6 +108,7 @@ namespace wisland
             {
                 ClearManualSelectionLockInternal();
                 _sessionVisualOrderKeys.Clear();
+                SyncAutoFocusTimer(null);
                 return new DisplayedMediaContext(
                     DisplayedSession: null,
                     OrderedSessions: prioritySessions,
@@ -126,13 +131,15 @@ namespace wisland
                 hasManualLock = false;
             }
 
-            string? candidateKey = hasManualLock ? _selectedSessionKey : _mediaService.SystemCurrentSessionKey;
-            if (!TryFindSession(prioritySessions, candidateKey, out MediaSessionSnapshot displayedSession, out _)
-                && !TryFindSession(prioritySessions, _mediaService.SystemCurrentSessionKey, out displayedSession, out _))
-            {
-                displayedSession = prioritySessions[0];
-            }
+            MediaFocusDecision focusDecision = _focusArbiter.Resolve(
+                prioritySessions,
+                _displayedSessionKey,
+                _selectedSessionKey,
+                hasManualLock,
+                DateTimeOffset.UtcNow);
+            SyncAutoFocusTimer(focusDecision.PendingAutoSwitchDueUtc);
 
+            MediaSessionSnapshot displayedSession = focusDecision.DisplayedSession ?? prioritySessions[0];
             IReadOnlyList<MediaSessionSnapshot> orderedSessions = GetVisualOrderedSessions(prioritySessions);
             int displayIndex = FindSessionIndex(orderedSessions, displayedSession.SessionKey);
             if (displayIndex < 0)
@@ -236,6 +243,7 @@ namespace wisland
             _selectedSessionKey = sessionKey;
             _selectionLockUntilUtc = DateTimeOffset.UtcNow.AddMilliseconds(IslandConfig.SelectionLockDurationMs);
             RestartSelectionLockTimer();
+            SyncAutoFocusTimer(null);
 
             if (displayedSessionChanged && direction != ContentTransitionDirection.None)
             {
@@ -347,6 +355,13 @@ namespace wisland
             UpdateRenderLoopState();
         }
 
+        private void AutoFocusTimer_Tick(object? sender, object e)
+        {
+            _autoFocusTimer.Stop();
+            SyncMediaUI();
+            UpdateRenderLoopState();
+        }
+
         private bool IsManualSelectionLocked()
             => _selectionLockUntilUtc.HasValue
                 && _selectionLockUntilUtc.Value > DateTimeOffset.UtcNow
@@ -372,6 +387,22 @@ namespace wisland
                 ? TimeSpan.FromMilliseconds(50)
                 : remaining;
             _selectionLockTimer.Start();
+        }
+
+        private void SyncAutoFocusTimer(DateTimeOffset? dueUtc)
+        {
+            if (!dueUtc.HasValue || dueUtc.Value <= DateTimeOffset.UtcNow)
+            {
+                _autoFocusTimer.Stop();
+                return;
+            }
+
+            TimeSpan remaining = dueUtc.Value - DateTimeOffset.UtcNow;
+            _autoFocusTimer.Stop();
+            _autoFocusTimer.Interval = remaining < TimeSpan.FromMilliseconds(50)
+                ? TimeSpan.FromMilliseconds(50)
+                : remaining;
+            _autoFocusTimer.Start();
         }
 
         private void ClearManualSelectionLockInternal()
@@ -472,13 +503,22 @@ namespace wisland
             return -1;
         }
 
-        private static int GetPlaybackRank(MediaSessionSnapshot session)
-            => session.PlaybackStatus switch
+        private static int GetSessionPriorityRank(MediaSessionSnapshot session)
+        {
+            if (session.IsWaitingForReconnect)
             {
-                Windows.Media.Control.GlobalSystemMediaTransportControlsSessionPlaybackStatus.Playing => 0,
-                Windows.Media.Control.GlobalSystemMediaTransportControlsSessionPlaybackStatus.Paused => 1,
-                _ => 2
+                return 4;
+            }
+
+            return session.PlaybackStatus switch
+            {
+                Windows.Media.Control.GlobalSystemMediaTransportControlsSessionPlaybackStatus.Playing when session.IsSystemCurrent => 0,
+                Windows.Media.Control.GlobalSystemMediaTransportControlsSessionPlaybackStatus.Playing => 1,
+                Windows.Media.Control.GlobalSystemMediaTransportControlsSessionPlaybackStatus.Paused when session.IsSystemCurrent => 2,
+                Windows.Media.Control.GlobalSystemMediaTransportControlsSessionPlaybackStatus.Paused => 3,
+                _ => 5
             };
+        }
 
         private static string? CreateContentIdentity(MediaSessionSnapshot? session)
             => session.HasValue
@@ -487,7 +527,9 @@ namespace wisland
                     "\u001f",
                     session.Value.Title,
                     "\u001f",
-                    session.Value.Artist)
+                    session.Value.Artist,
+                    "\u001f",
+                    session.Value.Presence)
                 : null;
 
         private static string? CreateProgressIdentity(MediaSessionSnapshot? session)

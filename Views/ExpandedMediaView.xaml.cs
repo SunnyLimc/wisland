@@ -141,13 +141,13 @@ namespace wisland.Views
             IReadOnlyList<MediaSessionSnapshot> availableSessions,
             ContentTransitionDirection direction = ContentTransitionDirection.None)
         {
-            UpdatePlayPauseSymbol(session.HasValue && session.Value.IsPlaying);
+            UpdatePlayPauseSymbol(session.HasValue && session.Value.IsPlaying && !session.Value.IsWaitingForReconnect);
             UpdateSessionPickerItems(availableSessions, session?.SessionKey);
 
             HeaderTextSnapshot nextHeaderTextSnapshot = CreateMediaHeaderTextSnapshot(session, availableSessions.Count);
             AvatarStripSnapshot nextAvatarStripSnapshot = CreateMediaAvatarStripSnapshot(session, displayIndex, availableSessions);
             MetadataSnapshot nextMetadataSnapshot = session.HasValue
-                ? new MetadataSnapshot(session.Value.Title, session.Value.Artist)
+                ? new MetadataSnapshot(session.Value.Title, session.Value.IsWaitingForReconnect ? "Waiting..." : session.Value.Artist)
                 : new MetadataSnapshot("No Media", "Waiting for music...");
 
             bool headerTextChanged = ApplyHeaderTextSnapshot(nextHeaderTextSnapshot, nextAvatarStripSnapshot, direction);
@@ -1319,12 +1319,14 @@ namespace wisland.Views
             => slotIndex == 0 ? ArtistNameTextPrimary : ArtistNameTextSecondary;
 
         private static string GetHeaderLabel(MediaSessionSnapshot session)
-            => session.PlaybackStatus switch
-            {
-                Windows.Media.Control.GlobalSystemMediaTransportControlsSessionPlaybackStatus.Playing => "Now Playing",
-                Windows.Media.Control.GlobalSystemMediaTransportControlsSessionPlaybackStatus.Paused => "Paused",
-                _ => "Media"
-            };
+            => session.IsWaitingForReconnect
+                ? "Waiting"
+                : session.PlaybackStatus switch
+                {
+                    Windows.Media.Control.GlobalSystemMediaTransportControlsSessionPlaybackStatus.Playing => "Now Playing",
+                    Windows.Media.Control.GlobalSystemMediaTransportControlsSessionPlaybackStatus.Paused => "Paused",
+                    _ => "Media"
+                };
 
         private static string GetSourceMonogram(string sourceName)
         {
@@ -1340,12 +1342,14 @@ namespace wisland.Views
         }
 
         private static string GetPlaybackStatusLabel(MediaSessionSnapshot session)
-            => session.PlaybackStatus switch
-            {
-                Windows.Media.Control.GlobalSystemMediaTransportControlsSessionPlaybackStatus.Playing => "Playing",
-                Windows.Media.Control.GlobalSystemMediaTransportControlsSessionPlaybackStatus.Paused => "Paused",
-                _ => "Idle"
-            };
+            => session.IsWaitingForReconnect
+                ? "Waiting..."
+                : session.PlaybackStatus switch
+                {
+                    Windows.Media.Control.GlobalSystemMediaTransportControlsSessionPlaybackStatus.Playing => "Playing",
+                    Windows.Media.Control.GlobalSystemMediaTransportControlsSessionPlaybackStatus.Paused => "Paused",
+                    _ => "Idle"
+                };
 
         private static Brush CreateOverflowFadeBrush(Color backgroundColor)
         {

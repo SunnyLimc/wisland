@@ -53,6 +53,7 @@ namespace wisland
         // --- Context-Aware UX State ---
         private readonly DispatcherTimer _dockedHoverDelayTimer;
         private readonly DispatcherTimer _selectionLockTimer;
+        private readonly DispatcherTimer _autoFocusTimer;
 
         // --- Line Mode State ---
         private readonly ShellVisibilityService _shellVisibilityService = new();
@@ -134,6 +135,8 @@ namespace wisland
                 _cursorTrackerTimer.Tick += CursorTrackerTimer_Tick;
                 _selectionLockTimer = new DispatcherTimer();
                 _selectionLockTimer.Tick += SelectionLockTimer_Tick;
+                _autoFocusTimer = new DispatcherTimer();
+                _autoFocusTimer.Tick += AutoFocusTimer_Tick;
                 _foregroundWindowMonitor.SetActive(_controller.IsDocked);
                 ExpandedContent.SessionSelected += OnExpandedContentSessionSelected;
 
@@ -173,6 +176,7 @@ namespace wisland
                 || (displayedSession.HasValue
                     && displayedSession.Value.HasTimeline
                     && displayedSession.Value.IsPlaying
+                    && !displayedSession.Value.IsWaitingForReconnect
                     && !_isMediaProgressResetPending);
         }
     }

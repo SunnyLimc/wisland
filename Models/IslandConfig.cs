@@ -84,6 +84,10 @@ namespace wisland.Models
         public const int DefaultNotificationDurationMs = 3000;
         public const int TrackChangeNotificationDurationMs = 4000;
         public const int TrackSwitchIntentWindowMs = 1600;
+        public const int MediaMissingGraceMs = 3000;
+        public const int MediaAutoSwitchDebounceMs = 1200;
+        public const int MediaRefreshBurstDurationMs = 3000;
+        public const int MediaRefreshBurstIntervalMs = 250;
         public const int SelectionLockDurationMs = 10000;
         public const int SessionPickerMaxVisibleItems = 5;
         public const int CompactSessionCountVisibleThreshold = 2;

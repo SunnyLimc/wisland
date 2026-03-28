@@ -43,12 +43,14 @@ namespace wisland
             _dockedHoverDelayTimer.Tick -= DockedHoverDelayTimer_Tick;
             _cursorTrackerTimer.Tick -= CursorTrackerTimer_Tick;
             _selectionLockTimer.Tick -= SelectionLockTimer_Tick;
+            _autoFocusTimer.Tick -= AutoFocusTimer_Tick;
             ExpandedContent.SessionSelected -= OnExpandedContentSessionSelected;
 
             _hoverDebounceTimer.Stop();
             _dockedHoverDelayTimer.Stop();
             _cursorTrackerTimer.Stop();
             _selectionLockTimer.Stop();
+            _autoFocusTimer.Stop();
             _foregroundWindowMonitor.ForegroundMaximizedChanged -= OnForegroundMaximizedChanged;
             _foregroundWindowMonitor.Dispose();
 

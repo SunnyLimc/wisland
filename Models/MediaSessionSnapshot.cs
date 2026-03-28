@@ -16,8 +16,12 @@ namespace wisland.Models
         double Progress,
         bool HasTimeline,
         bool IsSystemCurrent,
-        DateTimeOffset LastActivityUtc)
+        DateTimeOffset LastActivityUtc,
+        MediaSessionPresence Presence,
+        DateTimeOffset LastSeenUtc,
+        DateTimeOffset? MissingSinceUtc)
     {
         public bool IsPlaying => PlaybackStatus == GlobalSystemMediaTransportControlsSessionPlaybackStatus.Playing;
+        public bool IsWaitingForReconnect => Presence == MediaSessionPresence.WaitingForReconnect;
     }
 }
