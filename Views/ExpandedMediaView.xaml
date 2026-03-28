@@ -45,15 +45,15 @@
                     <Grid x:Name="HeaderChipContentRoot"
                           Height="20"
                           HorizontalAlignment="Left"
-                          ColumnSpacing="4">
+                          ColumnSpacing="2">
                         <Grid.ColumnDefinitions>
-                            <ColumnDefinition Width="34" />
+                            <ColumnDefinition Width="Auto" />
                             <ColumnDefinition Width="Auto" />
                         </Grid.ColumnDefinitions>
 
                         <Grid x:Name="HeaderAvatarViewport"
                               Grid.Column="0"
-                              Width="34"
+                              Width="0"
                               Height="16"
                               VerticalAlignment="Center"
                               SizeChanged="HeaderAvatarViewport_SizeChanged">

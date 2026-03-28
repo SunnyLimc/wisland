@@ -15,6 +15,7 @@ namespace wisland
         private DateTimeOffset? _selectionLockUntilUtc;
         private string? _lastDisplayedContentIdentity;
         private string? _lastDisplayedProgressIdentity;
+        private readonly List<string> _sessionVisualOrderKeys = new();
 
         private async Task InitializeMediaAsync()
         {
@@ -87,7 +88,7 @@ namespace wisland
         private MediaSessionSnapshot? GetDisplayedMediaSessionSnapshot()
             => _mediaService.GetSessionSnapshot(_displayedSessionKey);
 
-        private IReadOnlyList<MediaSessionSnapshot> GetOrderedSessions()
+        private IReadOnlyList<MediaSessionSnapshot> GetPriorityOrderedSessions()
             => _mediaService.Sessions
                 .OrderByDescending(session => session.IsSystemCurrent)
                 .ThenBy(session => GetPlaybackRank(session))
@@ -98,13 +99,14 @@ namespace wisland
 
         private DisplayedMediaContext ResolveDisplayedMediaContext()
         {
-            IReadOnlyList<MediaSessionSnapshot> orderedSessions = GetOrderedSessions();
-            if (orderedSessions.Count == 0)
+            IReadOnlyList<MediaSessionSnapshot> prioritySessions = GetPriorityOrderedSessions();
+            if (prioritySessions.Count == 0)
             {
                 ClearManualSelectionLockInternal();
+                _sessionVisualOrderKeys.Clear();
                 return new DisplayedMediaContext(
                     DisplayedSession: null,
-                    OrderedSessions: orderedSessions,
+                    OrderedSessions: prioritySessions,
                     DisplayIndex: -1,
                     CompactText: "Wisland",
                     SessionCountText: string.Empty,
@@ -118,18 +120,25 @@ namespace wisland
             }
 
             if (!string.IsNullOrWhiteSpace(_selectedSessionKey)
-                && !orderedSessions.Any(session => string.Equals(session.SessionKey, _selectedSessionKey, StringComparison.Ordinal)))
+                && !prioritySessions.Any(session => string.Equals(session.SessionKey, _selectedSessionKey, StringComparison.Ordinal)))
             {
                 ClearManualSelectionLockInternal();
                 hasManualLock = false;
             }
 
             string? candidateKey = hasManualLock ? _selectedSessionKey : _mediaService.SystemCurrentSessionKey;
-            if (!TryFindSession(orderedSessions, candidateKey, out MediaSessionSnapshot displayedSession, out int displayIndex)
-                && !TryFindSession(orderedSessions, _mediaService.SystemCurrentSessionKey, out displayedSession, out displayIndex))
+            if (!TryFindSession(prioritySessions, candidateKey, out MediaSessionSnapshot displayedSession, out _)
+                && !TryFindSession(prioritySessions, _mediaService.SystemCurrentSessionKey, out displayedSession, out _))
             {
-                displayedSession = orderedSessions[0];
-                displayIndex = 0;
+                displayedSession = prioritySessions[0];
+            }
+
+            IReadOnlyList<MediaSessionSnapshot> orderedSessions = GetVisualOrderedSessions(prioritySessions);
+            int displayIndex = FindSessionIndex(orderedSessions, displayedSession.SessionKey);
+            if (displayIndex < 0)
+            {
+                orderedSessions = prioritySessions;
+                displayIndex = FindSessionIndex(orderedSessions, displayedSession.SessionKey);
             }
 
             string sessionCountText = orderedSessions.Count > 1
@@ -204,8 +213,13 @@ namespace wisland
             }
 
             int targetIndex = direction == ContentTransitionDirection.Forward
-                ? (context.DisplayIndex + 1) % context.OrderedSessions.Count
-                : (context.DisplayIndex - 1 + context.OrderedSessions.Count) % context.OrderedSessions.Count;
+                ? context.DisplayIndex + 1
+                : context.DisplayIndex - 1;
+
+            if (targetIndex < 0 || targetIndex >= context.OrderedSessions.Count)
+            {
+                return false;
+            }
 
             SelectSession(context.OrderedSessions[targetIndex].SessionKey, direction);
             return true;
@@ -234,7 +248,7 @@ namespace wisland
 
         private ContentTransitionDirection GetDirectionToSession(string sessionKey)
         {
-            IReadOnlyList<MediaSessionSnapshot> orderedSessions = GetOrderedSessions();
+            IReadOnlyList<MediaSessionSnapshot> orderedSessions = GetVisualOrderedSessions(GetPriorityOrderedSessions());
             int currentIndex = FindSessionIndex(orderedSessions, _displayedSessionKey);
             int targetIndex = FindSessionIndex(orderedSessions, sessionKey);
 
@@ -246,6 +260,78 @@ namespace wisland
             return targetIndex > currentIndex
                 ? ContentTransitionDirection.Forward
                 : ContentTransitionDirection.Backward;
+        }
+
+        private IReadOnlyList<MediaSessionSnapshot> GetVisualOrderedSessions(IReadOnlyList<MediaSessionSnapshot> prioritySessions)
+        {
+            if (prioritySessions.Count == 0)
+            {
+                _sessionVisualOrderKeys.Clear();
+                return prioritySessions;
+            }
+
+            Dictionary<string, MediaSessionSnapshot> sessionsByKey = prioritySessions.ToDictionary(
+                session => session.SessionKey,
+                StringComparer.Ordinal);
+
+            HashSet<string> activeKeys = new(sessionsByKey.Keys, StringComparer.Ordinal);
+            _sessionVisualOrderKeys.RemoveAll(sessionKey => !activeKeys.Contains(sessionKey));
+
+            HashSet<string> visualKeySet = new(_sessionVisualOrderKeys, StringComparer.Ordinal);
+            for (int priorityIndex = 0; priorityIndex < prioritySessions.Count; priorityIndex++)
+            {
+                string sessionKey = prioritySessions[priorityIndex].SessionKey;
+                if (visualKeySet.Contains(sessionKey))
+                {
+                    continue;
+                }
+
+                int insertIndex = ResolveVisualInsertIndex(prioritySessions, priorityIndex, visualKeySet);
+                _sessionVisualOrderKeys.Insert(insertIndex, sessionKey);
+                visualKeySet.Add(sessionKey);
+            }
+
+            return _sessionVisualOrderKeys
+                .Where(sessionsByKey.ContainsKey)
+                .Select(sessionKey => sessionsByKey[sessionKey])
+                .ToArray();
+        }
+
+        private int ResolveVisualInsertIndex(IReadOnlyList<MediaSessionSnapshot> prioritySessions, int priorityIndex, HashSet<string> visualKeySet)
+        {
+            for (int index = priorityIndex - 1; index >= 0; index--)
+            {
+                string previousKey = prioritySessions[index].SessionKey;
+                if (!visualKeySet.Contains(previousKey))
+                {
+                    continue;
+                }
+
+                int previousVisualIndex = _sessionVisualOrderKeys.FindIndex(
+                    sessionKey => string.Equals(sessionKey, previousKey, StringComparison.Ordinal));
+                if (previousVisualIndex >= 0)
+                {
+                    return previousVisualIndex + 1;
+                }
+            }
+
+            for (int index = priorityIndex + 1; index < prioritySessions.Count; index++)
+            {
+                string nextKey = prioritySessions[index].SessionKey;
+                if (!visualKeySet.Contains(nextKey))
+                {
+                    continue;
+                }
+
+                int nextVisualIndex = _sessionVisualOrderKeys.FindIndex(
+                    sessionKey => string.Equals(sessionKey, nextKey, StringComparison.Ordinal));
+                if (nextVisualIndex >= 0)
+                {
+                    return nextVisualIndex;
+                }
+            }
+
+            return _sessionVisualOrderKeys.Count;
         }
 
         private void SelectionLockTimer_Tick(object? sender, object e)

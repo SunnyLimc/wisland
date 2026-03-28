@@ -21,8 +21,18 @@ namespace wisland.Views
     public sealed partial class ExpandedMediaView : UserControl
     {
         private static readonly MediaSourceIconResolver IconResolver = new();
-        private static readonly float[] AvatarSlotOffsets = { 0.0f, 10.0f, 18.0f };
-        private static readonly float[] AvatarSlotScales = { 1.0f, 13.0f / 16.0f, 10.0f / 16.0f };
+        private const int HeaderAvatarVisibleCount = 3;
+        private const float HeaderAvatarSize = 16.0f;
+        private const float HeaderAvatarCenterPoint = HeaderAvatarSize * 0.5f;
+        private const float HeaderAvatarSlotStep = 10.0f;
+        private const float HeaderAvatarSelectedScale = 1.0f;
+        private const float HeaderAvatarNormalScale = 0.82f;
+        private static readonly float[] AvatarSlotOffsets =
+        {
+            0.0f,
+            HeaderAvatarSlotStep,
+            HeaderAvatarSlotStep * 2.0f
+        };
 
         private readonly DirectionalContentTransitionCoordinator _metadataTransition;
         private readonly DirectionalContentTransitionCoordinator _headerLabelTransition;
@@ -140,7 +150,7 @@ namespace wisland.Views
                 ? new MetadataSnapshot(session.Value.Title, session.Value.Artist)
                 : new MetadataSnapshot("No Media", "Waiting for music...");
 
-            bool headerTextChanged = ApplyHeaderTextSnapshot(nextHeaderTextSnapshot, direction);
+            bool headerTextChanged = ApplyHeaderTextSnapshot(nextHeaderTextSnapshot, nextAvatarStripSnapshot, direction);
             bool avatarStripChanged = ApplyAvatarStripSnapshot(nextAvatarStripSnapshot, direction);
             bool metadataChanged = ApplyMetadataSnapshot(nextMetadataSnapshot, direction);
             return headerTextChanged || avatarStripChanged || metadataChanged;
@@ -148,8 +158,12 @@ namespace wisland.Views
 
         public void ShowNotification(string title, string message, string header)
         {
-            ApplyHeaderTextSnapshot(new HeaderTextSnapshot(header, ShowExpandHint: false), ContentTransitionDirection.None);
-            ApplyAvatarStripSnapshot(AvatarStripSnapshot.Empty, ContentTransitionDirection.None);
+            AvatarStripSnapshot emptyAvatarStrip = AvatarStripSnapshot.Empty;
+            ApplyHeaderTextSnapshot(
+                new HeaderTextSnapshot(header, ShowExpandHint: false),
+                emptyAvatarStrip,
+                ContentTransitionDirection.None);
+            ApplyAvatarStripSnapshot(emptyAvatarStrip, ContentTransitionDirection.None);
             ApplyMetadataSnapshot(new MetadataSnapshot(title, message), ContentTransitionDirection.None);
         }
 
@@ -165,16 +179,32 @@ namespace wisland.Views
             RefreshSessionPickerItemColors();
         }
 
-        private bool ApplyHeaderTextSnapshot(HeaderTextSnapshot snapshot, ContentTransitionDirection direction)
+        private bool ApplyHeaderTextSnapshot(
+            HeaderTextSnapshot snapshot,
+            AvatarStripSnapshot avatarSnapshot,
+            ContentTransitionDirection direction)
         {
             HeaderTextSnapshot currentSnapshot = _headerTextSnapshots[_headerLabelTransition.ActiveSlotIndex];
-            double currentContentWidth = MeasureHeaderContentWidth(currentSnapshot);
-            double targetContentWidth = MeasureHeaderContentWidth(snapshot);
-            double targetWidth = MeasureHeaderChipWidth(snapshot);
-            if (currentSnapshot.Equals(snapshot))
+            AvatarStripSnapshot currentAvatarSnapshot = _avatarStripSnapshot;
+            double currentContentWidth = MeasureHeaderContentWidth(currentSnapshot, currentAvatarSnapshot);
+            double targetContentWidth = MeasureHeaderContentWidth(snapshot, avatarSnapshot);
+            double targetWidth = MeasureHeaderChipWidth(snapshot, avatarSnapshot);
+            bool textChanged = !currentSnapshot.Equals(snapshot);
+            bool contentWidthChanged = Math.Abs(currentContentWidth - targetContentWidth) >= 0.5;
+            if (!textChanged && !contentWidthChanged)
             {
                 EnsureHeaderChipWidthInitialized(targetWidth);
                 return false;
+            }
+
+            if (!textChanged)
+            {
+                AnimateHeaderChipWidth(
+                    targetWidth,
+                    currentContentWidth,
+                    targetContentWidth,
+                    animateLabelShift: false);
+                return true;
             }
 
             if (direction == ContentTransitionDirection.None)
@@ -205,8 +235,7 @@ namespace wisland.Views
                 return false;
             }
 
-            if (direction != ContentTransitionDirection.None
-                && TryStartAvatarStripTransition(currentSnapshot, snapshot, direction))
+            if (TryStartAvatarStripTransition(currentSnapshot, snapshot, direction))
             {
                 _avatarStripSnapshot = snapshot;
                 return true;
@@ -269,10 +298,12 @@ namespace wisland.Views
             _headerLabelTransition.UpdateViewportBounds();
             InitializeHeaderLabelShiftMotion();
             InitializeHeaderAvatarStrip();
+            UpdateHeaderAvatarViewportWidth(_avatarStripSnapshot);
             UpdateHeaderAvatarViewportBounds();
             ApplyAvatarStripSnapshotImmediately(_avatarStripSnapshot);
             EnsureHeaderChipWidthInitialized(MeasureHeaderChipWidth(
-                _headerTextSnapshots[_headerLabelTransition.ActiveSlotIndex]));
+                _headerTextSnapshots[_headerLabelTransition.ActiveSlotIndex],
+                _avatarStripSnapshot));
             ApplyMetadataColors();
             ApplyTransportIconColors();
             ApplyHeaderColors();
@@ -522,7 +553,7 @@ namespace wisland.Views
             for (int i = 0; i < _headerAvatarBorders.Length; i++)
             {
                 Visual visual = ElementCompositionPreview.GetElementVisual(_headerAvatarBorders[i]);
-                visual.CenterPoint = new Vector3(8.0f, 8.0f, 0.0f);
+                visual.CenterPoint = new Vector3(HeaderAvatarCenterPoint, HeaderAvatarCenterPoint, 0.0f);
                 _headerAvatarVisuals[i] = visual;
             }
 
@@ -536,6 +567,11 @@ namespace wisland.Views
             _avatarExitEasing = _avatarCompositor.CreateCubicBezierEasingFunction(
                 new Vector2(0.42f, 0.0f),
                 new Vector2(0.92f, 0.52f));
+        }
+
+        private void UpdateHeaderAvatarViewportWidth(AvatarStripSnapshot snapshot)
+        {
+            HeaderAvatarViewport.Width = MeasureHeaderAvatarViewportWidth(snapshot);
         }
 
         private void UpdateHeaderAvatarViewportBounds()
@@ -553,7 +589,7 @@ namespace wisland.Views
 
             for (int i = 0; i < _headerAvatarVisuals.Length; i++)
             {
-                _headerAvatarVisuals[i].CenterPoint = new Vector3(8.0f, 8.0f, 0.0f);
+                _headerAvatarVisuals[i].CenterPoint = new Vector3(HeaderAvatarCenterPoint, HeaderAvatarCenterPoint, 0.0f);
             }
         }
 
@@ -612,7 +648,7 @@ namespace wisland.Views
             {
                 if (!nextSessionKeys.Contains(currentAvatars[oldSlot].SessionKey))
                 {
-                    animations.Add(CreateExitingAvatarAnimation(oldSlot, direction));
+                    animations.Add(CreateExitingAvatarAnimation(currentAvatars[oldSlot], oldSlot, direction));
                 }
             }
 
@@ -622,10 +658,13 @@ namespace wisland.Views
                 HeaderAvatarSnapshot avatar = nextAvatars[newSlot];
                 if (presenterBySessionKey.TryGetValue(avatar.SessionKey, out int presenterIndex))
                 {
+                    HeaderAvatarSnapshot currentAvatar = currentAvatars[presenterIndex];
                     animations.Add(CreateMovingAvatarAnimation(
                         presenterIndex,
                         presenterIndex,
-                        newSlot));
+                        newSlot,
+                        currentAvatar.IsSelected,
+                        avatar.IsSelected));
                 }
                 else
                 {
@@ -636,7 +675,7 @@ namespace wisland.Views
 
                     usesOverlayPresenter = true;
                     ApplyAvatarToPresenter(3, avatar);
-                    animations.Add(CreateEnteringAvatarAnimation(3, newSlot, direction));
+                    animations.Add(CreateEnteringAvatarAnimation(3, newSlot, avatar.IsSelected, direction));
                 }
             }
 
@@ -689,10 +728,11 @@ namespace wisland.Views
         private void ApplyAvatarStripSnapshotImmediately(AvatarStripSnapshot snapshot)
         {
             InitializeHeaderAvatarStrip();
+            UpdateHeaderAvatarViewportWidth(snapshot);
 
             StopAvatarPresenterAnimations(3);
             ApplyAvatarToPresenter(3, HeaderAvatarSnapshot.Hidden);
-            ResetAvatarPresenterVisual(3, 2, visible: false);
+            ResetAvatarPresenterVisual(3, 2, isSelected: false, visible: false);
 
             List<HeaderAvatarSnapshot> visibleAvatars = GetVisibleHeaderAvatars(snapshot);
             for (int slotIndex = 0; slotIndex < 3; slotIndex++)
@@ -702,7 +742,7 @@ namespace wisland.Views
                     ? visibleAvatars[slotIndex]
                     : HeaderAvatarSnapshot.Hidden;
                 ApplyAvatarToPresenter(slotIndex, avatar);
-                ResetAvatarPresenterVisual(slotIndex, slotIndex, avatar.IsVisible);
+                ResetAvatarPresenterVisual(slotIndex, slotIndex, avatar.IsSelected, avatar.IsVisible);
             }
 
             HeaderAvatarOverflowFade.Visibility = snapshot.ShowOverflowFade
@@ -716,7 +756,13 @@ namespace wisland.Views
             Visual visual = _headerAvatarVisuals[animation.PresenterIndex];
 
             border.Visibility = Visibility.Visible;
-            Canvas.SetZIndex(border, GetAvatarAnimationZIndex(animation.StartSlot, animation.EndSlot));
+            Canvas.SetZIndex(
+                border,
+                GetAvatarAnimationZIndex(
+                    animation.StartSlot,
+                    animation.EndSlot,
+                    animation.StartIsSelected,
+                    animation.EndIsSelected));
 
             visual.Offset = new Vector3(animation.StartOffset, 0.0f, 0.0f);
             visual.Scale = new Vector3(animation.StartScale, animation.StartScale, 1.0f);
@@ -816,14 +862,17 @@ namespace wisland.Views
             return transition;
         }
 
-        private void ResetAvatarPresenterVisual(int presenterIndex, int slotIndex, bool visible)
+        private void ResetAvatarPresenterVisual(int presenterIndex, int slotIndex, bool isSelected, bool visible)
         {
             Visual visual = _headerAvatarVisuals[presenterIndex];
             visual.Offset = new Vector3(AvatarSlotOffsets[slotIndex], 0.0f, 0.0f);
-            visual.Scale = new Vector3(AvatarSlotScales[slotIndex], AvatarSlotScales[slotIndex], 1.0f);
+            float scale = GetAvatarScale(isSelected);
+            visual.Scale = new Vector3(scale, scale, 1.0f);
             visual.Opacity = visible ? 1.0f : 0.0f;
             _headerAvatarBorders[presenterIndex].Visibility = visible ? Visibility.Visible : Visibility.Collapsed;
-            Canvas.SetZIndex(_headerAvatarBorders[presenterIndex], visible ? GetAvatarSlotZIndex(slotIndex) : 0);
+            Canvas.SetZIndex(
+                _headerAvatarBorders[presenterIndex],
+                visible ? GetAvatarSlotZIndex(slotIndex, isSelected) : 0);
         }
 
         private void StopAvatarPresenterAnimations(int presenterIndex)
@@ -956,15 +1005,15 @@ namespace wisland.Views
         private void RefreshSessionPickerItemColors()
             => UpdateSessionPickerItems(_pickerSessions, _selectedSessionKey);
 
-        private double MeasureHeaderChipWidth(HeaderTextSnapshot snapshot)
+        private double MeasureHeaderChipWidth(HeaderTextSnapshot snapshot, AvatarStripSnapshot avatarSnapshot)
         {
             Thickness padding = HeaderChipBorder.Padding;
             Thickness borderThickness = HeaderChipBorder.BorderThickness;
             double chromeWidth = padding.Left + padding.Right + borderThickness.Left + borderThickness.Right;
-            return Math.Ceiling(MeasureHeaderContentWidth(snapshot) + chromeWidth);
+            return Math.Ceiling(MeasureHeaderContentWidth(snapshot, avatarSnapshot) + chromeWidth);
         }
 
-        private double MeasureHeaderContentWidth(HeaderTextSnapshot snapshot)
+        private double MeasureHeaderContentWidth(HeaderTextSnapshot snapshot, AvatarStripSnapshot avatarSnapshot)
         {
             StackPanel labelStack = new()
             {
@@ -992,7 +1041,11 @@ namespace wisland.Views
             }
 
             labelStack.Measure(new Size(double.PositiveInfinity, double.PositiveInfinity));
-            return Math.Ceiling(34.0 + 4.0 + labelStack.DesiredSize.Width);
+            double avatarWidth = MeasureHeaderAvatarViewportWidth(avatarSnapshot);
+            double gapWidth = avatarWidth > 0
+                ? HeaderChipContentRoot.ColumnSpacing
+                : 0.0;
+            return Math.Ceiling(avatarWidth + gapWidth + labelStack.DesiredSize.Width);
         }
 
         private HeaderTextSnapshot CreateMediaHeaderTextSnapshot(MediaSessionSnapshot? session, int sessionCount)
@@ -1019,7 +1072,7 @@ namespace wisland.Views
 
             HeaderAvatarSnapshot[] avatars = GetVisibleHeaderAvatars(availableSessions, displayIndex);
             return new AvatarStripSnapshot(
-                ShowOverflowFade: availableSessions.Count > 3,
+                ShowOverflowFade: ShouldShowAvatarOverflowFade(availableSessions.Count, displayIndex),
                 First: avatars[0],
                 Second: avatars[1],
                 Third: avatars[2]);
@@ -1041,15 +1094,17 @@ namespace wisland.Views
                 return avatars;
             }
 
-            int startIndex = displayIndex >= 0 && displayIndex < sessions.Count ? displayIndex : 0;
-            int visibleCount = Math.Min(3, sessions.Count);
+            (int startIndex, int selectedVisibleIndex, int visibleCount) = ResolveAvatarWindow(
+                sessions.Count,
+                displayIndex);
             for (int i = 0; i < visibleCount; i++)
             {
-                MediaSessionSnapshot session = sessions[(startIndex + i) % sessions.Count];
+                MediaSessionSnapshot session = sessions[startIndex + i];
                 avatars[i] = new HeaderAvatarSnapshot(
                     session.SessionKey,
                     session.SourceAppId,
                     session.SourceName,
+                    IsSelected: i == selectedVisibleIndex,
                     true);
             }
 
@@ -1075,6 +1130,56 @@ namespace wisland.Views
             }
 
             return avatars;
+        }
+
+        private static double MeasureHeaderAvatarViewportWidth(AvatarStripSnapshot snapshot)
+        {
+            int visibleCount = GetVisibleHeaderAvatars(snapshot).Count;
+            if (visibleCount <= 0)
+            {
+                return 0.0;
+            }
+
+            return Math.Ceiling(HeaderAvatarSize + (HeaderAvatarSlotStep * (visibleCount - 1)));
+        }
+
+        private static (int StartIndex, int SelectedVisibleIndex, int VisibleCount) ResolveAvatarWindow(
+            int sessionCount,
+            int displayIndex)
+        {
+            if (sessionCount <= 0)
+            {
+                return (0, -1, 0);
+            }
+
+            int clampedDisplayIndex = Math.Clamp(displayIndex, 0, sessionCount - 1);
+            if (sessionCount <= HeaderAvatarVisibleCount)
+            {
+                return (0, clampedDisplayIndex, sessionCount);
+            }
+
+            if (clampedDisplayIndex <= 0)
+            {
+                return (0, 0, HeaderAvatarVisibleCount);
+            }
+
+            if (clampedDisplayIndex >= sessionCount - 1)
+            {
+                return (sessionCount - HeaderAvatarVisibleCount, HeaderAvatarVisibleCount - 1, HeaderAvatarVisibleCount);
+            }
+
+            return (clampedDisplayIndex - 1, 1, HeaderAvatarVisibleCount);
+        }
+
+        private static bool ShouldShowAvatarOverflowFade(int sessionCount, int displayIndex)
+        {
+            if (sessionCount <= HeaderAvatarVisibleCount)
+            {
+                return false;
+            }
+
+            (int startIndex, _, int visibleCount) = ResolveAvatarWindow(sessionCount, displayIndex);
+            return startIndex + visibleCount < sessionCount;
         }
 
         private void ApplyHeaderTextSnapshotToSlot(int slotIndex, HeaderTextSnapshot snapshot)
@@ -1273,45 +1378,63 @@ namespace wisland.Views
                 ControlPoint2 = new Point(controlPoint2X, controlPoint2Y)
             };
 
-        private static int GetAvatarSlotZIndex(int slotIndex)
-            => 30 - (slotIndex * 10);
+        private static float GetAvatarScale(bool isSelected)
+            => isSelected ? HeaderAvatarSelectedScale : HeaderAvatarNormalScale;
 
-        private static int GetAvatarAnimationZIndex(int startSlot, int endSlot)
+        private static int GetAvatarSlotZIndex(int slotIndex, bool isSelected)
+            => isSelected
+                ? 40
+                : 30 - (slotIndex * 10);
+
+        private static int GetAvatarAnimationZIndex(
+            int startSlot,
+            int endSlot,
+            bool startIsSelected,
+            bool endIsSelected)
         {
-            int dominantSlot = Math.Min(
-                startSlot >= 0 ? startSlot : 3,
-                endSlot >= 0 ? endSlot : 3);
-            return dominantSlot >= 0 && dominantSlot < 3
-                ? GetAvatarSlotZIndex(dominantSlot)
+            int startZIndex = startSlot >= 0 && startSlot < HeaderAvatarVisibleCount
+                ? GetAvatarSlotZIndex(startSlot, startIsSelected)
                 : 0;
+            int endZIndex = endSlot >= 0 && endSlot < HeaderAvatarVisibleCount
+                ? GetAvatarSlotZIndex(endSlot, endIsSelected)
+                : 0;
+            return Math.Max(startZIndex, endZIndex);
         }
 
         private static AvatarPresenterAnimation CreateMovingAvatarAnimation(
             int presenterIndex,
             int startSlot,
-            int endSlot)
+            int endSlot,
+            bool startIsSelected,
+            bool endIsSelected)
             => new(
                 PresenterIndex: presenterIndex,
                 StartSlot: startSlot,
                 EndSlot: endSlot,
                 StartOffset: AvatarSlotOffsets[startSlot],
                 EndOffset: AvatarSlotOffsets[endSlot],
-                StartScale: AvatarSlotScales[startSlot],
-                EndScale: AvatarSlotScales[endSlot],
+                StartScale: GetAvatarScale(startIsSelected),
+                EndScale: GetAvatarScale(endIsSelected),
                 StartOpacity: 1.0f,
                 EndOpacity: 1.0f,
+                StartIsSelected: startIsSelected,
+                EndIsSelected: endIsSelected,
                 Kind: AvatarAnimationKind.Moving);
 
         private static AvatarPresenterAnimation CreateEnteringAvatarAnimation(
             int presenterIndex,
             int endSlot,
+            bool endIsSelected,
             ContentTransitionDirection direction)
         {
             float endOffset = AvatarSlotOffsets[endSlot];
-            float offsetDelta = direction == ContentTransitionDirection.Forward
-                ? IslandConfig.HeaderAvatarEnterTravel
-                : -IslandConfig.HeaderAvatarEnterTravel;
-            float endScale = AvatarSlotScales[endSlot];
+            float offsetDelta = direction switch
+            {
+                ContentTransitionDirection.Forward => IslandConfig.HeaderAvatarEnterTravel,
+                ContentTransitionDirection.Backward => -IslandConfig.HeaderAvatarEnterTravel,
+                _ => 0.0f
+            };
+            float endScale = GetAvatarScale(endIsSelected);
 
             return new AvatarPresenterAnimation(
                 PresenterIndex: presenterIndex,
@@ -1323,18 +1446,24 @@ namespace wisland.Views
                 EndScale: endScale,
                 StartOpacity: 0.0f,
                 EndOpacity: 1.0f,
+                StartIsSelected: endIsSelected,
+                EndIsSelected: endIsSelected,
                 Kind: AvatarAnimationKind.Entering);
         }
 
         private static AvatarPresenterAnimation CreateExitingAvatarAnimation(
+            HeaderAvatarSnapshot avatar,
             int startSlot,
             ContentTransitionDirection direction)
         {
             float startOffset = AvatarSlotOffsets[startSlot];
-            float offsetDelta = direction == ContentTransitionDirection.Forward
-                ? -IslandConfig.HeaderAvatarExitTravel
-                : IslandConfig.HeaderAvatarExitTravel;
-            float startScale = AvatarSlotScales[startSlot];
+            float offsetDelta = direction switch
+            {
+                ContentTransitionDirection.Forward => -IslandConfig.HeaderAvatarExitTravel,
+                ContentTransitionDirection.Backward => IslandConfig.HeaderAvatarExitTravel,
+                _ => 0.0f
+            };
+            float startScale = GetAvatarScale(avatar.IsSelected);
 
             return new AvatarPresenterAnimation(
                 PresenterIndex: startSlot,
@@ -1346,6 +1475,8 @@ namespace wisland.Views
                 EndScale: startScale * IslandConfig.HeaderAvatarExitScaleMultiplier,
                 StartOpacity: 1.0f,
                 EndOpacity: 0.0f,
+                StartIsSelected: avatar.IsSelected,
+                EndIsSelected: false,
                 Kind: AvatarAnimationKind.Exiting);
         }
 
@@ -1372,9 +1503,10 @@ namespace wisland.Views
             string SessionKey,
             string SourceAppId,
             string SourceName,
+            bool IsSelected,
             bool IsVisible)
         {
-            public static HeaderAvatarSnapshot Hidden { get; } = new(string.Empty, string.Empty, string.Empty, false);
+            public static HeaderAvatarSnapshot Hidden { get; } = new(string.Empty, string.Empty, string.Empty, false, false);
         }
 
         private readonly record struct AvatarPresenterAnimation(
@@ -1387,6 +1519,8 @@ namespace wisland.Views
             float EndScale,
             float StartOpacity,
             float EndOpacity,
+            bool StartIsSelected,
+            bool EndIsSelected,
             AvatarAnimationKind Kind);
 
         private enum AvatarAnimationKind

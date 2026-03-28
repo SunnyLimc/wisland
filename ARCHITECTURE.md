@@ -56,7 +56,7 @@ MainWindow
   -> delegates backdrop/corner application to WindowAppearanceService
   -> delegates docked line-overlay ownership to ShellVisibilityService
   -> syncs logical state into XAML and AppWindow geometry
-  -> owns focused-session selection, manual lock timing, and session cycling rules
+  -> owns focused-session selection, manual lock timing, stable visual session ordering, and session cycling rules
 
 IslandController
   -> stores logical flags
@@ -248,7 +248,7 @@ Owns orchestration and side effects:
 - shell visibility coordination
 - render loop
 - media UI synchronization
-- focused-session selection, lock expiry, and wheel cycling
+- focused-session selection, lock expiry, stable visual session ordering, and non-loop wheel cycling
 - tray menu wiring
 - backdrop application
 - persistence save points
@@ -348,6 +348,7 @@ Minimal compact content surface. It now keeps its own two-slot text surface wire
 Expanded content surface for:
 
 - compact tab-strip header with stacked source avatars
+- stable stacked-avatar deck order with neutral focus/reorder animation for non-direction changes
 - best-effort source app icons with monogram fallback
 - lightweight session picker flyout
 - title
@@ -448,6 +449,7 @@ These are the rules that contributors should preserve:
 6. Service failures should log and degrade gracefully rather than crash the process.
 7. Transport controls and progress always follow the focused displayed session, while docked new-track notifications follow the system current session.
 8. Local development uses the standard `bin/` and `obj/` output trees; do not add repo-local alternate build-output directories to dodge file locks.
+9. Multi-session visual ordering should remain stable for the user; background priority changes may change focus, but should not constantly reshuffle the header strip.
 
 ## 10. Fast Change Guide
 
