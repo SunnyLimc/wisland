@@ -116,6 +116,31 @@ namespace wisland.Tests
             Assert.Null(decision.PendingAutoSwitchDueUtc);
         }
 
+        [Fact]
+        public void ActivePlaceholderWithinGraceStillPinsDisplayedSource()
+        {
+            MediaFocusArbiter arbiter = new(Debounce, Grace);
+            DateTimeOffset now = new(2026, 3, 28, 12, 0, 0, TimeSpan.Zero);
+            MediaSessionSnapshot provisionalDisplayed = CreateSession(
+                "displayed",
+                playbackStatus: GlobalSystemMediaTransportControlsSessionPlaybackStatus.Paused,
+                presence: MediaSessionPresence.Active,
+                missingSinceUtc: now - TimeSpan.FromSeconds(1));
+            MediaSessionSnapshot otherPlaying = CreateSession(
+                "other",
+                playbackStatus: GlobalSystemMediaTransportControlsSessionPlaybackStatus.Playing,
+                isSystemCurrent: true);
+
+            MediaFocusDecision decision = arbiter.Resolve(
+                new[] { provisionalDisplayed, otherPlaying },
+                currentDisplayedKey: provisionalDisplayed.SessionKey,
+                manualLockedKey: null,
+                hasManualLock: false,
+                nowUtc: now);
+
+            Assert.Equal(provisionalDisplayed.SessionKey, decision.DisplayedSession?.SessionKey);
+        }
+
         private static MediaSessionSnapshot CreateSession(
             string sessionKey,
             GlobalSystemMediaTransportControlsSessionPlaybackStatus playbackStatus,

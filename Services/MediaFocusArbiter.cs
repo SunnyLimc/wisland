@@ -41,7 +41,6 @@ namespace wisland.Services
             UpdatePendingAutoWinner(autoWinner?.SessionKey, nowUtc);
 
             if (currentDisplayedSession.HasValue
-                && currentDisplayedSession.Value.IsWaitingForReconnect
                 && IsWithinMissingGrace(currentDisplayedSession.Value, nowUtc))
             {
                 DateTimeOffset? waitingSwitchDueUtc = GetPendingAutoSwitchDueUtc();

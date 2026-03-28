@@ -177,6 +177,7 @@ namespace wisland
                     && displayedSession.Value.HasTimeline
                     && displayedSession.Value.IsPlaying
                     && !displayedSession.Value.IsWaitingForReconnect
+                    && !displayedSession.Value.MissingSinceUtc.HasValue
                     && !_isMediaProgressResetPending);
         }
     }

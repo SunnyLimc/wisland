@@ -119,6 +119,7 @@ namespace wisland.Services
                 foreach (TrackedSource tracked in _trackedSourcesByKey.Values)
                 {
                     if (tracked.Presence != MediaSessionPresence.Active
+                        || tracked.HasPendingReconnect
                         || tracked.PlaybackStatus != GlobalSystemMediaTransportControlsSessionPlaybackStatus.Playing
                         || tracked.DurationSeconds <= 0)
                     {
@@ -176,6 +177,7 @@ namespace wisland.Services
             {
                 return _trackedSourcesByKey.TryGetValue(sessionKey, out TrackedSource? tracked)
                     && tracked.Presence == MediaSessionPresence.Active
+                    && !tracked.HasPendingReconnect
                     && tracked.PlaybackStatus == GlobalSystemMediaTransportControlsSessionPlaybackStatus.Playing
                     && tracked.DurationSeconds > 0;
             }
@@ -333,6 +335,17 @@ namespace wisland.Services
 
                     HashSet<GlobalSystemMediaTransportControlsSession> activeSessions =
                         new(sessions, ReferenceEqualityComparer.Instance);
+                    GlobalSystemMediaTransportControlsSession[] removedSessions = _trackedSourcesBySession.Keys
+                        .Where(session => !activeSessions.Contains(session))
+                        .ToArray();
+                    Dictionary<GlobalSystemMediaTransportControlsSession, PendingSourceMatch> immediateRebinds =
+                        MatchImmediateRebinds_NoLock(
+                            removedSessions,
+                            newSessions,
+                            prefetchedStates);
+                    HashSet<string> reboundSourceKeys = new(
+                        immediateRebinds.Values.Select(match => match.Tracked.SessionKey),
+                        StringComparer.Ordinal);
 
                     foreach (GlobalSystemMediaTransportControlsSession session in sessions)
                     {
@@ -342,8 +355,21 @@ namespace wisland.Services
                                 ? state
                                 : PrefetchedSessionState.Empty;
 
-                            tracked = MatchWaitingSource_NoLock(session, prefetchedState, nowUtc, out bool provisionalReconnect)
-                                ?? CreateTrackedSource_NoLock(session, nowUtc);
+                            bool provisionalReconnect;
+                            if (immediateRebinds.TryGetValue(session, out PendingSourceMatch immediateMatch))
+                            {
+                                tracked = immediateMatch.Tracked;
+                                provisionalReconnect = immediateMatch.ProvisionalReconnect;
+                                if (provisionalReconnect)
+                                {
+                                    tracked.MissingSinceUtc ??= nowUtc;
+                                }
+                            }
+                            else
+                            {
+                                tracked = MatchWaitingSource_NoLock(session, prefetchedState, nowUtc, out provisionalReconnect)
+                                    ?? CreateTrackedSource_NoLock(session, nowUtc);
+                            }
 
                             BindSourceToRawSession_NoLock(tracked, session, prefetchedState, nowUtc, provisionalReconnect);
                             _trackedSourcesBySession[session] = tracked;
@@ -356,10 +382,6 @@ namespace wisland.Services
                         }
                     }
 
-                    GlobalSystemMediaTransportControlsSession[] removedSessions = _trackedSourcesBySession.Keys
-                        .Where(session => !activeSessions.Contains(session))
-                        .ToArray();
-
                     foreach (GlobalSystemMediaTransportControlsSession session in removedSessions)
                     {
                         TrackedSource tracked = _trackedSourcesBySession[session];
@@ -370,6 +392,11 @@ namespace wisland.Services
                         }
 
                         sessionsToDetach.Add(session);
+                        if (reboundSourceKeys.Contains(tracked.SessionKey))
+                        {
+                            continue;
+                        }
+
                         shouldStartBurst |= string.Equals(tracked.SessionKey, _displayedSessionKey, StringComparison.Ordinal)
                             || tracked.IsSystemCurrent;
                         EnterWaitingState_NoLock(tracked, nowUtc);
@@ -790,18 +817,15 @@ namespace wisland.Services
                 }
             }
 
-            TrackedSource? fallbackMatch = waitingCandidates
-                .Where(source => WasReconnectHintedRecently_NoLock(source, nowUtc))
-                .OrderByDescending(GetReconnectPriority_NoLock)
-                .ThenByDescending(source => source.MissingSinceUtc)
-                .FirstOrDefault();
-
-            if (fallbackMatch != null)
+            if (waitingCandidates.Count == 1
+                && WasReconnectHintedRecently_NoLock(waitingCandidates[0], nowUtc)
+                && TryGetContinuationScore_NoLock(waitingCandidates[0], prefetchedState, out _))
             {
                 provisionalReconnect = true;
+                return waitingCandidates[0];
             }
 
-            return fallbackMatch;
+            return null;
         }
 
         private static bool WasReconnectHintedRecently_NoLock(TrackedSource source, DateTimeOffset nowUtc)
@@ -816,6 +840,135 @@ namespace wisland.Services
             DateTimeOffset missing = source.MissingSinceUtc ?? DateTimeOffset.MinValue;
             return Math.Max(displayed.UtcTicks, Math.Max(systemCurrent.UtcTicks, missing.UtcTicks));
         }
+
+        private Dictionary<GlobalSystemMediaTransportControlsSession, PendingSourceMatch> MatchImmediateRebinds_NoLock(
+            IReadOnlyList<GlobalSystemMediaTransportControlsSession> removedSessions,
+            IReadOnlyList<GlobalSystemMediaTransportControlsSession> newSessions,
+            IReadOnlyDictionary<GlobalSystemMediaTransportControlsSession, PrefetchedSessionState> prefetchedStates)
+        {
+            Dictionary<GlobalSystemMediaTransportControlsSession, PendingSourceMatch> matches =
+                new(ReferenceEqualityComparer.Instance);
+            if (removedSessions.Count == 0 || newSessions.Count == 0)
+            {
+                return matches;
+            }
+
+            List<TrackedSource> removedSources = removedSessions
+                .Select(session => _trackedSourcesBySession[session])
+                .GroupBy(source => source.SessionKey, StringComparer.Ordinal)
+                .Select(group => group.First())
+                .ToList();
+            HashSet<string> assignedSourceKeys = new(StringComparer.Ordinal);
+            HashSet<GlobalSystemMediaTransportControlsSession> assignedSessions =
+                new(ReferenceEqualityComparer.Instance);
+
+            foreach (GlobalSystemMediaTransportControlsSession session in newSessions)
+            {
+                PrefetchedSessionState prefetchedState = prefetchedStates.TryGetValue(session, out PrefetchedSessionState state)
+                    ? state
+                    : PrefetchedSessionState.Empty;
+                if (!prefetchedState.HasConcreteMetadata)
+                {
+                    continue;
+                }
+
+                TrackedSource? exactMatch = removedSources
+                    .Where(source =>
+                        !assignedSourceKeys.Contains(source.SessionKey)
+                        && string.Equals(source.SourceAppId, session.SourceAppUserModelId, StringComparison.Ordinal)
+                        && string.Equals(source.Title, prefetchedState.Title, StringComparison.Ordinal)
+                        && string.Equals(source.Artist, prefetchedState.Artist, StringComparison.Ordinal))
+                    .OrderByDescending(GetReconnectPriority_NoLock)
+                    .ThenBy(source => GetTimelineDistance_NoLock(source, prefetchedState))
+                    .FirstOrDefault();
+
+                if (exactMatch == null)
+                {
+                    continue;
+                }
+
+                matches[session] = new PendingSourceMatch(exactMatch, ProvisionalReconnect: false);
+                assignedSourceKeys.Add(exactMatch.SessionKey);
+                assignedSessions.Add(session);
+            }
+
+            List<PendingContinuationCandidate> continuationCandidates = new();
+            foreach (GlobalSystemMediaTransportControlsSession session in newSessions)
+            {
+                if (assignedSessions.Contains(session))
+                {
+                    continue;
+                }
+
+                PrefetchedSessionState prefetchedState = prefetchedStates.TryGetValue(session, out PrefetchedSessionState state)
+                    ? state
+                    : PrefetchedSessionState.Empty;
+
+                foreach (TrackedSource source in removedSources)
+                {
+                    if (assignedSourceKeys.Contains(source.SessionKey)
+                        || !string.Equals(source.SourceAppId, session.SourceAppUserModelId, StringComparison.Ordinal))
+                    {
+                        continue;
+                    }
+
+                    if (TryGetContinuationScore_NoLock(source, prefetchedState, out double score))
+                    {
+                        continuationCandidates.Add(new PendingContinuationCandidate(session, source, score));
+                    }
+                }
+            }
+
+            foreach (PendingContinuationCandidate candidate in continuationCandidates
+                .OrderBy(candidate => candidate.Score)
+                .ThenByDescending(candidate => GetReconnectPriority_NoLock(candidate.Source)))
+            {
+                if (assignedSessions.Contains(candidate.Session) || assignedSourceKeys.Contains(candidate.Source.SessionKey))
+                {
+                    continue;
+                }
+
+                matches[candidate.Session] = new PendingSourceMatch(candidate.Source, ProvisionalReconnect: true);
+                assignedSessions.Add(candidate.Session);
+                assignedSourceKeys.Add(candidate.Source.SessionKey);
+            }
+
+            return matches;
+        }
+
+        private static bool TryGetContinuationScore_NoLock(
+            TrackedSource source,
+            PrefetchedSessionState prefetchedState,
+            out double score)
+        {
+            score = double.MaxValue;
+            if (prefetchedState.HasTimeline && source.HasTimeline)
+            {
+                double distance = GetTimelineDistance_NoLock(source, prefetchedState);
+                if (distance > 8.0)
+                {
+                    return false;
+                }
+
+                score = distance;
+                if (source.PlaybackStatus != prefetchedState.PlaybackStatus)
+                {
+                    score += 2.0;
+                }
+
+                if (source.LastDisplayedUtc.HasValue || source.LastSystemCurrentUtc.HasValue)
+                {
+                    score -= 0.5;
+                }
+
+                return true;
+            }
+
+            return false;
+        }
+
+        private static double GetTimelineDistance_NoLock(TrackedSource source, PrefetchedSessionState prefetchedState)
+            => Math.Abs(source.CurrentPositionSeconds - prefetchedState.PositionSeconds);
 
         private TrackedSource CreateTrackedSource_NoLock(GlobalSystemMediaTransportControlsSession session, DateTimeOffset nowUtc)
         {
@@ -857,6 +1010,7 @@ namespace wisland.Services
                 return;
             }
 
+            tracked.Presence = MediaSessionPresence.Active;
             tracked.HasPendingReconnect = true;
             tracked.PendingTitle = prefetchedState.Title;
             tracked.PendingArtist = prefetchedState.Artist;
@@ -1122,8 +1276,8 @@ namespace wisland.Services
         {
             DateTimeOffset? nextExpiryUtc = _trackedSourcesByKey.Values
                 .Where(source =>
-                    source.Presence == MediaSessionPresence.WaitingForReconnect
-                    && source.MissingSinceUtc.HasValue)
+                    source.MissingSinceUtc.HasValue
+                    && (source.Presence == MediaSessionPresence.WaitingForReconnect || source.HasPendingReconnect))
                 .Select(source => source.MissingSinceUtc!.Value + _missingSourceGrace)
                 .OrderBy(expiry => expiry)
                 .Cast<DateTimeOffset?>()
@@ -1368,5 +1522,14 @@ namespace wisland.Services
             bool ShouldNotifyTrack,
             string TrackTitle,
             string TrackArtist);
+
+        private readonly record struct PendingSourceMatch(
+            TrackedSource Tracked,
+            bool ProvisionalReconnect);
+
+        private readonly record struct PendingContinuationCandidate(
+            GlobalSystemMediaTransportControlsSession Session,
+            TrackedSource Source,
+            double Score);
     }
 }

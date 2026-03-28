@@ -19,6 +19,9 @@ namespace wisland
         private DateTimeOffset? _selectionLockUntilUtc;
         private string? _lastDisplayedContentIdentity;
         private string? _lastDisplayedProgressIdentity;
+        private MediaSessionSnapshot? _transportWaitingSnapshot;
+        private DateTimeOffset? _transportWaitingStartedUtc;
+        private DateTimeOffset? _transportWaitingUntilUtc;
         private readonly List<string> _sessionVisualOrderKeys = new();
 
         private async Task InitializeMediaAsync()
@@ -94,12 +97,21 @@ namespace wisland
             => _mediaService.GetSessionSnapshot(_displayedSessionKey);
 
         private IReadOnlyList<MediaSessionSnapshot> GetPriorityOrderedSessions()
-            => _mediaService.Sessions
+        {
+            List<MediaSessionSnapshot> sessions = _mediaService.Sessions.ToList();
+            MediaSessionSnapshot? transportWaiting = GetTransportWaitingFallbackSnapshot(sessions);
+            if (transportWaiting.HasValue)
+            {
+                sessions.Add(transportWaiting.Value);
+            }
+
+            return sessions
                 .OrderBy(session => GetSessionPriorityRank(session))
                 .ThenByDescending(session => session.LastActivityUtc)
                 .ThenBy(session => session.SourceName, StringComparer.OrdinalIgnoreCase)
                 .ThenBy(session => session.SessionKey, StringComparer.Ordinal)
                 .ToArray();
+        }
 
         private DisplayedMediaContext ResolveDisplayedMediaContext()
         {
@@ -166,12 +178,14 @@ namespace wisland
 
         private async void SkipNext_Click(object? sender, EventArgs e)
         {
+            RegisterTransportWaitingFallback();
             RegisterPendingMediaTransitionDirection(ContentTransitionDirection.Forward);
             await _mediaService.SkipNextAsync(_displayedSessionKey);
         }
 
         private async void SkipPrevious_Click(object? sender, EventArgs e)
         {
+            RegisterTransportWaitingFallback();
             RegisterPendingMediaTransitionDirection(ContentTransitionDirection.Backward);
             await _mediaService.SkipPreviousAsync(_displayedSessionKey);
         }
@@ -519,6 +533,98 @@ namespace wisland
                 _ => 5
             };
         }
+
+        private void RegisterTransportWaitingFallback()
+        {
+            MediaSessionSnapshot? displayedSession = GetDisplayedMediaSessionSnapshot();
+            if (!displayedSession.HasValue)
+            {
+                return;
+            }
+
+            DateTimeOffset nowUtc = DateTimeOffset.UtcNow;
+            _transportWaitingSnapshot = displayedSession.Value with
+            {
+                Presence = MediaSessionPresence.WaitingForReconnect,
+                MissingSinceUtc = nowUtc,
+                LastSeenUtc = nowUtc
+            };
+            _transportWaitingStartedUtc = nowUtc;
+            _transportWaitingUntilUtc = nowUtc.AddMilliseconds(IslandConfig.MediaMissingGraceMs);
+        }
+
+        private MediaSessionSnapshot? GetTransportWaitingFallbackSnapshot(IReadOnlyList<MediaSessionSnapshot> sessions)
+        {
+            if (!_transportWaitingUntilUtc.HasValue
+                || !_transportWaitingSnapshot.HasValue)
+            {
+                return null;
+            }
+
+            DateTimeOffset nowUtc = DateTimeOffset.UtcNow;
+            if (_transportWaitingUntilUtc.Value <= nowUtc)
+            {
+                ClearTransportWaitingFallback();
+                return null;
+            }
+
+            string sessionKey = _transportWaitingSnapshot.Value.SessionKey;
+            if (TryFindSession(sessions, sessionKey, out MediaSessionSnapshot authoritativeSession, out _))
+            {
+                if (ShouldClearTransportWaitingFallback(authoritativeSession))
+                {
+                    ClearTransportWaitingFallback();
+                }
+
+                return null;
+            }
+
+            return _transportWaitingSnapshot.Value with
+            {
+                MissingSinceUtc = _transportWaitingStartedUtc ?? _transportWaitingSnapshot.Value.MissingSinceUtc ?? nowUtc,
+                LastSeenUtc = nowUtc
+            };
+        }
+
+        private void ClearTransportWaitingFallback()
+        {
+            _transportWaitingSnapshot = null;
+            _transportWaitingStartedUtc = null;
+            _transportWaitingUntilUtc = null;
+        }
+
+        private bool ShouldClearTransportWaitingFallback(MediaSessionSnapshot authoritativeSession)
+        {
+            if (!_transportWaitingSnapshot.HasValue)
+            {
+                return true;
+            }
+
+            if (authoritativeSession.IsWaitingForReconnect)
+            {
+                return true;
+            }
+
+            if (authoritativeSession.MissingSinceUtc.HasValue)
+            {
+                return false;
+            }
+
+            MediaSessionSnapshot armedSnapshot = _transportWaitingSnapshot.Value;
+            bool metadataChanged =
+                !string.Equals(authoritativeSession.Title, armedSnapshot.Title, StringComparison.Ordinal)
+                || !string.Equals(authoritativeSession.Artist, armedSnapshot.Artist, StringComparison.Ordinal);
+            if (metadataChanged && HasConcreteTransportMetadata(authoritativeSession))
+            {
+                return true;
+            }
+
+            return false;
+        }
+
+        private static bool HasConcreteTransportMetadata(MediaSessionSnapshot session)
+            => !string.IsNullOrWhiteSpace(session.Title)
+                && !string.Equals(session.Title, "Unknown Track", StringComparison.Ordinal);
 
         private static string? CreateContentIdentity(MediaSessionSnapshot? session)
             => session.HasValue
