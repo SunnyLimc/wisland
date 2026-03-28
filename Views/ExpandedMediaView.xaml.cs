@@ -139,15 +139,26 @@ namespace wisland.Views
             int displayIndex,
             int sessionCount,
             IReadOnlyList<MediaSessionSnapshot> availableSessions,
-            ContentTransitionDirection direction = ContentTransitionDirection.None)
+            ContentTransitionDirection direction = ContentTransitionDirection.None,
+            bool showTransportSwitchingHint = false)
         {
-            UpdatePlayPauseSymbol(session.HasValue && session.Value.IsPlaying && !session.Value.IsWaitingForReconnect);
+            bool showBusyTransportState = showTransportSwitchingHint
+                && session.HasValue
+                && session.Value.MissingSinceUtc.HasValue;
+
+            UpdatePlayPauseSymbol(session.HasValue
+                && session.Value.IsPlaying
+                && !session.Value.IsWaitingForReconnect
+                && !showBusyTransportState);
             UpdateSessionPickerItems(availableSessions, session?.SessionKey);
 
-            HeaderTextSnapshot nextHeaderTextSnapshot = CreateMediaHeaderTextSnapshot(session, availableSessions.Count);
+            HeaderTextSnapshot nextHeaderTextSnapshot = CreateMediaHeaderTextSnapshot(
+                session,
+                availableSessions.Count,
+                showBusyTransportState);
             AvatarStripSnapshot nextAvatarStripSnapshot = CreateMediaAvatarStripSnapshot(session, displayIndex, availableSessions);
             MetadataSnapshot nextMetadataSnapshot = session.HasValue
-                ? new MetadataSnapshot(session.Value.Title, session.Value.IsWaitingForReconnect ? "Waiting..." : session.Value.Artist)
+                ? new MetadataSnapshot(session.Value.Title, GetMetadataSubtitle(session.Value, showBusyTransportState))
                 : new MetadataSnapshot("No Media", "Waiting for music...");
 
             bool headerTextChanged = ApplyHeaderTextSnapshot(nextHeaderTextSnapshot, nextAvatarStripSnapshot, direction);
@@ -1048,7 +1059,10 @@ namespace wisland.Views
             return Math.Ceiling(avatarWidth + gapWidth + labelStack.DesiredSize.Width);
         }
 
-        private HeaderTextSnapshot CreateMediaHeaderTextSnapshot(MediaSessionSnapshot? session, int sessionCount)
+        private HeaderTextSnapshot CreateMediaHeaderTextSnapshot(
+            MediaSessionSnapshot? session,
+            int sessionCount,
+            bool showTransportSwitchingHint)
         {
             if (!session.HasValue)
             {
@@ -1056,7 +1070,7 @@ namespace wisland.Views
             }
 
             return new HeaderTextSnapshot(
-                GetHeaderLabel(session.Value),
+                GetHeaderLabel(session.Value, showTransportSwitchingHint),
                 ShowExpandHint: sessionCount > 1);
         }
 
@@ -1318,8 +1332,10 @@ namespace wisland.Views
         private TextBlock GetArtistText(int slotIndex)
             => slotIndex == 0 ? ArtistNameTextPrimary : ArtistNameTextSecondary;
 
-        private static string GetHeaderLabel(MediaSessionSnapshot session)
-            => session.IsWaitingForReconnect
+        private static string GetHeaderLabel(MediaSessionSnapshot session, bool showTransportSwitchingHint)
+            => showTransportSwitchingHint
+                ? "Switching"
+                : session.IsWaitingForReconnect
                 ? "Waiting"
                 : session.PlaybackStatus switch
                 {
@@ -1327,6 +1343,13 @@ namespace wisland.Views
                     Windows.Media.Control.GlobalSystemMediaTransportControlsSessionPlaybackStatus.Paused => "Paused",
                     _ => "Media"
                 };
+
+        private static string GetMetadataSubtitle(MediaSessionSnapshot session, bool showTransportSwitchingHint)
+            => showTransportSwitchingHint
+                ? "Switching..."
+                : session.IsWaitingForReconnect
+                    ? "Waiting..."
+                    : session.Artist;
 
         private static string GetSourceMonogram(string sourceName)
         {

@@ -35,6 +35,7 @@ namespace wisland.Services
         private string? _systemCurrentSessionKey;
         private string? _displayedSessionKey;
         private string? _lastSystemCurrentTrackSignature;
+        private PendingTransportContinuation? _pendingTransportContinuation;
         private int _nextSessionOrdinal = 1;
         private CancellationTokenSource? _refreshBurstCts;
         private bool _isDisposed;
@@ -216,6 +217,7 @@ namespace wisland.Services
         {
             try
             {
+                ArmTransportContinuation(sessionKey);
                 GlobalSystemMediaTransportControlsSession? session = GetSession(sessionKey);
                 if (session != null)
                 {
@@ -236,6 +238,7 @@ namespace wisland.Services
         {
             try
             {
+                ArmTransportContinuation(sessionKey);
                 GlobalSystemMediaTransportControlsSession? session = GetSession(sessionKey);
                 if (session != null)
                 {
@@ -333,6 +336,8 @@ namespace wisland.Services
                         return;
                     }
 
+                    PruneExpiredTransportContinuation_NoLock(nowUtc);
+
                     HashSet<GlobalSystemMediaTransportControlsSession> activeSessions =
                         new(sessions, ReferenceEqualityComparer.Instance);
                     GlobalSystemMediaTransportControlsSession[] removedSessions = _trackedSourcesBySession.Keys
@@ -342,7 +347,8 @@ namespace wisland.Services
                         MatchImmediateRebinds_NoLock(
                             removedSessions,
                             newSessions,
-                            prefetchedStates);
+                            prefetchedStates,
+                            nowUtc);
                     HashSet<string> reboundSourceKeys = new(
                         immediateRebinds.Values.Select(match => match.Tracked.SessionKey),
                         StringComparer.Ordinal);
@@ -403,6 +409,7 @@ namespace wisland.Services
                         hasChanges = true;
                     }
 
+                    TryAbsorbTransportContinuationCandidate_NoLock(nowUtc, ref hasChanges);
                     CleanupExpiredWaitingSources_NoLock(nowUtc, ref hasChanges);
 
                     string? nextSystemCurrentKey = ResolveSystemCurrentKey_NoLock(currentSession, nowUtc);
@@ -806,6 +813,17 @@ namespace wisland.Services
                 return null;
             }
 
+            if (TryGetPendingTransportTarget_NoLock(nowUtc, out TrackedSource transportTarget))
+            {
+                bool isReservedWaitingCandidate = waitingCandidates.Any(candidate =>
+                    string.Equals(candidate.SessionKey, transportTarget.SessionKey, StringComparison.Ordinal));
+                if (isReservedWaitingCandidate)
+                {
+                    provisionalReconnect = true;
+                    return transportTarget;
+                }
+            }
+
             if (prefetchedState.HasConcreteMetadata)
             {
                 TrackedSource? exactMatch = waitingCandidates.FirstOrDefault(source =>
@@ -844,7 +862,8 @@ namespace wisland.Services
         private Dictionary<GlobalSystemMediaTransportControlsSession, PendingSourceMatch> MatchImmediateRebinds_NoLock(
             IReadOnlyList<GlobalSystemMediaTransportControlsSession> removedSessions,
             IReadOnlyList<GlobalSystemMediaTransportControlsSession> newSessions,
-            IReadOnlyDictionary<GlobalSystemMediaTransportControlsSession, PrefetchedSessionState> prefetchedStates)
+            IReadOnlyDictionary<GlobalSystemMediaTransportControlsSession, PrefetchedSessionState> prefetchedStates,
+            DateTimeOffset nowUtc)
         {
             Dictionary<GlobalSystemMediaTransportControlsSession, PendingSourceMatch> matches =
                 new(ReferenceEqualityComparer.Instance);
@@ -892,6 +911,27 @@ namespace wisland.Services
                 assignedSessions.Add(session);
             }
 
+            if (TryGetPendingTransportTarget_NoLock(nowUtc, out TrackedSource transportTarget))
+            {
+                bool removedTargetExists = removedSources.Any(source =>
+                    string.Equals(source.SessionKey, transportTarget.SessionKey, StringComparison.Ordinal));
+                if (removedTargetExists
+                    && !assignedSourceKeys.Contains(transportTarget.SessionKey))
+                {
+                    GlobalSystemMediaTransportControlsSession? transportSession = SelectTransportContinuationSession_NoLock(
+                        transportTarget,
+                        newSessions,
+                        prefetchedStates,
+                        assignedSessions);
+                    if (transportSession != null)
+                    {
+                        matches[transportSession] = new PendingSourceMatch(transportTarget, ProvisionalReconnect: true);
+                        assignedSourceKeys.Add(transportTarget.SessionKey);
+                        assignedSessions.Add(transportSession);
+                    }
+                }
+            }
+
             List<PendingContinuationCandidate> continuationCandidates = new();
             foreach (GlobalSystemMediaTransportControlsSession session in newSessions)
             {
@@ -934,6 +974,56 @@ namespace wisland.Services
             }
 
             return matches;
+        }
+
+        private GlobalSystemMediaTransportControlsSession? SelectTransportContinuationSession_NoLock(
+            TrackedSource target,
+            IReadOnlyList<GlobalSystemMediaTransportControlsSession> newSessions,
+            IReadOnlyDictionary<GlobalSystemMediaTransportControlsSession, PrefetchedSessionState> prefetchedStates,
+            HashSet<GlobalSystemMediaTransportControlsSession> assignedSessions)
+        {
+            TransportContinuationCandidate? bestCandidate = null;
+            foreach (GlobalSystemMediaTransportControlsSession session in newSessions)
+            {
+                if (assignedSessions.Contains(session)
+                    || !string.Equals(session.SourceAppUserModelId, target.SourceAppId, StringComparison.Ordinal))
+                {
+                    continue;
+                }
+
+                PrefetchedSessionState state = prefetchedStates.TryGetValue(session, out PrefetchedSessionState prefetchedState)
+                    ? prefetchedState
+                    : PrefetchedSessionState.Empty;
+                TransportContinuationCandidate candidate = new(
+                    Session: session,
+                    Score: GetTransportContinuationScore(state));
+                if (!bestCandidate.HasValue || candidate.Score < bestCandidate.Value.Score)
+                {
+                    bestCandidate = candidate;
+                }
+            }
+
+            return bestCandidate?.Session;
+        }
+
+        private static int GetTransportContinuationScore(PrefetchedSessionState state)
+        {
+            if (state.PlaybackStatus == GlobalSystemMediaTransportControlsSessionPlaybackStatus.Playing)
+            {
+                return 0;
+            }
+
+            if (state.HasConcreteMetadata)
+            {
+                return 1;
+            }
+
+            if (state.HasTimeline)
+            {
+                return 2;
+            }
+
+            return 3;
         }
 
         private static bool TryGetContinuationScore_NoLock(
@@ -1167,6 +1257,7 @@ namespace wisland.Services
 
             tracked.LastActivityUtc = nowUtc;
             ResetPendingReconnect_NoLock(tracked);
+            ClearTransportContinuationIfSatisfied_NoLock(tracked);
             return hasChanges;
         }
 
@@ -1183,6 +1274,8 @@ namespace wisland.Services
 
         private void CleanupExpiredWaitingSources_NoLock(DateTimeOffset nowUtc, ref bool hasChanges)
         {
+            PruneExpiredTransportContinuation_NoLock(nowUtc);
+
             string[] expiredKeys = _trackedSourcesByKey.Values
                 .Where(source =>
                     source.Presence == MediaSessionPresence.WaitingForReconnect
@@ -1214,6 +1307,250 @@ namespace wisland.Services
         private bool IsMissingGraceExpired_NoLock(TrackedSource tracked, DateTimeOffset nowUtc)
             => tracked.MissingSinceUtc.HasValue
                 && (nowUtc - tracked.MissingSinceUtc.Value) >= _missingSourceGrace;
+
+        private void TryAbsorbTransportContinuationCandidate_NoLock(DateTimeOffset nowUtc, ref bool hasChanges)
+        {
+            if (!_pendingTransportContinuation.HasValue)
+            {
+                return;
+            }
+
+            PendingTransportContinuation pending = _pendingTransportContinuation.Value;
+            if (pending.ExpiresAtUtc <= nowUtc)
+            {
+                _pendingTransportContinuation = null;
+                return;
+            }
+
+            if (!_trackedSourcesByKey.TryGetValue(pending.SessionKey, out TrackedSource? target))
+            {
+                _pendingTransportContinuation = null;
+                return;
+            }
+
+            if (!string.Equals(target.SourceAppId, pending.SourceAppId, StringComparison.Ordinal)
+                || (!target.MissingSinceUtc.HasValue
+                    && target.Presence != MediaSessionPresence.WaitingForReconnect
+                    && !target.HasPendingReconnect))
+            {
+                return;
+            }
+
+            TrackedSource? candidate = _trackedSourcesByKey.Values
+                .Where(source =>
+                    !ReferenceEquals(source, target)
+                    && source.Session != null
+                    && source.Presence == MediaSessionPresence.Active
+                    && string.Equals(source.SourceAppId, pending.SourceAppId, StringComparison.Ordinal)
+                    && source.CreatedUtc >= pending.ArmedAtUtc)
+                .OrderBy(source => GetTransportAdoptionPriority_NoLock(source))
+                .ThenByDescending(source => source.CreatedUtc)
+                .ThenByDescending(source => source.LastSeenUtc)
+                .FirstOrDefault();
+            if (candidate == null)
+            {
+                return;
+            }
+
+            MergeTransportCandidateIntoTarget_NoLock(target, candidate, nowUtc);
+            hasChanges = true;
+        }
+
+        private void MergeTransportCandidateIntoTarget_NoLock(
+            TrackedSource target,
+            TrackedSource candidate,
+            DateTimeOffset nowUtc)
+        {
+            GlobalSystemMediaTransportControlsSession? candidateSession = candidate.Session;
+            if (candidateSession == null)
+            {
+                return;
+            }
+
+            _trackedSourcesBySession[candidateSession] = target;
+            target.Session = candidateSession;
+            target.SourceAppId = candidate.SourceAppId;
+            target.SourceName = candidate.SourceName;
+            target.LastSeenUtc = target.LastSeenUtc >= candidate.LastSeenUtc
+                ? target.LastSeenUtc
+                : candidate.LastSeenUtc;
+            target.LastActivityUtc = target.LastActivityUtc >= candidate.LastActivityUtc
+                ? target.LastActivityUtc
+                : candidate.LastActivityUtc;
+            target.LastDisplayedUtc = MaxDateTimeOffset(target.LastDisplayedUtc, candidate.LastDisplayedUtc);
+            target.LastSystemCurrentUtc = MaxDateTimeOffset(target.LastSystemCurrentUtc, candidate.LastSystemCurrentUtc);
+            target.IsSystemCurrent |= candidate.IsSystemCurrent;
+
+            if (candidate.HasPendingReconnect || !HasConcreteMetadata(candidate.Title))
+            {
+                target.Presence = MediaSessionPresence.Active;
+                target.HasPendingReconnect = true;
+                target.PendingTitle = candidate.HasPendingReconnect ? candidate.PendingTitle : candidate.Title;
+                target.PendingArtist = candidate.HasPendingReconnect ? candidate.PendingArtist : candidate.Artist;
+                target.PendingPlaybackStatus = candidate.HasPendingReconnect ? candidate.PendingPlaybackStatus : candidate.PlaybackStatus;
+                target.PendingHasTimeline = candidate.HasPendingReconnect ? candidate.PendingHasTimeline : candidate.HasTimeline;
+                target.PendingPositionSeconds = candidate.HasPendingReconnect ? candidate.PendingPositionSeconds : candidate.CurrentPositionSeconds;
+                target.PendingDurationSeconds = candidate.HasPendingReconnect ? candidate.PendingDurationSeconds : candidate.DurationSeconds;
+                target.MissingSinceUtc ??= nowUtc;
+                TryFinalizePendingReconnect_NoLock(target, nowUtc);
+            }
+            else
+            {
+                target.Presence = MediaSessionPresence.Active;
+                target.MissingSinceUtc = null;
+                ResetPendingReconnect_NoLock(target);
+                target.Title = candidate.Title;
+                target.Artist = candidate.Artist;
+                target.PlaybackStatus = candidate.PlaybackStatus;
+                target.HasTimeline = candidate.HasTimeline;
+                target.CurrentPositionSeconds = candidate.CurrentPositionSeconds;
+                target.DurationSeconds = candidate.DurationSeconds;
+                target.Progress = candidate.Progress;
+                ClearTransportContinuationIfSatisfied_NoLock(target);
+            }
+
+            if (string.Equals(_systemCurrentSessionKey, candidate.SessionKey, StringComparison.Ordinal))
+            {
+                _systemCurrentSessionKey = target.SessionKey;
+            }
+
+            if (string.Equals(_displayedSessionKey, candidate.SessionKey, StringComparison.Ordinal))
+            {
+                _displayedSessionKey = target.SessionKey;
+            }
+
+            _trackedSourcesByKey.Remove(candidate.SessionKey);
+        }
+
+        private static int GetTransportAdoptionPriority_NoLock(TrackedSource source)
+        {
+            if (source.IsSystemCurrent && source.PlaybackStatus == GlobalSystemMediaTransportControlsSessionPlaybackStatus.Playing)
+            {
+                return 0;
+            }
+
+            if (source.PlaybackStatus == GlobalSystemMediaTransportControlsSessionPlaybackStatus.Playing)
+            {
+                return 1;
+            }
+
+            if (HasConcreteMetadata(source.Title))
+            {
+                return 2;
+            }
+
+            if (source.HasTimeline)
+            {
+                return 3;
+            }
+
+            return 4;
+        }
+
+        private static DateTimeOffset? MaxDateTimeOffset(DateTimeOffset? left, DateTimeOffset? right)
+        {
+            if (!left.HasValue)
+            {
+                return right;
+            }
+
+            if (!right.HasValue)
+            {
+                return left;
+            }
+
+            return left.Value >= right.Value
+                ? left
+                : right;
+        }
+
+        private void ArmTransportContinuation(string? sessionKey)
+        {
+            if (string.IsNullOrWhiteSpace(sessionKey))
+            {
+                return;
+            }
+
+            lock (_gate)
+            {
+                if (_isDisposed
+                    || !_trackedSourcesByKey.TryGetValue(sessionKey, out TrackedSource? tracked))
+                {
+                    return;
+                }
+
+                DateTimeOffset nowUtc = DateTimeOffset.UtcNow;
+                _pendingTransportContinuation = new PendingTransportContinuation(
+                    tracked.SessionKey,
+                    tracked.SourceAppId,
+                    nowUtc,
+                    nowUtc + _missingSourceGrace);
+            }
+        }
+
+        private bool TryGetPendingTransportTarget_NoLock(DateTimeOffset nowUtc, out TrackedSource tracked)
+        {
+            tracked = null!;
+            if (!_pendingTransportContinuation.HasValue)
+            {
+                return false;
+            }
+
+            PendingTransportContinuation pending = _pendingTransportContinuation.Value;
+            if (pending.ExpiresAtUtc <= nowUtc)
+            {
+                _pendingTransportContinuation = null;
+                return false;
+            }
+
+            if (!_trackedSourcesByKey.TryGetValue(pending.SessionKey, out TrackedSource? resolvedTracked))
+            {
+                _pendingTransportContinuation = null;
+                return false;
+            }
+
+            tracked = resolvedTracked;
+
+            if (!string.Equals(tracked.SourceAppId, pending.SourceAppId, StringComparison.Ordinal))
+            {
+                _pendingTransportContinuation = null;
+                tracked = null!;
+                return false;
+            }
+
+            return true;
+        }
+
+        private void PruneExpiredTransportContinuation_NoLock(DateTimeOffset nowUtc)
+        {
+            if (_pendingTransportContinuation.HasValue
+                && _pendingTransportContinuation.Value.ExpiresAtUtc <= nowUtc)
+            {
+                _pendingTransportContinuation = null;
+            }
+        }
+
+        private void ClearTransportContinuationIfSatisfied_NoLock(TrackedSource tracked)
+        {
+            if (!_pendingTransportContinuation.HasValue)
+            {
+                return;
+            }
+
+            PendingTransportContinuation pending = _pendingTransportContinuation.Value;
+            if (!string.Equals(pending.SessionKey, tracked.SessionKey, StringComparison.Ordinal))
+            {
+                return;
+            }
+
+            if (tracked.Presence == MediaSessionPresence.Active
+                && !tracked.HasPendingReconnect
+                && !tracked.MissingSinceUtc.HasValue
+                && HasConcreteMetadata(tracked.Title))
+            {
+                _pendingTransportContinuation = null;
+            }
+        }
 
         private string? ResolveSystemCurrentKey_NoLock(
             GlobalSystemMediaTransportControlsSession? currentSession,
@@ -1463,6 +1800,7 @@ namespace wisland.Services
                 SourceName = sourceName;
                 Title = UnknownTrackTitle;
                 Artist = UnknownArtistName;
+                CreatedUtc = nowUtc;
                 LastActivityUtc = nowUtc;
                 LastSeenUtc = nowUtc;
                 Presence = MediaSessionPresence.Active;
@@ -1475,6 +1813,7 @@ namespace wisland.Services
             public string SessionKey { get; }
             public string SourceAppId { get; set; }
             public string SourceName { get; set; }
+            public DateTimeOffset CreatedUtc { get; }
             public string Title { get; set; }
             public string Artist { get; set; }
             public GlobalSystemMediaTransportControlsSessionPlaybackStatus PlaybackStatus { get; set; }
@@ -1531,5 +1870,15 @@ namespace wisland.Services
             GlobalSystemMediaTransportControlsSession Session,
             TrackedSource Source,
             double Score);
+
+        private readonly record struct PendingTransportContinuation(
+            string SessionKey,
+            string SourceAppId,
+            DateTimeOffset ArmedAtUtc,
+            DateTimeOffset ExpiresAtUtc);
+
+        private readonly record struct TransportContinuationCandidate(
+            GlobalSystemMediaTransportControlsSession Session,
+            int Score);
     }
 }

@@ -56,7 +56,7 @@ namespace wisland
         private void SyncMediaUI()
         {
             DisplayedMediaContext context = ResolveDisplayedMediaContext();
-            string? nextContentIdentity = CreateContentIdentity(context.DisplayedSession);
+            string? nextContentIdentity = CreateContentIdentity(context.DisplayedSession, context.ShowTransportSwitchingHint);
             string? nextProgressIdentity = CreateProgressIdentity(context.DisplayedSession);
             bool contentChanged = !string.Equals(_lastDisplayedContentIdentity, nextContentIdentity, StringComparison.Ordinal);
             bool progressSourceChanged = !string.Equals(_lastDisplayedProgressIdentity, nextProgressIdentity, StringComparison.Ordinal);
@@ -83,7 +83,8 @@ namespace wisland
                     context.DisplayIndex,
                     context.OrderedSessions.Count,
                     context.OrderedSessions,
-                    directionHint);
+                    directionHint,
+                    context.ShowTransportSwitchingHint);
             }
 
             if (contentChanged)
@@ -127,7 +128,8 @@ namespace wisland
                     DisplayIndex: -1,
                     CompactText: "Wisland",
                     SessionCountText: string.Empty,
-                    ShowSessionCount: false);
+                    ShowSessionCount: false,
+                    ShowTransportSwitchingHint: false);
             }
 
             bool hasManualLock = IsManualSelectionLocked();
@@ -163,6 +165,7 @@ namespace wisland
             string sessionCountText = orderedSessions.Count > 1
                 ? FormattableString.Invariant($"{displayIndex + 1}/{orderedSessions.Count}")
                 : string.Empty;
+            bool showTransportSwitchingHint = ShouldShowTransportSwitchingHint(displayedSession);
 
             return new DisplayedMediaContext(
                 DisplayedSession: displayedSession,
@@ -170,7 +173,8 @@ namespace wisland
                 DisplayIndex: displayIndex,
                 CompactText: displayedSession.Title,
                 SessionCountText: sessionCountText,
-                ShowSessionCount: orderedSessions.Count >= IslandConfig.CompactSessionCountVisibleThreshold);
+                ShowSessionCount: orderedSessions.Count >= IslandConfig.CompactSessionCountVisibleThreshold,
+                ShowTransportSwitchingHint: showTransportSwitchingHint);
         }
 
         private async void PlayPause_Click(object? sender, EventArgs e)
@@ -626,7 +630,23 @@ namespace wisland
             => !string.IsNullOrWhiteSpace(session.Title)
                 && !string.Equals(session.Title, "Unknown Track", StringComparison.Ordinal);
 
-        private static string? CreateContentIdentity(MediaSessionSnapshot? session)
+        private bool ShouldShowTransportSwitchingHint(MediaSessionSnapshot session)
+        {
+            if (!_transportWaitingSnapshot.HasValue
+                || !_transportWaitingUntilUtc.HasValue
+                || _transportWaitingUntilUtc.Value <= DateTimeOffset.UtcNow
+                || !session.MissingSinceUtc.HasValue)
+            {
+                return false;
+            }
+
+            return string.Equals(
+                _transportWaitingSnapshot.Value.SessionKey,
+                session.SessionKey,
+                StringComparison.Ordinal);
+        }
+
+        private static string? CreateContentIdentity(MediaSessionSnapshot? session, bool showTransportSwitchingHint)
             => session.HasValue
                 ? string.Concat(
                     session.Value.SessionKey,
@@ -635,7 +655,9 @@ namespace wisland
                     "\u001f",
                     session.Value.Artist,
                     "\u001f",
-                    session.Value.Presence)
+                    session.Value.Presence,
+                    "\u001f",
+                    showTransportSwitchingHint ? "switching" : "steady")
                 : null;
 
         private static string? CreateProgressIdentity(MediaSessionSnapshot? session)
@@ -652,6 +674,7 @@ namespace wisland
             int DisplayIndex,
             string CompactText,
             string SessionCountText,
-            bool ShowSessionCount);
+            bool ShowSessionCount,
+            bool ShowTransportSwitchingHint);
     }
 }
