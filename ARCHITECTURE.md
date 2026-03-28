@@ -122,7 +122,10 @@ wisland/
 ├── Services/
 │   ├── ForegroundWindowMonitor.cs
 │   ├── IslandController.cs
-│   ├── MediaService.cs
+│   ├── Media/
+│   │   ├── MediaFocusArbiter.cs
+│   │   ├── MediaService*.cs
+│   │   └── MediaSourceNameFormatter.cs
 │   ├── ShellVisibilityService.cs
 │   ├── SettingsService.cs
 │   └── WindowAppearanceService.cs
@@ -471,7 +474,7 @@ Use this table before editing:
 | Change expanded media UI | `Views/ExpandedMediaView.xaml`, `Views/ExpandedMediaView.xaml.cs`, `Controls/DirectionalContentTransitionCoordinator.cs`, `Helpers/MediaSourceIconResolver.cs` | View owns header/metadata/control structure; shared directional motion lives in the coordinator. |
 | Change tray actions | `MainWindow.Tray.cs` | `CreateTrayMenu()` is the entrypoint. |
 | Add a persisted setting | `Services/SettingsService.cs`, `Models/BackdropType.cs`, `MainWindow.Lifetime.cs`, `MainWindow.Appearance.cs` | Keep persisted values typed at the shell boundary whenever possible. |
-| Change media behavior | `Services/MediaService.cs`, `MainWindow.Media.cs`, `MainWindow.Notifications.cs` | Service owns GSMTC session discovery; window decides focused-session policy and UI response. |
+| Change media behavior | `Services/Media/*.cs`, `MainWindow.Media.cs`, `MainWindow.Notifications.cs` | Service owns GSMTC session discovery; window decides focused-session policy and UI response. |
 | Change diagnostics | `Helpers/Logger.cs` | Logging is local-file based. |
 
 ## 11. Best Practices For Vibe Coding In This Repo

@@ -120,10 +120,6 @@ namespace wisland
                 manager.IsVisibleInTray = true;
                 manager.TrayIconContextMenu += (s, e) => e.Flyout = CreateTrayMenu();
 
-                // Backdrop (from saved settings)
-                SetBackdrop(_settings.BackdropType, persist: false);
-                _ = InitializeMediaAsync();
-
                 _hoverDebounceTimer = new DispatcherTimer { Interval = TimeSpan.FromMilliseconds(IslandConfig.HoverDebounceMs) };
                 _hoverDebounceTimer.Tick += HoverDebounceTimer_Tick;
 
@@ -139,6 +135,11 @@ namespace wisland
                 _autoFocusTimer.Tick += AutoFocusTimer_Tick;
                 _foregroundWindowMonitor.SetActive(_controller.IsDocked);
                 ExpandedContent.SessionSelected += OnExpandedContentSessionSelected;
+
+                // Backdrop and media startup run after timer initialization because
+                // initial media sync can hit selection/auto-focus timer paths.
+                SetBackdrop(_settings.BackdropType, persist: false);
+                _ = InitializeMediaAsync();
 
                 StartRenderLoop();
                 this.Closed += OnWindowClosed;

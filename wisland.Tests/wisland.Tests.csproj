@@ -15,7 +15,8 @@
   </ItemGroup>
 
   <ItemGroup>
-    <Compile Include="..\Services\MediaFocusArbiter.cs" Link="Services\MediaFocusArbiter.cs" />
+    <Compile Include="..\Services\Media\MediaFocusArbiter.cs" Link="Services\Media\MediaFocusArbiter.cs" />
+    <Compile Include="..\Services\Media\MediaSourceNameFormatter.cs" Link="Services\Media\MediaSourceNameFormatter.cs" />
     <Compile Include="..\Models\MediaSessionPresence.cs" Link="Models\MediaSessionPresence.cs" />
     <Compile Include="..\Models\MediaSessionSnapshot.cs" Link="Models\MediaSessionSnapshot.cs" />
   </ItemGroup>
