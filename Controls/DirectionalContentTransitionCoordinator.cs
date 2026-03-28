@@ -86,6 +86,61 @@ namespace wisland.Controls
             ShowActiveSlotOnly();
         }
 
+        public void Crossfade(Action<int> applyContentToIncomingSlot)
+        {
+            Initialize();
+            Stop();
+
+            int outgoingIndex = _activeSlotIndex;
+            int incomingIndex = GetInactiveSlotIndex();
+
+            applyContentToIncomingSlot(incomingIndex);
+            SetSlotVisibility(incomingIndex, true);
+            UpdateSlotCenterPoints();
+
+            Visual outgoingVisual = GetVisual(outgoingIndex);
+            Visual incomingVisual = GetVisual(incomingIndex);
+            InsetClip outgoingClip = GetClip(outgoingIndex);
+            InsetClip incomingClip = GetClip(incomingIndex);
+
+            outgoingVisual.Opacity = 1.0f;
+            outgoingVisual.Scale = Vector3.One;
+            outgoingVisual.Offset = Vector3.Zero;
+            ResetClip(outgoingClip);
+
+            incomingVisual.Opacity = 0.0f;
+            incomingVisual.Scale = new Vector3(_profile.IncomingScale, _profile.IncomingScale, 1.0f);
+            incomingVisual.Offset = Vector3.Zero;
+            ResetClip(incomingClip);
+            SetSlotZOrder(outgoingIndex, incomingIndex);
+
+            CompositionScopedBatch batch = _compositor!.CreateScopedBatch(CompositionBatchTypes.Animation);
+            long transitionToken = ++_transitionToken;
+            batch.Completed += (_, _) =>
+            {
+                if (transitionToken != _transitionToken)
+                {
+                    return;
+                }
+
+                ResetVisual(outgoingVisual, visible: false);
+                ResetVisual(incomingVisual, visible: true);
+                ResetClip(outgoingClip);
+                ResetClip(incomingClip);
+                SetSlotVisibility(outgoingIndex, false);
+                SetSlotVisibility(incomingIndex, true);
+                SetSlotZOrder(incomingIndex, outgoingIndex);
+            };
+
+            outgoingVisual.StartAnimation("Opacity", CreateNeutralOutgoingOpacityAnimation());
+            outgoingVisual.StartAnimation("Scale", CreateNeutralOutgoingScaleAnimation());
+            incomingVisual.StartAnimation("Opacity", CreateNeutralIncomingOpacityAnimation());
+            incomingVisual.StartAnimation("Scale", CreateNeutralIncomingScaleAnimation());
+
+            _activeSlotIndex = incomingIndex;
+            batch.End();
+        }
+
         public void Transition(ContentTransitionDirection direction, Action<int> applyContentToIncomingSlot)
         {
             if (direction == ContentTransitionDirection.None)
@@ -256,6 +311,43 @@ namespace wisland.Controls
         }
 
         private Vector3KeyFrameAnimation CreateIncomingScaleAnimation()
+        {
+            Vector3KeyFrameAnimation animation = _compositor!.CreateVector3KeyFrameAnimation();
+            Vector3 startScale = new(_profile.IncomingScale, _profile.IncomingScale, 1.0f);
+            animation.InsertKeyFrame(_profile.IncomingDelayProgress, startScale);
+            animation.InsertKeyFrame(1.0f, Vector3.One, _enterEasing!);
+            animation.Duration = GetTransitionDuration();
+            return animation;
+        }
+
+        private ScalarKeyFrameAnimation CreateNeutralOutgoingOpacityAnimation()
+        {
+            ScalarKeyFrameAnimation animation = _compositor!.CreateScalarKeyFrameAnimation();
+            animation.InsertKeyFrame(0.0f, 1.0f);
+            animation.InsertKeyFrame(1.0f, 0.0f, _exitEasing!);
+            animation.Duration = GetTransitionDuration();
+            return animation;
+        }
+
+        private Vector3KeyFrameAnimation CreateNeutralOutgoingScaleAnimation()
+        {
+            Vector3KeyFrameAnimation animation = _compositor!.CreateVector3KeyFrameAnimation();
+            Vector3 compactScale = new(_profile.OutgoingScale, _profile.OutgoingScale, 1.0f);
+            animation.InsertKeyFrame(1.0f, compactScale, _exitEasing!);
+            animation.Duration = GetTransitionDuration();
+            return animation;
+        }
+
+        private ScalarKeyFrameAnimation CreateNeutralIncomingOpacityAnimation()
+        {
+            ScalarKeyFrameAnimation animation = _compositor!.CreateScalarKeyFrameAnimation();
+            animation.InsertKeyFrame(_profile.IncomingDelayProgress, 0.0f);
+            animation.InsertKeyFrame(1.0f, 1.0f, _enterEasing!);
+            animation.Duration = GetTransitionDuration();
+            return animation;
+        }
+
+        private Vector3KeyFrameAnimation CreateNeutralIncomingScaleAnimation()
         {
             Vector3KeyFrameAnimation animation = _compositor!.CreateVector3KeyFrameAnimation();
             Vector3 startScale = new(_profile.IncomingScale, _profile.IncomingScale, 1.0f);

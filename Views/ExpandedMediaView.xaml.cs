@@ -209,12 +209,12 @@ namespace wisland.Views
 
             if (direction == ContentTransitionDirection.None)
             {
-                _headerLabelTransition.ApplyImmediately(slotIndex => ApplyHeaderTextSnapshotToSlot(slotIndex, snapshot));
                 AnimateHeaderChipWidth(
                     targetWidth,
                     currentContentWidth,
                     targetContentWidth,
-                    animateLabelShift: true);
+                    animateLabelShift: false);
+                _headerLabelTransition.Crossfade(slotIndex => ApplyHeaderTextSnapshotToSlot(slotIndex, snapshot));
                 return true;
             }
 
