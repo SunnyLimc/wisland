@@ -17,6 +17,11 @@ namespace wisland
                 return;
             }
 
+            if (_isSessionPickerOpen)
+            {
+                HideSessionPickerOverlay(reconcileHover: false);
+            }
+
             var props = e.GetCurrentPoint(RootGrid).Properties;
             if (!props.IsLeftButtonPressed)
             {
@@ -84,7 +89,7 @@ namespace wisland
         {
             _hoverDebounceTimer.Stop();
 
-            if (_isContextFlyoutOpen)
+            if (HasBlockingSurfaceOpen)
             {
                 _dockedHoverDelayTimer.Stop();
                 return;
@@ -109,7 +114,7 @@ namespace wisland
 
         private void RootGrid_PointerExited(object sender, Microsoft.UI.Xaml.Input.PointerRoutedEventArgs e)
         {
-            if (_isContextFlyoutOpen)
+            if (HasBlockingSurfaceOpen)
             {
                 _hoverDebounceTimer.Stop();
                 _dockedHoverDelayTimer.Stop();
@@ -135,6 +140,7 @@ namespace wisland
 
         private void IslandContextFlyout_Opening(object sender, object e)
         {
+            HideSessionPickerOverlay(reconcileHover: false);
             _isContextFlyoutOpen = true;
             _hoverModeBeforeContextFlyout = _hoverMode;
             _hoverDebounceTimer.Stop();

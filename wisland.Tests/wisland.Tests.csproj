@@ -18,7 +18,14 @@
     <Compile Include="..\Helpers\MediaSourceAppResolver.cs" Link="Helpers\MediaSourceAppResolver.cs" />
     <Compile Include="..\Services\Media\MediaFocusArbiter.cs" Link="Services\Media\MediaFocusArbiter.cs" />
     <Compile Include="..\Services\Media\MediaSourceNameFormatter.cs" Link="Services\Media\MediaSourceNameFormatter.cs" />
+    <Compile Include="..\Services\Media\SessionPickerRowProjector.cs" Link="Services\Media\SessionPickerRowProjector.cs" />
+    <Compile Include="..\Services\IslandController.cs" Link="Services\IslandController.cs" />
+    <Compile Include="..\Helpers\SessionPickerPlacementResolver.cs" Link="Helpers\SessionPickerPlacementResolver.cs" />
     <Compile Include="..\Models\MediaSessionPresence.cs" Link="Models\MediaSessionPresence.cs" />
     <Compile Include="..\Models\MediaSessionSnapshot.cs" Link="Models\MediaSessionSnapshot.cs" />
+    <Compile Include="..\Models\SessionPickerRowModel.cs" Link="Models\SessionPickerRowModel.cs" />
+    <Compile Include="..\Models\IslandConfig.cs" Link="Models\IslandConfig.cs" />
+    <Compile Include="..\Models\IslandState.cs" Link="Models\IslandState.cs" />
+    <Compile Include="..\Models\DirectionalTransitionProfile.cs" Link="Models\DirectionalTransitionProfile.cs" />
   </ItemGroup>
 </Project>

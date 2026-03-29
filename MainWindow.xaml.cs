@@ -134,7 +134,7 @@ namespace wisland
                 _autoFocusTimer = new DispatcherTimer();
                 _autoFocusTimer.Tick += AutoFocusTimer_Tick;
                 _foregroundWindowMonitor.SetActive(_controller.IsDocked);
-                ExpandedContent.SessionSelected += OnExpandedContentSessionSelected;
+                InitializeSessionPickerOverlay();
 
                 // Backdrop and media startup run after timer initialization because
                 // initial media sync can hit selection/auto-focus timer paths.

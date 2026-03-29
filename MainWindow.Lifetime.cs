@@ -44,7 +44,7 @@ namespace wisland
             _cursorTrackerTimer.Tick -= CursorTrackerTimer_Tick;
             _selectionLockTimer.Tick -= SelectionLockTimer_Tick;
             _autoFocusTimer.Tick -= AutoFocusTimer_Tick;
-            ExpandedContent.SessionSelected -= OnExpandedContentSessionSelected;
+            ExpandedContent.SessionPickerToggleRequested -= ExpandedContent_SessionPickerToggleRequested;
 
             _hoverDebounceTimer.Stop();
             _dockedHoverDelayTimer.Stop();
@@ -58,6 +58,14 @@ namespace wisland
             _mediaService.TrackChanged -= OnTrackChanged;
             _mediaService.Dispose();
 
+            if (_sessionPickerWindow != null)
+            {
+                _sessionPickerWindow.DismissRequested -= SessionPickerWindow_DismissRequested;
+                _sessionPickerWindow.SessionSelected -= SessionPickerWindow_SessionSelected;
+            }
+
+            _sessionPickerWindow?.CloseOverlayWindow();
+            _sessionPickerWindow = null;
             _shellVisibilityService.Dispose();
         }
     }

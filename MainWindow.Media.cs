@@ -86,6 +86,12 @@ namespace wisland
                     directionHint,
                     context.ShowTransportSwitchingHint);
             }
+            else
+            {
+                HideSessionPickerOverlay(reconcileHover: false);
+            }
+
+            SyncSessionPickerOverlay(context);
 
             if (contentChanged)
             {
@@ -197,11 +203,10 @@ namespace wisland
         private void RootGrid_PointerWheelChanged(object sender, Microsoft.UI.Xaml.Input.PointerRoutedEventArgs e)
         {
             if (_isClosed
-                || _isContextFlyoutOpen
+                || HasBlockingSurfaceOpen
                 || _controller.IsDragging
                 || _controller.IsNotifying
-                || _controller.Current.ExpandedOpacity <= IslandConfig.HitTestOpacityThreshold
-                || ExpandedContent.IsSessionPickerOpen)
+                || _controller.Current.ExpandedOpacity <= IslandConfig.HitTestOpacityThreshold)
             {
                 return;
             }
@@ -220,13 +225,6 @@ namespace wisland
             {
                 e.Handled = true;
             }
-        }
-
-        private void OnExpandedContentSessionSelected(string sessionKey)
-        {
-            SelectSession(
-                sessionKey,
-                GetDirectionToSession(sessionKey));
         }
 
         private bool TryCycleDisplayedSession(ContentTransitionDirection direction)

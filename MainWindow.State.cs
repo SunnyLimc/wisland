@@ -10,7 +10,7 @@ namespace wisland
         {
             _hoverDebounceTimer.Stop();
 
-            if (_isContextFlyoutOpen)
+            if (HasBlockingSurfaceOpen)
             {
                 return;
             }
@@ -22,7 +22,7 @@ namespace wisland
         {
             _dockedHoverDelayTimer.Stop();
 
-            if (_isContextFlyoutOpen)
+            if (HasBlockingSurfaceOpen)
             {
                 return;
             }
@@ -49,7 +49,7 @@ namespace wisland
 
         private void CursorTrackerTimer_Tick(object? sender, object e)
         {
-            if (_isContextFlyoutOpen)
+            if (HasBlockingSurfaceOpen)
             {
                 return;
             }
@@ -187,7 +187,9 @@ namespace wisland
 
         private void UpdateCursorTrackerState()
         {
-            if (SupportsDockedLinePresentation(GetCurrentDisplayWorkArea()) && !IsPointerHoverMode(_hoverMode))
+            if (!HasBlockingSurfaceOpen
+                && SupportsDockedLinePresentation(GetCurrentDisplayWorkArea())
+                && !IsPointerHoverMode(_hoverMode))
             {
                 if (!_cursorTrackerTimer.IsEnabled)
                 {

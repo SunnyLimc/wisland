@@ -217,6 +217,7 @@ namespace wisland
             }
 
             UpdateAnchorPhysicalPoint(displayWorkArea, state, physWidth, physHeight);
+            UpdateSessionPickerOverlayPlacement();
             UpdateRenderLoopState();
         }
 

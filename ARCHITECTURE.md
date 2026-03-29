@@ -14,7 +14,7 @@ Wisland is a Windows desktop recreation of the "Dynamic Island" interaction patt
 - When docked and another app is maximized, it can collapse into a thin progress line.
 - It integrates with Windows media sessions for track metadata, playback state, and progress.
 - It can track multiple GSMTC sessions at once while exposing a single focused session to the shell.
-- The expanded header uses a compact tab-strip metaphor with stacked source icons and a lightweight session picker.
+- The expanded header uses a compact tab-strip metaphor with stacked source icons and a lightweight session picker overlay.
 - It supports a custom task-progress override, tray controls, backdrop switching, persisted settings, and local logging.
 
 ## 2. Architectural Style
@@ -359,13 +359,21 @@ Expanded content surface for:
 - compact tab-strip header with stacked source avatars
 - stable stacked-avatar deck order with neutral focus/reorder animation for non-direction changes
 - best-effort source app icons with monogram fallback
-- lightweight session picker flyout
+- chip-triggered session picker overlay request
 - title
 - artist
 - direction-aware metadata transition animation for previous / next track changes
 - previous / play-pause / next controls
 
-It raises button/session-selection events and leaves command behavior to the parent window. It no longer owns low-level composition choreography directly; instead it supplies header and metadata snapshots to shared directional transition coordinators.
+It raises button/toggle events and leaves command behavior to the parent window. It no longer owns low-level composition choreography directly; instead it supplies header and metadata snapshots to shared directional transition coordinators.
+
+### `SessionPickerWindow` + `SessionPickerOverlayView`
+
+Dedicated secondary shell surface for the multi-session drop list.
+
+- `MainWindow` owns its lifetime, visibility, placement, and dismissal rules
+- `SessionPickerOverlayView` owns row layout, keyboard handling, async icon fill, and theme refresh
+- `Helpers/SessionPickerPlacementResolver` keeps anchor-to-overlay placement pure and testable
 
 ### `DirectionalContentTransitionCoordinator`
 
@@ -453,7 +461,7 @@ These are the rules that contributors should preserve:
 1. `IslandController` stays UI-framework-free.
 2. Motion is frame-driven, not storyboard-driven.
 3. `MainWindow` is the only place that should directly sync shell state into WinUI elements and `AppWindow`.
-4. Docked hidden mode is a two-window system: the main island window plus a `NativeLineWindow` managed by `ShellVisibilityService`.
+4. Docked hidden mode is a two-window system: the main island window plus a `NativeLineWindow` managed by `ShellVisibilityService`. When the session picker is open, a temporary secondary WinUI window is also active.
 5. Settings persistence should remain small, explicit, and tolerant of corruption.
 6. Service failures should log and degrade gracefully rather than crash the process.
 7. Transport controls and progress always follow the focused displayed session, while docked new-track notifications follow the system current session.

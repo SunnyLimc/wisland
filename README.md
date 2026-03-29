@@ -7,7 +7,7 @@ It supports:
 - a compact always-on-top shell
 - hover-based expansion
 - multi-session system media metadata and playback controls
-- a focused-session model with manual lock, stable visual tab order, non-loop wheel cycling, and session picker
+- a focused-session model with manual lock, stable visual tab order, non-loop wheel cycling, and an independent session picker overlay
 - direction-aware track switch animation in the expanded media panel
 - a compact expanded-header tab strip with best-effort source app icons
 - drag-to-reposition and top-edge docking

@@ -16,6 +16,7 @@ namespace wisland.Services
         public bool IsNotifying { get; set; }
         public bool IsForegroundMaximized { get; set; }
         public bool IsHoverPending { get; set; }
+        public bool IsTransientSurfaceOpen { get; set; }
 
         // --- Current Value Outputs ---
         public IslandState Current { get; } = new();
@@ -54,7 +55,7 @@ namespace wisland.Services
                 // Respect floating position if not docked
                 SetExpandedTargets(IsDocked ? 0 : Current.Y);
             }
-            else if (IsHovered && !IsDragging)
+            else if ((IsHovered || IsTransientSurfaceOpen) && !IsDragging)
             {
                 // Respect floating position if not docked
                 SetExpandedTargets(IsDocked ? 0 : Current.Y);
@@ -158,7 +159,7 @@ namespace wisland.Services
         // --- Hidden Check ---
         public bool IsOffscreen()
         {
-            return IsDocked && IsForegroundMaximized && !IsHovered && !IsNotifying && !IsDragging
+            return IsDocked && IsForegroundMaximized && !IsHovered && !IsTransientSurfaceOpen && !IsNotifying && !IsDragging
                    && Current.Y < -_targetHeight + 2;
         }
     }

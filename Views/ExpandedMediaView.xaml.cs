@@ -50,8 +50,7 @@ namespace wisland.Views
         private Color _mainColor = Microsoft.UI.Colors.White;
         private Color _subColor = Microsoft.UI.Colors.LightGray;
         private Color _iconColor = Microsoft.UI.Colors.White;
-        private string? _selectedSessionKey;
-        private IReadOnlyList<MediaSessionSnapshot> _pickerSessions = Array.Empty<MediaSessionSnapshot>();
+        private bool _canOpenSessionPicker;
 
         private Compositor? _avatarCompositor;
         private readonly Visual[] _headerAvatarVisuals = new Visual[4];
@@ -68,7 +67,7 @@ namespace wisland.Views
         public event EventHandler? BackClick;
         public event EventHandler? PlayPauseClick;
         public event EventHandler? ForwardClick;
-        public event Action<string>? SessionSelected;
+        public event EventHandler? SessionPickerToggleRequested;
 
         public ExpandedMediaView()
         {
@@ -128,11 +127,8 @@ namespace wisland.Views
             _headerTextSnapshots[0] = ReadHeaderTextSnapshotFromSlot(0);
             _headerTextSnapshots[1] = ReadHeaderTextSnapshotFromSlot(1);
 
-            SessionPickerList.MaxHeight = IslandConfig.SessionPickerMaxVisibleItems * IslandConfig.SessionPickerEstimatedRowHeight;
             Loaded += OnLoaded;
         }
-
-        public bool IsSessionPickerOpen { get; private set; }
 
         public bool UpdateMedia(
             MediaSessionSnapshot? session,
@@ -150,7 +146,7 @@ namespace wisland.Views
                 && session.Value.IsPlaying
                 && !session.Value.IsWaitingForReconnect
                 && !showBusyTransportState);
-            UpdateSessionPickerItems(availableSessions, session?.SessionKey);
+            _canOpenSessionPicker = availableSessions.Count > 1;
 
             HeaderTextSnapshot nextHeaderTextSnapshot = CreateMediaHeaderTextSnapshot(
                 session,
@@ -187,7 +183,12 @@ namespace wisland.Views
             ApplyMetadataColors();
             ApplyTransportIconColors();
             ApplyHeaderColors();
-            RefreshSessionPickerItemColors();
+        }
+
+        public Rect GetSessionPickerAnchorBounds(UIElement relativeTo)
+        {
+            GeneralTransform transform = HeaderChipBorder.TransformToVisual(relativeTo);
+            return transform.TransformBounds(new Rect(0, 0, HeaderChipBorder.ActualWidth, HeaderChipBorder.ActualHeight));
         }
 
         private bool ApplyHeaderTextSnapshot(
@@ -280,24 +281,9 @@ namespace wisland.Views
 
         private void OnSessionHeader_Click(object sender, RoutedEventArgs e)
         {
-            if (SessionPickerList.Items.Count > 1)
+            if (_canOpenSessionPicker)
             {
-                SessionPickerFlyout.ShowAt(SessionHeaderButton);
-            }
-        }
-
-        private void SessionPickerFlyout_Opening(object sender, object e)
-            => IsSessionPickerOpen = true;
-
-        private void SessionPickerFlyout_Closed(object sender, object e)
-            => IsSessionPickerOpen = false;
-
-        private void SessionPickerList_ItemClick(object sender, ItemClickEventArgs e)
-        {
-            if (e.ClickedItem is ListViewItem item && item.Tag is string sessionKey)
-            {
-                SessionSelected?.Invoke(sessionKey);
-                SessionPickerFlyout.Hide();
+                SessionPickerToggleRequested?.Invoke(this, EventArgs.Empty);
             }
         }
 
@@ -318,7 +304,6 @@ namespace wisland.Views
             ApplyMetadataColors();
             ApplyTransportIconColors();
             ApplyHeaderColors();
-            RefreshSessionPickerItemColors();
         }
 
         private void MetadataViewport_SizeChanged(object sender, SizeChangedEventArgs e)
@@ -899,123 +884,6 @@ namespace wisland.Views
             visual.StopAnimation("Opacity");
         }
 
-        private void UpdateSessionPickerItems(IReadOnlyList<MediaSessionSnapshot> sessions, string? selectedSessionKey)
-        {
-            _pickerSessions = sessions;
-            _selectedSessionKey = selectedSessionKey;
-            SessionPickerList.Items.Clear();
-            ListViewItem? selectedItem = null;
-
-            for (int i = 0; i < sessions.Count; i++)
-            {
-                MediaSessionSnapshot session = sessions[i];
-                bool isSelected = string.Equals(session.SessionKey, selectedSessionKey, StringComparison.Ordinal);
-                ListViewItem item = BuildSessionPickerItem(session, isSelected);
-                SessionPickerList.Items.Add(item);
-
-                if (isSelected)
-                {
-                    selectedItem = item;
-                }
-            }
-
-            SessionPickerList.SelectedItem = selectedItem;
-        }
-
-        private ListViewItem BuildSessionPickerItem(MediaSessionSnapshot session, bool isSelected)
-        {
-            Border monogramBadge = new()
-            {
-                Width = 24,
-                Height = 24,
-                CornerRadius = new CornerRadius(12),
-                BorderThickness = new Thickness(1),
-                Background = new SolidColorBrush(Color.FromArgb(26, _mainColor.R, _mainColor.G, _mainColor.B)),
-                BorderBrush = new SolidColorBrush(Color.FromArgb(56, _subColor.R, _subColor.G, _subColor.B)),
-                Child = new TextBlock
-                {
-                    Text = GetSourceMonogram(session.SourceName),
-                    HorizontalAlignment = HorizontalAlignment.Center,
-                    VerticalAlignment = VerticalAlignment.Center,
-                    FontSize = 10,
-                    FontWeight = Microsoft.UI.Text.FontWeights.Bold,
-                    Foreground = new SolidColorBrush(_mainColor)
-                }
-            };
-
-            StackPanel textStack = new()
-            {
-                Spacing = 2
-            };
-
-            textStack.Children.Add(new TextBlock
-            {
-                Text = session.SourceName,
-                FontSize = 11,
-                Foreground = new SolidColorBrush(_subColor),
-                TextTrimming = TextTrimming.CharacterEllipsis
-            });
-
-            textStack.Children.Add(new TextBlock
-            {
-                Text = session.Title,
-                FontSize = 13,
-                FontWeight = Microsoft.UI.Text.FontWeights.SemiBold,
-                Foreground = new SolidColorBrush(_mainColor),
-                TextTrimming = TextTrimming.CharacterEllipsis
-            });
-
-            textStack.Children.Add(new TextBlock
-            {
-                Text = session.Artist,
-                FontSize = 11,
-                Foreground = new SolidColorBrush(_subColor),
-                TextTrimming = TextTrimming.CharacterEllipsis,
-                Visibility = string.IsNullOrWhiteSpace(session.Artist) ? Visibility.Collapsed : Visibility.Visible
-            });
-
-            TextBlock statusText = new()
-            {
-                Text = GetPlaybackStatusLabel(session),
-                FontSize = 11,
-                Foreground = new SolidColorBrush(_subColor),
-                VerticalAlignment = VerticalAlignment.Top,
-                Margin = new Thickness(12, 0, 0, 0)
-            };
-
-            Grid content = new()
-            {
-                Padding = new Thickness(12, 10, 12, 10)
-            };
-            content.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
-            content.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
-            content.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
-            content.Children.Add(monogramBadge);
-            Grid.SetColumn(monogramBadge, 0);
-
-            Border textHost = new()
-            {
-                Child = textStack,
-                Margin = new Thickness(10, 0, 0, 0)
-            };
-            content.Children.Add(textHost);
-            Grid.SetColumn(textHost, 1);
-
-            content.Children.Add(statusText);
-            Grid.SetColumn(statusText, 2);
-
-            return new ListViewItem
-            {
-                Tag = session.SessionKey,
-                Content = content,
-                HorizontalContentAlignment = HorizontalAlignment.Stretch,
-                IsSelected = isSelected
-            };
-        }
-
-        private void RefreshSessionPickerItemColors()
-            => UpdateSessionPickerItems(_pickerSessions, _selectedSessionKey);
-
         private double MeasureHeaderChipWidth(HeaderTextSnapshot snapshot, AvatarStripSnapshot avatarSnapshot)
         {
             Thickness padding = HeaderChipBorder.Padding;
@@ -1290,8 +1158,6 @@ namespace wisland.Views
 
             HeaderChipBorder.BorderBrush = new SolidColorBrush(borderColor);
             HeaderChipBorder.Background = new SolidColorBrush(backgroundColor);
-            SessionPickerBorder.BorderBrush = new SolidColorBrush(borderColor);
-            SessionPickerBorder.Background = new SolidColorBrush(backgroundColor);
             HeaderLabelPrimary.Foreground = new SolidColorBrush(_subColor);
             HeaderLabelSecondary.Foreground = new SolidColorBrush(_subColor);
             SolidColorBrush expandGlyphBrush = new(new Color { A = 204, R = _subColor.R, G = _subColor.G, B = _subColor.B });

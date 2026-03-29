@@ -36,6 +36,7 @@ namespace wisland
                         return;
                     }
 
+                    HideSessionPickerOverlay(reconcileHover: false);
                     ExpandedContent.ShowNotification(title, message, header);
                     _controller.IsNotifying = true;
                     UpdateState();

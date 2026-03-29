@@ -109,7 +109,8 @@ namespace wisland
         {
             if (!_controller.IsDocked
                 || _controller.IsNotifying
-                || _controller.IsDragging)
+                || _controller.IsDragging
+                || _controller.IsTransientSurfaceOpen)
             {
                 return false;
             }
