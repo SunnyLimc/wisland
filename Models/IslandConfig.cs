@@ -92,10 +92,11 @@ namespace wisland.Models
         public const int CompactSessionCountVisibleThreshold = 2;
         public const double SessionPickerOverlayWidth = 312.0;
         public const int SessionPickerOverlayMaxVisibleItems = 4;
-        public const double SessionPickerOverlayRowHeight = 52.0;
+        public const double SessionPickerOverlayRowHeight = 58.0;
+        public const double SessionPickerOverlayItemSpacing = 6.0;
+        public const double SessionPickerOverlayPanelPadding = 8.0;
         public const double SessionPickerOverlayWindowGap = 8.0;
         public const double SessionPickerOverlayScreenMargin = 8.0;
-        public const int SessionPickerOverlayShowDurationMs = 120;
 
         // --- Opacity Thresholds ---
         public const double HitTestOpacityThreshold = 0.5;

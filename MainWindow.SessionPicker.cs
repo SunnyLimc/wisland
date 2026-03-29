@@ -12,6 +12,8 @@ namespace wisland
     {
         private SessionPickerWindow? _sessionPickerWindow;
         private bool _isSessionPickerOpen;
+        private SessionPickerOverlayLayoutMetrics? _sessionPickerLayoutMetrics;
+        private WindowFrameInsets? _mainWindowFrameInsets;
 
         private bool HasBlockingSurfaceOpen
             => _isContextFlyoutOpen || _isSessionPickerOpen;
@@ -21,6 +23,8 @@ namespace wisland
             _sessionPickerWindow = new SessionPickerWindow();
             _sessionPickerWindow.DismissRequested += SessionPickerWindow_DismissRequested;
             _sessionPickerWindow.SessionSelected += SessionPickerWindow_SessionSelected;
+            _sessionPickerWindow.FrameInsetsChanged += SessionPickerWindow_FrameInsetsChanged;
+            _sessionPickerWindow.View.LayoutMetricsChanged += SessionPickerView_LayoutMetricsChanged;
             ExpandedContent.SessionPickerToggleRequested += ExpandedContent_SessionPickerToggleRequested;
         }
 
@@ -71,6 +75,7 @@ namespace wisland
                 return;
             }
 
+            _sessionPickerLayoutMetrics = null;
             IReadOnlyList<SessionPickerRowModel> rows = SessionPickerRowProjector.Project(
                 context.OrderedSessions,
                 context.DisplayedSession?.SessionKey);
@@ -95,6 +100,7 @@ namespace wisland
             }
 
             _isSessionPickerOpen = false;
+            _sessionPickerLayoutMetrics = null;
             _controller.IsTransientSurfaceOpen = false;
             _sessionPickerWindow?.HideOverlay();
             UpdateState();
@@ -147,14 +153,19 @@ namespace wisland
             }
 
             Size desiredSize = _sessionPickerWindow.View.MeasureDesiredSize();
-            int overlayWidth = GetPhysicalPixels(Math.Max(IslandConfig.SessionPickerOverlayWidth, desiredSize.Width), _dpiScale);
-            int overlayHeight = GetPhysicalPixels(Math.Max(1.0, desiredSize.Height), _dpiScale);
+            double widthLogical = _sessionPickerLayoutMetrics?.Width
+                ?? Math.Max(IslandConfig.SessionPickerOverlayWidth, desiredSize.Width);
+            double heightLogical = _sessionPickerLayoutMetrics?.Height
+                ?? Math.Max(1.0, desiredSize.Height);
+            int overlayWidth = GetPhysicalPixels(widthLogical, _dpiScale);
+            int overlayHeight = GetPhysicalPixels(heightLogical, _dpiScale);
             int gap = GetPhysicalPixels(IslandConfig.SessionPickerOverlayWindowGap, _dpiScale);
             int margin = GetPhysicalPixels(IslandConfig.SessionPickerOverlayScreenMargin, _dpiScale);
+            RectInt32 workArea = GetCurrentDisplayWorkArea();
 
             bounds = SessionPickerPlacementResolver.Resolve(
                 anchorBounds,
-                GetCurrentDisplayWorkArea(),
+                workArea,
                 overlayWidth,
                 overlayHeight,
                 gap,
@@ -171,8 +182,11 @@ namespace wisland
                 return false;
             }
 
-            int left = _lastPhysX + (int)Math.Round(anchorLogicalBounds.X * _dpiScale);
-            int top = _lastPhysY + (int)Math.Round(anchorLogicalBounds.Y * _dpiScale);
+            WindowFrameInsets frameInsets = GetMainWindowFrameInsets();
+            int clientOriginX = _lastPhysX + frameInsets.Left;
+            int clientOriginY = _lastPhysY + frameInsets.Top;
+            int left = clientOriginX + (int)Math.Round(anchorLogicalBounds.X * _dpiScale);
+            int top = clientOriginY + (int)Math.Round(anchorLogicalBounds.Y * _dpiScale);
             int width = Math.Max(1, (int)Math.Ceiling(anchorLogicalBounds.Width * _dpiScale));
             int height = Math.Max(1, (int)Math.Ceiling(anchorLogicalBounds.Height * _dpiScale));
 
@@ -197,6 +211,40 @@ namespace wisland
             _hoverDebounceTimer.Stop();
             _dockedHoverDelayTimer.Stop();
             SetHoverMode(HoverMode.None);
+        }
+
+        private void SessionPickerView_LayoutMetricsChanged(SessionPickerOverlayLayoutMetrics metrics)
+        {
+            _sessionPickerLayoutMetrics = metrics;
+
+            if (_isSessionPickerOpen)
+            {
+                UpdateSessionPickerOverlayPlacement();
+            }
+        }
+
+        private void SessionPickerWindow_FrameInsetsChanged(WindowFrameInsets insets)
+        {
+            if (_isSessionPickerOpen)
+            {
+                UpdateSessionPickerOverlayPlacement();
+            }
+        }
+
+        private WindowFrameInsets GetMainWindowFrameInsets()
+        {
+            IntPtr hwnd = WinRT.Interop.WindowNative.GetWindowHandle(this);
+            if (WindowInterop.TryGetWindowFrameInsets(hwnd, out WindowFrameInsets insets))
+            {
+                if (!_mainWindowFrameInsets.HasValue || !_mainWindowFrameInsets.Value.Equals(insets))
+                {
+                    _mainWindowFrameInsets = insets;
+                }
+
+                return insets;
+            }
+
+            return _mainWindowFrameInsets ?? default;
         }
     }
 }

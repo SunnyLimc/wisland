@@ -9,12 +9,22 @@
 
     <Grid x:Name="RootGrid"
           Background="Transparent"
+          UseLayoutRounding="True"
+          SizeChanged="RootGrid_SizeChanged"
           KeyDown="RootGrid_KeyDown">
+        <Border x:Name="HostSurface"
+                CornerRadius="15"
+                HorizontalAlignment="Stretch"
+                VerticalAlignment="Stretch"
+                IsHitTestVisible="False" />
+
         <Border x:Name="PanelBorder"
-                Width="312"
-                Padding="8"
-                CornerRadius="20"
-                BorderThickness="1">
+                MinWidth="312"
+                Padding="8,0,8,0"
+                CornerRadius="15"
+                BorderThickness="0"
+                HorizontalAlignment="Stretch"
+                VerticalAlignment="Stretch">
             <ListView x:Name="SessionList"
                       Background="Transparent"
                       BorderThickness="0"
@@ -25,12 +35,20 @@
                       ScrollViewer.VerticalScrollBarVisibility="Auto"
                       ItemClick="SessionList_ItemClick"
                       KeyDown="SessionList_KeyDown">
+                <ListView.Header>
+                    <Border Height="8" Background="Transparent" />
+                </ListView.Header>
+
+                <ListView.Footer>
+                    <Border Height="8" Background="Transparent" />
+                </ListView.Footer>
+
                 <ListView.ItemContainerStyle>
                     <Style TargetType="ListViewItem">
                         <Setter Property="HorizontalContentAlignment" Value="Stretch" />
                         <Setter Property="Padding" Value="0" />
                         <Setter Property="Margin" Value="0,0,0,6" />
-                        <Setter Property="MinHeight" Value="0" />
+                        <Setter Property="MinHeight" Value="58" />
                         <Setter Property="Background" Value="Transparent" />
                         <Setter Property="BorderThickness" Value="0" />
                         <Setter Property="UseSystemFocusVisuals" Value="False" />

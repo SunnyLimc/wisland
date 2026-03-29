@@ -2,6 +2,8 @@ using System;
 using Microsoft.UI.Xaml;
 using Windows.Graphics;
 using WinUIEx;
+using wisland.Helpers;
+using wisland.Models;
 using wisland.Views;
 
 namespace wisland
@@ -10,11 +12,13 @@ namespace wisland
     {
         private bool _hasBeenShown;
         private bool _suppressDismiss;
+        private WindowFrameInsets? _frameInsets;
 
         public SessionPickerWindow()
         {
             ExtendsContentIntoTitleBar = true;
             Content = View;
+            SystemBackdrop = null;
 
             WindowManager manager = WindowManager.Get(this);
             manager.IsTitleBarVisible = false;
@@ -23,6 +27,7 @@ namespace wisland
             manager.IsMinimizable = false;
             manager.IsMaximizable = false;
             AppWindow.IsShownInSwitchers = false;
+            ConfigureChrome();
 
             Activated += SessionPickerWindow_Activated;
             View.DismissRequested += View_DismissRequested;
@@ -37,9 +42,11 @@ namespace wisland
 
         public event Action<string>? SessionSelected;
 
+        public event Action<WindowFrameInsets>? FrameInsetsChanged;
+
         public void ShowOverlay(RectInt32 bounds)
         {
-            AppWindow.MoveAndResize(bounds);
+            ApplyBounds(bounds);
 
             _suppressDismiss = true;
             try
@@ -62,6 +69,7 @@ namespace wisland
                 _suppressDismiss = false;
             }
 
+            CaptureFrameInsets();
             View.FocusList();
         }
 
@@ -69,7 +77,7 @@ namespace wisland
         {
             if (_hasBeenShown)
             {
-                AppWindow.MoveAndResize(bounds);
+                ApplyBounds(bounds);
             }
         }
 
@@ -114,6 +122,46 @@ namespace wisland
 
         private void View_SessionSelected(string sessionKey)
             => SessionSelected?.Invoke(sessionKey);
+
+        private void ConfigureChrome()
+        {
+            var hwnd = WinRT.Interop.WindowNative.GetWindowHandle(this);
+            if (hwnd != IntPtr.Zero)
+            {
+                int cornerPreference = WindowInterop.DWMWCP_ROUND;
+                WindowInterop.DwmSetWindowAttribute(
+                    hwnd,
+                    WindowInterop.DWMWA_WINDOW_CORNER_PREFERENCE,
+                    ref cornerPreference,
+                    sizeof(int));
+            }
+        }
+
+        private void ApplyBounds(RectInt32 bounds)
+        {
+            ConfigureChrome();
+            WindowFrameInsets insets = _frameInsets ?? default;
+            int moveX = bounds.X - insets.Left;
+            int moveY = bounds.Y - insets.Top;
+            int clientWidth = Math.Max(1, bounds.Width);
+            int clientHeight = Math.Max(1, bounds.Height);
+
+            AppWindow.Move(new PointInt32(moveX, moveY));
+            AppWindow.ResizeClient(new SizeInt32(clientWidth, clientHeight));
+        }
+
+        private void CaptureFrameInsets()
+        {
+            var hwnd = WinRT.Interop.WindowNative.GetWindowHandle(this);
+            if (!WindowInterop.TryGetWindowFrameInsets(hwnd, out WindowFrameInsets insets)
+                || (_frameInsets.HasValue && _frameInsets.Value.Equals(insets)))
+            {
+                return;
+            }
+
+            _frameInsets = insets;
+            FrameInsetsChanged?.Invoke(insets);
+        }
 
         private void SessionPickerWindow_Activated(object sender, WindowActivatedEventArgs args)
         {

@@ -31,13 +31,15 @@ namespace wisland.Views
         {
             this.InitializeComponent();
             SessionList.ItemsSource = _rows;
-            SessionList.MaxHeight = IslandConfig.SessionPickerOverlayMaxVisibleItems * IslandConfig.SessionPickerOverlayRowHeight;
+            UpdateListMaxHeight();
             ApplyPanelColors();
         }
 
         public event Action<string>? SessionSelected;
 
         public event EventHandler? DismissRequested;
+
+        public event Action<SessionPickerOverlayLayoutMetrics>? LayoutMetricsChanged;
 
         public void SetColors(Color primary, Color secondary, Color surface)
         {
@@ -51,13 +53,18 @@ namespace wisland.Views
         public void SetRows(IReadOnlyList<SessionPickerRowModel> models)
         {
             _currentModels = models;
+            UpdateListMaxHeight();
             RebuildRows();
+            QueueLayoutMetricsUpdate();
         }
 
         public Size MeasureDesiredSize()
         {
-            PanelBorder.Measure(new Size(IslandConfig.SessionPickerOverlayWidth, double.PositiveInfinity));
-            return PanelBorder.DesiredSize;
+            double width = IslandConfig.SessionPickerOverlayWidth;
+            double height = GetVisibleListHeight(_currentModels.Count)
+                + (IslandConfig.SessionPickerOverlayPanelPadding * 2.0);
+
+            return new Size(width, Math.Max(1.0, height));
         }
 
         public void FocusList()
@@ -98,6 +105,71 @@ namespace wisland.Views
             }
 
             SessionList.SelectedItem = selectedItem;
+        }
+
+        private void QueueLayoutMetricsUpdate()
+            => DispatcherQueue?.TryEnqueue(PublishLayoutMetrics);
+
+        private void PublishLayoutMetrics()
+        {
+            if (TryBuildLayoutMetrics(out SessionPickerOverlayLayoutMetrics metrics))
+            {
+                LayoutMetricsChanged?.Invoke(metrics);
+            }
+        }
+
+        private bool TryBuildLayoutMetrics(out SessionPickerOverlayLayoutMetrics metrics)
+        {
+            metrics = default;
+            if (_currentModels.Count == 0)
+            {
+                return false;
+            }
+
+            UpdateLayout();
+
+            int visibleCount = Math.Min(_currentModels.Count, IslandConfig.SessionPickerOverlayMaxVisibleItems);
+            bool hasBounds = false;
+            Rect unionBounds = default;
+
+            for (int index = 0; index < visibleCount; index++)
+            {
+                if (SessionList.ContainerFromIndex(index) is not FrameworkElement container
+                    || container.ActualWidth <= 0
+                    || container.ActualHeight <= 0)
+                {
+                    return false;
+                }
+
+                Rect containerBounds = container
+                    .TransformToVisual(RootGrid)
+                    .TransformBounds(new Rect(0, 0, container.ActualWidth, container.ActualHeight));
+
+                unionBounds = hasBounds
+                    ? Union(unionBounds, containerBounds)
+                    : containerBounds;
+                hasBounds = true;
+            }
+
+            if (!hasBounds)
+            {
+                return false;
+            }
+
+            double inset = IslandConfig.SessionPickerOverlayPanelPadding;
+            metrics = new SessionPickerOverlayLayoutMetrics(
+                Width: Math.Max(IslandConfig.SessionPickerOverlayWidth, unionBounds.Width + (inset * 2.0)),
+                Height: Math.Max(1.0, unionBounds.Height + (inset * 2.0)));
+            return true;
+        }
+
+        private static Rect Union(Rect left, Rect right)
+        {
+            double x = Math.Min(left.X, right.X);
+            double y = Math.Min(left.Y, right.Y);
+            double maxX = Math.Max(left.X + left.Width, right.X + right.Width);
+            double maxY = Math.Max(left.Y + left.Height, right.Y + right.Height);
+            return new Rect(x, y, maxX - x, maxY - y);
         }
 
         private SessionPickerRowVisualModel CreateVisualModel(SessionPickerRowModel model)
@@ -163,8 +235,26 @@ namespace wisland.Views
             byte alpha = (byte)Math.Clamp(Math.Max((int)_surfaceColor.A, 228), 0, 255);
             Color backgroundColor = Color.FromArgb(alpha, _surfaceColor.R, _surfaceColor.G, _surfaceColor.B);
             Color borderColor = Color.FromArgb(72, _secondaryColor.R, _secondaryColor.G, _secondaryColor.B);
-            PanelBorder.Background = new SolidColorBrush(backgroundColor);
+            RootGrid.Background = new SolidColorBrush(backgroundColor);
+            HostSurface.Background = new SolidColorBrush(backgroundColor);
+            PanelBorder.Background = new SolidColorBrush(Microsoft.UI.Colors.Transparent);
             PanelBorder.BorderBrush = new SolidColorBrush(borderColor);
+        }
+
+        private void UpdateListMaxHeight()
+            => SessionList.MaxHeight = GetVisibleListHeight(IslandConfig.SessionPickerOverlayMaxVisibleItems)
+                + (IslandConfig.SessionPickerOverlayPanelPadding * 2.0);
+
+        private static double GetVisibleListHeight(int itemCount)
+        {
+            int visibleCount = Math.Clamp(itemCount, 0, IslandConfig.SessionPickerOverlayMaxVisibleItems);
+            if (visibleCount == 0)
+            {
+                return 0;
+            }
+
+            return visibleCount * IslandConfig.SessionPickerOverlayRowHeight
+                + (visibleCount * IslandConfig.SessionPickerOverlayItemSpacing);
         }
 
         private void SessionList_ItemClick(object sender, ItemClickEventArgs e)
@@ -177,6 +267,9 @@ namespace wisland.Views
 
         private void RootGrid_KeyDown(object sender, KeyRoutedEventArgs e)
             => HandleListKeyDown(e);
+
+        private void RootGrid_SizeChanged(object sender, SizeChangedEventArgs e)
+            => QueueLayoutMetricsUpdate();
 
         private void SessionList_KeyDown(object sender, KeyRoutedEventArgs e)
             => HandleListKeyDown(e);

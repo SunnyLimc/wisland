@@ -4,7 +4,8 @@
       "commandName": "MsixPackage"
     },
     "wisland (Unpackaged)": {
-      "commandName": "Project"
+      "commandName": "Project",
+      "hotReloadEnabled": false
     }
   }
 }

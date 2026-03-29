@@ -38,6 +38,18 @@ namespace wisland.Helpers
         [return: MarshalAs(UnmanagedType.Bool)]
         private static extern bool GetWindowPlacement(IntPtr hWnd, ref WINDOWPLACEMENT lpwndpl);
 
+        [DllImport("user32.dll", SetLastError = true)]
+        [return: MarshalAs(UnmanagedType.Bool)]
+        private static extern bool GetWindowRect(IntPtr hWnd, out RECT lpRect);
+
+        [DllImport("user32.dll", SetLastError = true)]
+        [return: MarshalAs(UnmanagedType.Bool)]
+        private static extern bool GetClientRect(IntPtr hWnd, out RECT lpRect);
+
+        [DllImport("user32.dll", SetLastError = true)]
+        [return: MarshalAs(UnmanagedType.Bool)]
+        private static extern bool ClientToScreen(IntPtr hWnd, ref POINT lpPoint);
+
         [StructLayout(LayoutKind.Sequential)]
         private struct WINDOWPLACEMENT
         {
@@ -239,5 +251,36 @@ namespace wisland.Helpers
         public const int DWMWCP_DONOTROUND = 1;    // No rounding, no shadow
         public const int DWMWCP_ROUND = 2;         // Full rounded corners + large shadow
         public const int DWMWCP_ROUNDSMALL = 3;    // Small rounded corners + small/light shadow
+
+        public static bool TryGetWindowFrameInsets(IntPtr hwnd, out Models.WindowFrameInsets insets)
+        {
+            insets = default;
+            if (hwnd == IntPtr.Zero
+                || !GetWindowRect(hwnd, out RECT windowRect)
+                || !GetClientRect(hwnd, out RECT clientRect))
+            {
+                return false;
+            }
+
+            POINT clientOrigin = new POINT { X = 0, Y = 0 };
+            if (!ClientToScreen(hwnd, ref clientOrigin))
+            {
+                return false;
+            }
+
+            int clientWidth = Math.Max(0, clientRect.right - clientRect.left);
+            int clientHeight = Math.Max(0, clientRect.bottom - clientRect.top);
+            int left = clientOrigin.X - windowRect.left;
+            int top = clientOrigin.Y - windowRect.top;
+            int right = windowRect.right - (clientOrigin.X + clientWidth);
+            int bottom = windowRect.bottom - (clientOrigin.Y + clientHeight);
+
+            insets = new Models.WindowFrameInsets(
+                Math.Max(0, left),
+                Math.Max(0, top),
+                Math.Max(0, right),
+                Math.Max(0, bottom));
+            return true;
+        }
     }
 }

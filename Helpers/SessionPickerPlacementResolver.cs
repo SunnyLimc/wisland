@@ -17,8 +17,9 @@ namespace wisland.Helpers
             int height = Math.Max(1, overlayHeight);
             int clampedMargin = Math.Max(0, margin);
             int clampedGap = Math.Max(0, gap);
+            int centerOffsetX = width / 2;
 
-            int preferredX = anchorBounds.X + (anchorBounds.Width / 2) - (width / 2);
+            int preferredX = anchorBounds.X + (anchorBounds.Width / 2) - centerOffsetX;
             int minX = workArea.X + clampedMargin;
             int maxX = workArea.X + workArea.Width - clampedMargin - width;
             int resolvedX = maxX < minX

@@ -374,6 +374,13 @@ Dedicated secondary shell surface for the multi-session drop list.
 - `MainWindow` owns its lifetime, visibility, placement, and dismissal rules
 - `SessionPickerOverlayView` owns row layout, keyboard handling, async icon fill, and theme refresh
 - `Helpers/SessionPickerPlacementResolver` keeps anchor-to-overlay placement pure and testable
+- `Services/IslandController.IsTransientSurfaceOpen` keeps the island expanded while the list is open
+- `ExpandedMediaView` only raises the chip toggle event and exposes the chip anchor bounds
+- row projection is centralized in `SessionPickerRowProjector`, so playback state / subtitle / selected state stay out of the view layer
+- the overlay list uses a compact `ListView` template with a reserved accessory slot, async source icon fill, and monogram fallback
+- top and bottom breathing room are implemented as list header/footer spacers, so rows can still scroll into the edge region
+- runtime `SessionPickerOverlayLayoutMetrics` refine window sizing from realized row bounds, while horizontal anchoring stays tied to the chip's geometric center
+- `SessionPickerWindow` applies WinUI top-level window chrome plus measured frame-inset compensation so the overlay client area matches the list surface more closely
 
 ### `DirectionalContentTransitionCoordinator`
 
