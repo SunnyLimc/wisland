@@ -84,6 +84,7 @@ namespace wisland.Views
         {
             _iconLoadToken++;
             long token = _iconLoadToken;
+            string? preferredSelectionKey = (SessionList.SelectedItem as SessionPickerRowVisualModel)?.SessionKey;
 
             _rows.Clear();
             SessionPickerRowVisualModel? selectedItem = null;
@@ -93,7 +94,12 @@ namespace wisland.Views
                 SessionPickerRowVisualModel row = CreateVisualModel(_currentModels[i]);
                 _rows.Add(row);
 
-                if (row.IsSelected)
+                if (!string.IsNullOrWhiteSpace(preferredSelectionKey)
+                    && string.Equals(row.SessionKey, preferredSelectionKey, StringComparison.Ordinal))
+                {
+                    selectedItem = row;
+                }
+                else if (selectedItem == null && row.IsSelected)
                 {
                     selectedItem = row;
                 }
@@ -105,6 +111,7 @@ namespace wisland.Views
             }
 
             SessionList.SelectedItem = selectedItem;
+            UpdateRowSelectionVisuals(selectedItem);
         }
 
         private void QueueLayoutMetricsUpdate()
@@ -174,42 +181,18 @@ namespace wisland.Views
 
         private SessionPickerRowVisualModel CreateVisualModel(SessionPickerRowModel model)
         {
-            Color borderColor = model.IsSelected
-                ? Color.FromArgb(90, _secondaryColor.R, _secondaryColor.G, _secondaryColor.B)
-                : Color.FromArgb(32, _secondaryColor.R, _secondaryColor.G, _secondaryColor.B);
-            Color backgroundColor = model.IsSelected
-                ? Color.FromArgb(34, _primaryColor.R, _primaryColor.G, _primaryColor.B)
-                : Color.FromArgb(12, _primaryColor.R, _primaryColor.G, _primaryColor.B);
-            Color badgeBackgroundColor = Color.FromArgb(
-                model.IsSelected ? (byte)52 : (byte)28,
-                _primaryColor.R,
-                _primaryColor.G,
-                _primaryColor.B);
-            Color badgeBorderColor = Color.FromArgb(54, _secondaryColor.R, _secondaryColor.G, _secondaryColor.B);
-            Color statusBackgroundColor = Color.FromArgb(
-                model.IsSelected ? (byte)34 : (byte)18,
-                _primaryColor.R,
-                _primaryColor.G,
-                _primaryColor.B);
-            Color statusBorderColor = Color.FromArgb(42, _secondaryColor.R, _secondaryColor.G, _secondaryColor.B);
-
-            return new SessionPickerRowVisualModel(
+            SessionPickerRowVisualModel row = new(
                 model.SessionKey,
                 model.SourceAppId,
                 model.SourceName,
                 model.Title,
                 model.Subtitle,
                 model.StatusText,
-                model.IsSelected,
                 SessionPickerRowProjector.ResolveMonogram(model.SourceName),
-                new SolidColorBrush(backgroundColor),
-                new SolidColorBrush(borderColor),
-                new SolidColorBrush(badgeBackgroundColor),
-                new SolidColorBrush(badgeBorderColor),
                 new SolidColorBrush(_primaryColor),
-                new SolidColorBrush(_secondaryColor),
-                new SolidColorBrush(statusBackgroundColor),
-                new SolidColorBrush(statusBorderColor));
+                new SolidColorBrush(_secondaryColor));
+            row.ApplySelectionState(model.IsSelected, _primaryColor, _secondaryColor);
+            return row;
         }
 
         private async Task LoadIconAsync(SessionPickerRowVisualModel row, long token)
@@ -265,6 +248,9 @@ namespace wisland.Views
             }
         }
 
+        private void SessionList_SelectionChanged(object sender, SelectionChangedEventArgs e)
+            => UpdateRowSelectionVisuals(SessionList.SelectedItem as SessionPickerRowVisualModel);
+
         private void RootGrid_KeyDown(object sender, KeyRoutedEventArgs e)
             => HandleListKeyDown(e);
 
@@ -291,9 +277,32 @@ namespace wisland.Views
             }
         }
 
+        private void UpdateRowSelectionVisuals(SessionPickerRowVisualModel? selectedRow)
+        {
+            foreach (SessionPickerRowVisualModel row in _rows)
+            {
+                row.ApplySelectionState(
+                    ReferenceEquals(row, selectedRow),
+                    _primaryColor,
+                    _secondaryColor);
+            }
+        }
+
         private sealed class SessionPickerRowVisualModel : INotifyPropertyChanged
         {
             private ImageSource? _iconSource;
+            private bool _isSelected;
+            private Brush _rowBackground = new SolidColorBrush(Microsoft.UI.Colors.Transparent);
+            private Brush _rowBorderBrush = new SolidColorBrush(Microsoft.UI.Colors.Transparent);
+            private Brush _rowHoverBackground = new SolidColorBrush(Microsoft.UI.Colors.Transparent);
+            private Brush _rowHoverBorderBrush = new SolidColorBrush(Microsoft.UI.Colors.Transparent);
+            private Brush _rowPressBackground = new SolidColorBrush(Microsoft.UI.Colors.Transparent);
+            private Brush _rowPressBorderBrush = new SolidColorBrush(Microsoft.UI.Colors.Transparent);
+            private Brush _rowFocusBorderBrush = new SolidColorBrush(Microsoft.UI.Colors.Transparent);
+            private Brush _badgeBackground = new SolidColorBrush(Microsoft.UI.Colors.Transparent);
+            private Brush _badgeBorderBrush = new SolidColorBrush(Microsoft.UI.Colors.Transparent);
+            private Brush _statusBackground = new SolidColorBrush(Microsoft.UI.Colors.Transparent);
+            private Brush _statusBorderBrush = new SolidColorBrush(Microsoft.UI.Colors.Transparent);
 
             public SessionPickerRowVisualModel(
                 string sessionKey,
@@ -302,16 +311,9 @@ namespace wisland.Views
                 string title,
                 string subtitle,
                 string statusText,
-                bool isSelected,
                 string monogram,
-                Brush rowBackground,
-                Brush rowBorderBrush,
-                Brush badgeBackground,
-                Brush badgeBorderBrush,
                 Brush primaryForeground,
-                Brush secondaryForeground,
-                Brush statusBackground,
-                Brush statusBorderBrush)
+                Brush secondaryForeground)
             {
                 SessionKey = sessionKey;
                 SourceAppId = sourceAppId;
@@ -319,16 +321,9 @@ namespace wisland.Views
                 Title = title;
                 Subtitle = subtitle;
                 StatusText = statusText;
-                IsSelected = isSelected;
                 Monogram = monogram;
-                RowBackground = rowBackground;
-                RowBorderBrush = rowBorderBrush;
-                BadgeBackground = badgeBackground;
-                BadgeBorderBrush = badgeBorderBrush;
                 PrimaryForeground = primaryForeground;
                 SecondaryForeground = secondaryForeground;
-                StatusBackground = statusBackground;
-                StatusBorderBrush = statusBorderBrush;
             }
 
             public event PropertyChangedEventHandler? PropertyChanged;
@@ -345,25 +340,92 @@ namespace wisland.Views
 
             public string StatusText { get; }
 
-            public bool IsSelected { get; }
+            public bool IsSelected
+            {
+                get => _isSelected;
+                private set
+                {
+                    if (_isSelected == value)
+                    {
+                        return;
+                    }
+
+                    _isSelected = value;
+                    OnPropertyChanged();
+                }
+            }
 
             public string Monogram { get; }
 
-            public Brush RowBackground { get; }
+            public Brush RowBackground
+            {
+                get => _rowBackground;
+                private set => SetBrush(ref _rowBackground, value);
+            }
 
-            public Brush RowBorderBrush { get; }
+            public Brush RowBorderBrush
+            {
+                get => _rowBorderBrush;
+                private set => SetBrush(ref _rowBorderBrush, value);
+            }
 
-            public Brush BadgeBackground { get; }
+            public Brush RowHoverBackground
+            {
+                get => _rowHoverBackground;
+                private set => SetBrush(ref _rowHoverBackground, value);
+            }
 
-            public Brush BadgeBorderBrush { get; }
+            public Brush RowHoverBorderBrush
+            {
+                get => _rowHoverBorderBrush;
+                private set => SetBrush(ref _rowHoverBorderBrush, value);
+            }
+
+            public Brush RowPressBackground
+            {
+                get => _rowPressBackground;
+                private set => SetBrush(ref _rowPressBackground, value);
+            }
+
+            public Brush RowPressBorderBrush
+            {
+                get => _rowPressBorderBrush;
+                private set => SetBrush(ref _rowPressBorderBrush, value);
+            }
+
+            public Brush RowFocusBorderBrush
+            {
+                get => _rowFocusBorderBrush;
+                private set => SetBrush(ref _rowFocusBorderBrush, value);
+            }
+
+            public Brush BadgeBackground
+            {
+                get => _badgeBackground;
+                private set => SetBrush(ref _badgeBackground, value);
+            }
+
+            public Brush BadgeBorderBrush
+            {
+                get => _badgeBorderBrush;
+                private set => SetBrush(ref _badgeBorderBrush, value);
+            }
 
             public Brush PrimaryForeground { get; }
 
             public Brush SecondaryForeground { get; }
 
-            public Brush StatusBackground { get; }
+            public Brush StatusBackground
+            {
+                get => _statusBackground;
+                private set => SetBrush(ref _statusBackground, value);
+            }
 
-            public Brush StatusBorderBrush { get; }
+            public Brush StatusBorderBrush
+            {
+                get => _statusBorderBrush;
+                private set => SetBrush(ref _statusBorderBrush, value);
+            }
 
             public Brush StatusForeground => SecondaryForeground;
 
@@ -396,6 +458,47 @@ namespace wisland.Views
                     OnPropertyChanged(nameof(IconVisibility));
                     OnPropertyChanged(nameof(MonogramVisibility));
                 }
+            }
+
+            public void ApplySelectionState(bool isSelected, Color primaryColor, Color secondaryColor)
+            {
+                InteractionSurfacePalette rowPalette = InteractionSurfacePalette.Create(
+                    primaryColor,
+                    secondaryColor,
+                    isSelected ? (byte)34 : (byte)12,
+                    isSelected ? (byte)90 : (byte)32,
+                    isSelected ? (byte)46 : (byte)18,
+                    isSelected ? (byte)108 : (byte)62,
+                    isSelected ? (byte)60 : (byte)28,
+                    isSelected ? (byte)120 : (byte)76,
+                    140);
+
+                IsSelected = isSelected;
+                RowBackground = new SolidColorBrush(rowPalette.BackgroundColor);
+                RowBorderBrush = new SolidColorBrush(rowPalette.BorderColor);
+                RowHoverBackground = new SolidColorBrush(rowPalette.HoverBackgroundColor);
+                RowHoverBorderBrush = new SolidColorBrush(rowPalette.HoverBorderColor);
+                RowPressBackground = new SolidColorBrush(rowPalette.PressBackgroundColor);
+                RowPressBorderBrush = new SolidColorBrush(rowPalette.PressBorderColor);
+                RowFocusBorderBrush = new SolidColorBrush(rowPalette.FocusRingColor);
+                BadgeBackground = new SolidColorBrush(WithAlpha(primaryColor, isSelected ? (byte)52 : (byte)28));
+                BadgeBorderBrush = new SolidColorBrush(WithAlpha(secondaryColor, 54));
+                StatusBackground = new SolidColorBrush(WithAlpha(primaryColor, isSelected ? (byte)34 : (byte)18));
+                StatusBorderBrush = new SolidColorBrush(WithAlpha(secondaryColor, 42));
+            }
+
+            private static Color WithAlpha(Color color, byte alpha)
+                => Color.FromArgb(alpha, color.R, color.G, color.B);
+
+            private void SetBrush(ref Brush field, Brush value, [CallerMemberName] string? propertyName = null)
+            {
+                if (ReferenceEquals(field, value))
+                {
+                    return;
+                }
+
+                field = value;
+                OnPropertyChanged(propertyName);
             }
 
             private void OnPropertyChanged([CallerMemberName] string? propertyName = null)

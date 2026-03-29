@@ -62,6 +62,8 @@ namespace wisland.Models
         public const float HeaderChipHoverTranslateY = -0.5f;
         public const int HeaderChipHoverDurationMs = 180;
         public const int HeaderChipPressDurationMs = 110;
+        public const int SessionPickerRowHoverDurationMs = HeaderChipHoverDurationMs;
+        public const int SessionPickerRowPressDurationMs = HeaderChipPressDurationMs;
         public const float HeaderLabelShiftGrowDelayProgress = 0.06f;
         public const float HeaderLabelShiftShrinkSettleProgress = 0.56f;
         public const int HeaderAvatarTransitionDurationMs = 220;

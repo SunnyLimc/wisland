@@ -1404,23 +1404,26 @@ namespace wisland.Views
 
         private void ApplyHeaderColors()
         {
-            Color borderColor = Color.FromArgb(54, _subColor.R, _subColor.G, _subColor.B);
-            Color backgroundColor = Color.FromArgb(20, _mainColor.R, _mainColor.G, _mainColor.B);
-            Color hoverBackgroundColor = Color.FromArgb(26, _mainColor.R, _mainColor.G, _mainColor.B);
-            Color hoverBorderColor = Color.FromArgb(72, _subColor.R, _subColor.G, _subColor.B);
-            Color pressBackgroundColor = Color.FromArgb(40, _mainColor.R, _mainColor.G, _mainColor.B);
-            Color pressBorderColor = Color.FromArgb(88, _subColor.R, _subColor.G, _subColor.B);
-            Color focusRingColor = Color.FromArgb(140, _mainColor.R, _mainColor.G, _mainColor.B);
+            InteractionSurfacePalette headerPalette = InteractionSurfacePalette.Create(
+                _mainColor,
+                _subColor,
+                20,
+                54,
+                26,
+                72,
+                40,
+                88,
+                140);
             Color avatarFillColor = Color.FromArgb(34, _mainColor.R, _mainColor.G, _mainColor.B);
             Color avatarBorderColor = Color.FromArgb(68, _subColor.R, _subColor.G, _subColor.B);
 
-            HeaderChipBorder.BorderBrush = new SolidColorBrush(borderColor);
-            HeaderChipBorder.Background = new SolidColorBrush(backgroundColor);
-            HeaderChipHoverLayer.Background = new SolidColorBrush(hoverBackgroundColor);
-            HeaderChipHoverLayer.BorderBrush = new SolidColorBrush(hoverBorderColor);
-            HeaderChipPressLayer.Background = new SolidColorBrush(pressBackgroundColor);
-            HeaderChipPressLayer.BorderBrush = new SolidColorBrush(pressBorderColor);
-            HeaderChipFocusRing.BorderBrush = new SolidColorBrush(focusRingColor);
+            HeaderChipBorder.BorderBrush = new SolidColorBrush(headerPalette.BorderColor);
+            HeaderChipBorder.Background = new SolidColorBrush(headerPalette.BackgroundColor);
+            HeaderChipHoverLayer.Background = new SolidColorBrush(headerPalette.HoverBackgroundColor);
+            HeaderChipHoverLayer.BorderBrush = new SolidColorBrush(headerPalette.HoverBorderColor);
+            HeaderChipPressLayer.Background = new SolidColorBrush(headerPalette.PressBackgroundColor);
+            HeaderChipPressLayer.BorderBrush = new SolidColorBrush(headerPalette.PressBorderColor);
+            HeaderChipFocusRing.BorderBrush = new SolidColorBrush(headerPalette.FocusRingColor);
             HeaderLabelPrimary.Foreground = new SolidColorBrush(_subColor);
             HeaderLabelSecondary.Foreground = new SolidColorBrush(_subColor);
             SolidColorBrush expandGlyphBrush = new(new Color { A = 204, R = _subColor.R, G = _subColor.G, B = _subColor.B });
@@ -1435,7 +1438,7 @@ namespace wisland.Views
                 _headerAvatarFallbacks[presenterIndex].Foreground = new SolidColorBrush(_mainColor);
             }
 
-            HeaderAvatarOverflowFade.Fill = CreateOverflowFadeBrush(backgroundColor);
+            HeaderAvatarOverflowFade.Fill = CreateOverflowFadeBrush(headerPalette.BackgroundColor);
         }
 
         private void UpdatePlayPauseSymbol(bool isPlaying)

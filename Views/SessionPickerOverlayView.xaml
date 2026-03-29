@@ -7,6 +7,204 @@
     xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
     mc:Ignorable="d">
 
+    <UserControl.Resources>
+        <Style x:Key="SessionPickerListItemStyle" TargetType="ListViewItem">
+            <Setter Property="HorizontalAlignment" Value="Stretch" />
+            <Setter Property="HorizontalContentAlignment" Value="Stretch" />
+            <Setter Property="VerticalContentAlignment" Value="Stretch" />
+            <Setter Property="Padding" Value="12,10,12,10" />
+            <Setter Property="Margin" Value="0,0,0,6" />
+            <Setter Property="MinHeight" Value="58" />
+            <Setter Property="Background" Value="Transparent" />
+            <Setter Property="BorderThickness" Value="0" />
+            <Setter Property="UseSystemFocusVisuals" Value="False" />
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="ListViewItem">
+                        <Grid x:Name="LayoutRoot"
+                              Margin="{TemplateBinding Margin}"
+                              MinHeight="{TemplateBinding MinHeight}"
+                              Background="Transparent">
+                            <VisualStateManager.VisualStateGroups>
+                                <VisualStateGroup x:Name="CommonStates">
+                                    <VisualState x:Name="Normal">
+                                        <Storyboard>
+                                            <DoubleAnimation Storyboard.TargetName="HoverLayer"
+                                                             Storyboard.TargetProperty="Opacity"
+                                                             Duration="0:0:0.18"
+                                                             To="0" />
+                                            <DoubleAnimation Storyboard.TargetName="PressLayer"
+                                                             Storyboard.TargetProperty="Opacity"
+                                                             Duration="0:0:0.11"
+                                                             To="0" />
+                                            <DoubleAnimation Storyboard.TargetName="LayoutRoot"
+                                                             Storyboard.TargetProperty="Opacity"
+                                                             Duration="0:0:0.11"
+                                                             To="1" />
+                                        </Storyboard>
+                                    </VisualState>
+
+                                    <VisualState x:Name="Selected">
+                                        <Storyboard>
+                                            <DoubleAnimation Storyboard.TargetName="HoverLayer"
+                                                             Storyboard.TargetProperty="Opacity"
+                                                             Duration="0:0:0.18"
+                                                             To="0" />
+                                            <DoubleAnimation Storyboard.TargetName="PressLayer"
+                                                             Storyboard.TargetProperty="Opacity"
+                                                             Duration="0:0:0.11"
+                                                             To="0" />
+                                        </Storyboard>
+                                    </VisualState>
+
+                                    <VisualState x:Name="PointerOver">
+                                        <Storyboard>
+                                            <DoubleAnimation Storyboard.TargetName="HoverLayer"
+                                                             Storyboard.TargetProperty="Opacity"
+                                                             Duration="0:0:0.18"
+                                                             To="1" />
+                                            <DoubleAnimation Storyboard.TargetName="PressLayer"
+                                                             Storyboard.TargetProperty="Opacity"
+                                                             Duration="0:0:0.11"
+                                                             To="0" />
+                                        </Storyboard>
+                                    </VisualState>
+
+                                    <VisualState x:Name="Pressed">
+                                        <Storyboard>
+                                            <DoubleAnimation Storyboard.TargetName="HoverLayer"
+                                                             Storyboard.TargetProperty="Opacity"
+                                                             Duration="0:0:0.11"
+                                                             To="0" />
+                                            <DoubleAnimation Storyboard.TargetName="PressLayer"
+                                                             Storyboard.TargetProperty="Opacity"
+                                                             Duration="0:0:0.11"
+                                                             To="1" />
+                                        </Storyboard>
+                                    </VisualState>
+
+                                    <VisualState x:Name="PointerOverSelected">
+                                        <Storyboard>
+                                            <DoubleAnimation Storyboard.TargetName="HoverLayer"
+                                                             Storyboard.TargetProperty="Opacity"
+                                                             Duration="0:0:0.18"
+                                                             To="1" />
+                                            <DoubleAnimation Storyboard.TargetName="PressLayer"
+                                                             Storyboard.TargetProperty="Opacity"
+                                                             Duration="0:0:0.11"
+                                                             To="0" />
+                                        </Storyboard>
+                                    </VisualState>
+
+                                    <VisualState x:Name="PressedSelected">
+                                        <Storyboard>
+                                            <DoubleAnimation Storyboard.TargetName="HoverLayer"
+                                                             Storyboard.TargetProperty="Opacity"
+                                                             Duration="0:0:0.11"
+                                                             To="0" />
+                                            <DoubleAnimation Storyboard.TargetName="PressLayer"
+                                                             Storyboard.TargetProperty="Opacity"
+                                                             Duration="0:0:0.11"
+                                                             To="1" />
+                                        </Storyboard>
+                                    </VisualState>
+
+                                    <VisualState x:Name="Disabled">
+                                        <Storyboard>
+                                            <DoubleAnimation Storyboard.TargetName="HoverLayer"
+                                                             Storyboard.TargetProperty="Opacity"
+                                                             Duration="0:0:0.11"
+                                                             To="0" />
+                                            <DoubleAnimation Storyboard.TargetName="PressLayer"
+                                                             Storyboard.TargetProperty="Opacity"
+                                                             Duration="0:0:0.11"
+                                                             To="0" />
+                                            <DoubleAnimation Storyboard.TargetName="LayoutRoot"
+                                                             Storyboard.TargetProperty="Opacity"
+                                                             Duration="0:0:0.11"
+                                                             To="0.56" />
+                                        </Storyboard>
+                                    </VisualState>
+                                </VisualStateGroup>
+
+                                <VisualStateGroup x:Name="FocusStates">
+                                    <VisualState x:Name="Unfocused">
+                                        <Storyboard>
+                                            <DoubleAnimation Storyboard.TargetName="FocusRing"
+                                                             Storyboard.TargetProperty="Opacity"
+                                                             Duration="0:0:0.18"
+                                                             To="0" />
+                                        </Storyboard>
+                                    </VisualState>
+
+                                    <VisualState x:Name="PointerFocused">
+                                        <Storyboard>
+                                            <DoubleAnimation Storyboard.TargetName="FocusRing"
+                                                             Storyboard.TargetProperty="Opacity"
+                                                             Duration="0:0:0.18"
+                                                             To="0" />
+                                        </Storyboard>
+                                    </VisualState>
+
+                                    <VisualState x:Name="Focused">
+                                        <Storyboard>
+                                            <DoubleAnimation Storyboard.TargetName="FocusRing"
+                                                             Storyboard.TargetProperty="Opacity"
+                                                             Duration="0:0:0.18"
+                                                             To="1" />
+                                        </Storyboard>
+                                    </VisualState>
+                                </VisualStateGroup>
+                            </VisualStateManager.VisualStateGroups>
+
+                            <Border x:Name="FocusRing"
+                                    Margin="-2"
+                                    CornerRadius="18"
+                                    BorderThickness="1"
+                                    Background="Transparent"
+                                    BorderBrush="{Binding DataContext.RowFocusBorderBrush, ElementName=ContentPresenter}"
+                                    Opacity="0"
+                                    IsHitTestVisible="False" />
+
+                            <Border x:Name="RowSurface"
+                                    CornerRadius="16"
+                                    BorderThickness="1"
+                                    Background="{Binding DataContext.RowBackground, ElementName=ContentPresenter}"
+                                    BorderBrush="{Binding DataContext.RowBorderBrush, ElementName=ContentPresenter}">
+                                <Grid>
+                                    <Border x:Name="HoverLayer"
+                                            CornerRadius="15"
+                                            BorderThickness="1"
+                                            Background="{Binding DataContext.RowHoverBackground, ElementName=ContentPresenter}"
+                                            BorderBrush="{Binding DataContext.RowHoverBorderBrush, ElementName=ContentPresenter}"
+                                            Opacity="0"
+                                            IsHitTestVisible="False" />
+
+                                    <Border x:Name="PressLayer"
+                                            Margin="1"
+                                            CornerRadius="14"
+                                            BorderThickness="1"
+                                            Background="{Binding DataContext.RowPressBackground, ElementName=ContentPresenter}"
+                                            BorderBrush="{Binding DataContext.RowPressBorderBrush, ElementName=ContentPresenter}"
+                                            Opacity="0"
+                                            IsHitTestVisible="False" />
+
+                                    <ContentPresenter x:Name="ContentPresenter"
+                                                      Margin="{TemplateBinding Padding}"
+                                                      HorizontalAlignment="{TemplateBinding HorizontalContentAlignment}"
+                                                      VerticalAlignment="{TemplateBinding VerticalContentAlignment}"
+                                                      Content="{TemplateBinding Content}"
+                                                      ContentTemplate="{TemplateBinding ContentTemplate}"
+                                                      ContentTransitions="{TemplateBinding ContentTransitions}" />
+                                </Grid>
+                            </Border>
+                        </Grid>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+    </UserControl.Resources>
+
     <Grid x:Name="RootGrid"
           Background="Transparent"
           UseLayoutRounding="True"
@@ -34,6 +232,7 @@
                       ScrollViewer.HorizontalScrollBarVisibility="Disabled"
                       ScrollViewer.VerticalScrollBarVisibility="Auto"
                       ItemClick="SessionList_ItemClick"
+                      SelectionChanged="SessionList_SelectionChanged"
                       KeyDown="SessionList_KeyDown">
                 <ListView.Header>
                     <Border Height="8" Background="Transparent" />
@@ -44,95 +243,81 @@
                 </ListView.Footer>
 
                 <ListView.ItemContainerStyle>
-                    <Style TargetType="ListViewItem">
-                        <Setter Property="HorizontalContentAlignment" Value="Stretch" />
-                        <Setter Property="Padding" Value="0" />
-                        <Setter Property="Margin" Value="0,0,0,6" />
-                        <Setter Property="MinHeight" Value="58" />
-                        <Setter Property="Background" Value="Transparent" />
-                        <Setter Property="BorderThickness" Value="0" />
-                        <Setter Property="UseSystemFocusVisuals" Value="False" />
-                    </Style>
+                    <StaticResource ResourceKey="SessionPickerListItemStyle" />
                 </ListView.ItemContainerStyle>
 
                 <ListView.ItemTemplate>
                     <DataTemplate>
-                        <Border Background="{Binding RowBackground}"
-                                BorderBrush="{Binding RowBorderBrush}"
-                                BorderThickness="1"
-                                CornerRadius="16"
-                                Padding="12,10,12,10">
-                            <Grid ColumnSpacing="10">
-                                <Grid.ColumnDefinitions>
-                                    <ColumnDefinition Width="Auto" />
-                                    <ColumnDefinition Width="*" />
-                                    <ColumnDefinition Width="Auto" />
-                                    <ColumnDefinition Width="Auto" />
-                                </Grid.ColumnDefinitions>
+                        <Grid ColumnSpacing="10">
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="Auto" />
+                                <ColumnDefinition Width="*" />
+                                <ColumnDefinition Width="Auto" />
+                                <ColumnDefinition Width="Auto" />
+                            </Grid.ColumnDefinitions>
 
-                                <Border Grid.Column="0"
-                                        Width="28"
-                                        Height="28"
-                                        CornerRadius="14"
-                                        Background="{Binding BadgeBackground}"
-                                        BorderBrush="{Binding BadgeBorderBrush}"
-                                        BorderThickness="1">
-                                    <Grid>
-                                        <Image Source="{Binding IconSource}"
-                                               Width="18"
-                                               Height="18"
+                            <Border Grid.Column="0"
+                                    Width="28"
+                                    Height="28"
+                                    CornerRadius="14"
+                                    Background="{Binding BadgeBackground}"
+                                    BorderBrush="{Binding BadgeBorderBrush}"
+                                    BorderThickness="1">
+                                <Grid>
+                                    <Image Source="{Binding IconSource}"
+                                           Width="18"
+                                           Height="18"
+                                           HorizontalAlignment="Center"
+                                           VerticalAlignment="Center"
+                                           Visibility="{Binding IconVisibility}" />
+                                    <TextBlock Text="{Binding Monogram}"
                                                HorizontalAlignment="Center"
                                                VerticalAlignment="Center"
-                                               Visibility="{Binding IconVisibility}" />
-                                        <TextBlock Text="{Binding Monogram}"
-                                                   HorizontalAlignment="Center"
-                                                   VerticalAlignment="Center"
-                                                   FontSize="11"
-                                                   FontWeight="Bold"
-                                                   Foreground="{Binding PrimaryForeground}"
-                                                   Visibility="{Binding MonogramVisibility}" />
-                                    </Grid>
-                                </Border>
-
-                                <StackPanel Grid.Column="1"
-                                            Spacing="3"
-                                            VerticalAlignment="Center">
-                                    <TextBlock Text="{Binding SourceName}"
                                                FontSize="11"
-                                               FontWeight="SemiBold"
-                                               Foreground="{Binding SecondaryForeground}"
-                                               TextTrimming="CharacterEllipsis" />
-                                    <TextBlock Text="{Binding SecondaryLine}"
-                                               FontSize="13"
-                                               FontWeight="SemiBold"
+                                               FontWeight="Bold"
                                                Foreground="{Binding PrimaryForeground}"
-                                               TextTrimming="CharacterEllipsis" />
-                                </StackPanel>
+                                               Visibility="{Binding MonogramVisibility}" />
+                                </Grid>
+                            </Border>
 
-                                <Border Grid.Column="2"
-                                        VerticalAlignment="Center"
-                                        Padding="8,3,8,3"
-                                        CornerRadius="10"
-                                        Background="{Binding StatusBackground}"
-                                        BorderBrush="{Binding StatusBorderBrush}"
-                                        BorderThickness="1"
-                                        Visibility="{Binding StatusVisibility}">
-                                    <TextBlock Text="{Binding StatusText}"
-                                               FontSize="10"
-                                               FontWeight="SemiBold"
-                                               Foreground="{Binding StatusForeground}" />
-                                </Border>
+                            <StackPanel Grid.Column="1"
+                                        Spacing="3"
+                                        VerticalAlignment="Center">
+                                <TextBlock Text="{Binding SourceName}"
+                                           FontSize="11"
+                                           FontWeight="SemiBold"
+                                           Foreground="{Binding SecondaryForeground}"
+                                           TextTrimming="CharacterEllipsis" />
+                                <TextBlock Text="{Binding SecondaryLine}"
+                                           FontSize="13"
+                                           FontWeight="SemiBold"
+                                           Foreground="{Binding PrimaryForeground}"
+                                           TextTrimming="CharacterEllipsis" />
+                            </StackPanel>
 
-                                <Border Grid.Column="3"
-                                        Width="16"
-                                        Height="16"
-                                        Margin="8,0,0,0"
-                                        VerticalAlignment="Center"
-                                        Background="Transparent"
-                                        Opacity="0"
-                                        IsHitTestVisible="False" />
-                            </Grid>
-                        </Border>
+                            <Border Grid.Column="2"
+                                    VerticalAlignment="Center"
+                                    Padding="8,3,8,3"
+                                    CornerRadius="10"
+                                    Background="{Binding StatusBackground}"
+                                    BorderBrush="{Binding StatusBorderBrush}"
+                                    BorderThickness="1"
+                                    Visibility="{Binding StatusVisibility}">
+                                <TextBlock Text="{Binding StatusText}"
+                                           FontSize="10"
+                                           FontWeight="SemiBold"
+                                           Foreground="{Binding StatusForeground}" />
+                            </Border>
+
+                            <Border Grid.Column="3"
+                                    Width="16"
+                                    Height="16"
+                                    Margin="8,0,0,0"
+                                    VerticalAlignment="Center"
+                                    Background="Transparent"
+                                    Opacity="0"
+                                    IsHitTestVisible="False" />
+                        </Grid>
                     </DataTemplate>
                 </ListView.ItemTemplate>
             </ListView>
