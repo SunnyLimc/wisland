@@ -58,15 +58,19 @@ namespace wisland
             _mediaService.TrackChanged -= OnTrackChanged;
             _mediaService.Dispose();
 
-            if (_sessionPickerWindow != null)
+            DisposeSessionPickerOverlay();
+            _shellVisibilityService.Dispose();
+        }
+
+        private void RequestAppExit()
+        {
+            if (_isClosed)
             {
-                _sessionPickerWindow.DismissRequested -= SessionPickerWindow_DismissRequested;
-                _sessionPickerWindow.SessionSelected -= SessionPickerWindow_SessionSelected;
+                return;
             }
 
-            _sessionPickerWindow?.CloseOverlayWindow();
-            _sessionPickerWindow = null;
-            _shellVisibilityService.Dispose();
+            DisposeSessionPickerOverlay();
+            Application.Current.Exit();
         }
     }
 }

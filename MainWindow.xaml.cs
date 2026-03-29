@@ -68,6 +68,7 @@ namespace wisland
         private bool _isContextFlyoutOpen;
         private bool _isClosed;
         private BackdropType _currentBackdropType = BackdropType.Mica;
+        private IslandVisualTokens? _currentVisualTokens;
 
         // --- Content Clipping ---
         private readonly Microsoft.UI.Composition.RectangleClip _contentClip;

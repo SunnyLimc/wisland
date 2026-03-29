@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using Microsoft.UI.Xaml;
 using Windows.Foundation;
 using Windows.Graphics;
 using wisland.Helpers;
@@ -20,11 +21,6 @@ namespace wisland
 
         private void InitializeSessionPickerOverlay()
         {
-            _sessionPickerWindow = new SessionPickerWindow();
-            _sessionPickerWindow.DismissRequested += SessionPickerWindow_DismissRequested;
-            _sessionPickerWindow.SessionSelected += SessionPickerWindow_SessionSelected;
-            _sessionPickerWindow.FrameInsetsChanged += SessionPickerWindow_FrameInsetsChanged;
-            _sessionPickerWindow.View.LayoutMetricsChanged += SessionPickerView_LayoutMetricsChanged;
             ExpandedContent.SessionPickerToggleRequested += ExpandedContent_SessionPickerToggleRequested;
         }
 
@@ -33,6 +29,68 @@ namespace wisland
                 tokens.PrimaryTextColor,
                 tokens.SecondaryTextColor,
                 tokens.SurfaceColor);
+
+        private SessionPickerWindow EnsureSessionPickerWindow()
+        {
+            if (_sessionPickerWindow != null)
+            {
+                return _sessionPickerWindow;
+            }
+
+            SessionPickerWindow sessionPickerWindow = new();
+            sessionPickerWindow.DismissRequested += SessionPickerWindow_DismissRequested;
+            sessionPickerWindow.SessionSelected += SessionPickerWindow_SessionSelected;
+            sessionPickerWindow.FrameInsetsChanged += SessionPickerWindow_FrameInsetsChanged;
+            sessionPickerWindow.Closed += SessionPickerWindow_Closed;
+            sessionPickerWindow.View.LayoutMetricsChanged += SessionPickerView_LayoutMetricsChanged;
+            _sessionPickerWindow = sessionPickerWindow;
+
+            if (_currentVisualTokens.HasValue)
+            {
+                ApplySessionPickerAppearance(_currentVisualTokens.Value);
+            }
+
+            return sessionPickerWindow;
+        }
+
+        private void DisposeSessionPickerOverlay()
+        {
+            SessionPickerWindow? sessionPickerWindow = _sessionPickerWindow;
+            _sessionPickerWindow = null;
+            ClearSessionPickerOverlayState(reconcileHover: false);
+
+            if (sessionPickerWindow == null)
+            {
+                return;
+            }
+
+            sessionPickerWindow.DismissRequested -= SessionPickerWindow_DismissRequested;
+            sessionPickerWindow.SessionSelected -= SessionPickerWindow_SessionSelected;
+            sessionPickerWindow.FrameInsetsChanged -= SessionPickerWindow_FrameInsetsChanged;
+            sessionPickerWindow.Closed -= SessionPickerWindow_Closed;
+            sessionPickerWindow.View.LayoutMetricsChanged -= SessionPickerView_LayoutMetricsChanged;
+            sessionPickerWindow.CloseOverlayWindow();
+        }
+
+        private void ClearSessionPickerOverlayState(bool reconcileHover)
+        {
+            bool wasOpen = _isSessionPickerOpen;
+            _isSessionPickerOpen = false;
+            _sessionPickerLayoutMetrics = null;
+            _controller.IsTransientSurfaceOpen = false;
+
+            if (_isClosed)
+            {
+                return;
+            }
+
+            UpdateState();
+
+            if (reconcileHover && wasOpen)
+            {
+                ReconcileHoverStateAfterTransientSurfaceClosed();
+            }
+        }
 
         private void ExpandedContent_SessionPickerToggleRequested(object? sender, EventArgs e)
         {
@@ -70,17 +128,14 @@ namespace wisland
 
         private void ShowSessionPickerOverlay(DisplayedMediaContext context)
         {
-            if (_sessionPickerWindow == null)
-            {
-                return;
-            }
+            SessionPickerWindow sessionPickerWindow = EnsureSessionPickerWindow();
 
             _sessionPickerLayoutMetrics = null;
             IReadOnlyList<SessionPickerRowModel> rows = SessionPickerRowProjector.Project(
                 context.OrderedSessions,
                 context.DisplayedSession?.SessionKey);
 
-            _sessionPickerWindow.View.SetRows(rows);
+            sessionPickerWindow.View.SetRows(rows);
             if (!TryGetSessionPickerWindowBounds(out RectInt32 bounds))
             {
                 return;
@@ -88,7 +143,7 @@ namespace wisland
 
             _isSessionPickerOpen = true;
             _controller.IsTransientSurfaceOpen = true;
-            _sessionPickerWindow.ShowOverlay(bounds);
+            sessionPickerWindow.ShowOverlay(bounds);
             UpdateState();
         }
 
@@ -99,16 +154,8 @@ namespace wisland
                 return;
             }
 
-            _isSessionPickerOpen = false;
-            _sessionPickerLayoutMetrics = null;
-            _controller.IsTransientSurfaceOpen = false;
             _sessionPickerWindow?.HideOverlay();
-            UpdateState();
-
-            if (reconcileHover)
-            {
-                ReconcileHoverStateAfterTransientSurfaceClosed();
-            }
+            ClearSessionPickerOverlayState(reconcileHover);
         }
 
         private void SyncSessionPickerOverlay(DisplayedMediaContext context)
@@ -229,6 +276,28 @@ namespace wisland
             {
                 UpdateSessionPickerOverlayPlacement();
             }
+        }
+
+        private void SessionPickerWindow_Closed(object sender, WindowEventArgs args)
+        {
+            if (!ReferenceEquals(sender, _sessionPickerWindow))
+            {
+                return;
+            }
+
+            if (_sessionPickerWindow == null)
+            {
+                return;
+            }
+
+            SessionPickerWindow sessionPickerWindow = _sessionPickerWindow;
+            _sessionPickerWindow = null;
+            sessionPickerWindow.DismissRequested -= SessionPickerWindow_DismissRequested;
+            sessionPickerWindow.SessionSelected -= SessionPickerWindow_SessionSelected;
+            sessionPickerWindow.FrameInsetsChanged -= SessionPickerWindow_FrameInsetsChanged;
+            sessionPickerWindow.Closed -= SessionPickerWindow_Closed;
+            sessionPickerWindow.View.LayoutMetricsChanged -= SessionPickerView_LayoutMetricsChanged;
+            ClearSessionPickerOverlayState(reconcileHover: true);
         }
 
         private WindowFrameInsets GetMainWindowFrameInsets()

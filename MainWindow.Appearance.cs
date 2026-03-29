@@ -40,6 +40,7 @@ namespace wisland
                 GetThemeKind(),
                 _uiSettings.GetColorValue(UIColorType.Accent));
 
+            _currentVisualTokens = tokens;
             ApplySessionPickerAppearance(tokens);
             _shellVisibilityService.ApplyAppearance(tokens.LinePalette, IslandConfig.NativeLinePhysicalHeight);
         }

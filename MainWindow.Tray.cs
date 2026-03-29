@@ -79,6 +79,6 @@ namespace wisland
         private void Mica_Click(object sender, RoutedEventArgs e) => SetBackdrop(BackdropType.Mica);
         private void Acrylic_Click(object sender, RoutedEventArgs e) => SetBackdrop(BackdropType.Acrylic);
         private void None_Click(object sender, RoutedEventArgs e) => SetBackdrop(BackdropType.None);
-        private void Exit_Click(object sender, RoutedEventArgs e) => Application.Current.Exit();
+        private void Exit_Click(object sender, RoutedEventArgs e) => RequestAppExit();
     }
 }
