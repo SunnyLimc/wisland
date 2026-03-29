@@ -1,4 +1,5 @@
 using System.Globalization;
+using wisland.Helpers;
 
 namespace wisland.Services
 {
@@ -11,6 +12,12 @@ namespace wisland.Services
             if (string.IsNullOrWhiteSpace(rawSourceName))
             {
                 return FallbackSourceName;
+            }
+
+            string? registeredDisplayName = MediaSourceAppResolver.TryResolveDisplayName(rawSourceName);
+            if (!string.IsNullOrWhiteSpace(registeredDisplayName))
+            {
+                return registeredDisplayName;
             }
 
             string source = rawSourceName.Trim();

@@ -15,6 +15,7 @@
   </ItemGroup>
 
   <ItemGroup>
+    <Compile Include="..\Helpers\MediaSourceAppResolver.cs" Link="Helpers\MediaSourceAppResolver.cs" />
     <Compile Include="..\Services\Media\MediaFocusArbiter.cs" Link="Services\Media\MediaFocusArbiter.cs" />
     <Compile Include="..\Services\Media\MediaSourceNameFormatter.cs" Link="Services\Media\MediaSourceNameFormatter.cs" />
     <Compile Include="..\Models\MediaSessionPresence.cs" Link="Models\MediaSessionPresence.cs" />

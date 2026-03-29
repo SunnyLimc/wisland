@@ -40,6 +40,7 @@
   </ItemGroup>
 
   <ItemGroup>
+    <Compile Remove="Tools\**\*.cs" />
     <Compile Remove="wisland.Tests\**\*.cs" />
     <EmbeddedResource Remove="wisland.Tests\**\*" />
     <None Remove="wisland.Tests\**\*" />
