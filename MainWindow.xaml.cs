@@ -79,6 +79,7 @@ namespace wisland
         private int _anchorPhysicalX;
         private int _anchorPhysicalY;
         private bool _hasAnchorPhysicalPoint;
+        private bool _hasInitializedWindowBounds;
         private bool _isRenderLoopActive;
         private double _lastRenderedIslandWidth = -1;
         private double _lastRenderedIslandHeight = -1;
@@ -140,11 +141,12 @@ namespace wisland
                 // Backdrop and media startup run after timer initialization because
                 // initial media sync can hit selection/auto-focus timer paths.
                 SetBackdrop(_settings.BackdropType, persist: false);
+                UpdateState();
+                ApplyInitialWindowState();
                 _ = InitializeMediaAsync();
 
                 StartRenderLoop();
                 this.Closed += OnWindowClosed;
-                UpdateState();
 
                 Logger.Info("MainWindow initialized successfully");
             }

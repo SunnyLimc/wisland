@@ -183,21 +183,9 @@ namespace wisland
                 CompactContent.IsHitTestVisible = compactHitTestVisible;
             }
 
-            int physX = displayWorkArea.X + (int)Math.Round((state.CenterX * _dpiScale) - (physWidth / 2.0));
-            int physY;
-
-            bool isSettled = Math.Abs(state.Height - IslandConfig.CompactHeight) < 1.0
-                && Math.Abs(state.Y - _controller.TargetY) < 1.0;
-
-            if (isSettled && _controller.IsDocked && !_controller.IsHovered && !_controller.IsNotifying && !_controller.IsDragging)
-            {
-                int visiblePhys = GetDockPeekPhysicalPixels(_dpiScale);
-                physY = monitorTopPhys + visiblePhys - physHeight;
-            }
-            else
-            {
-                physY = displayWorkArea.Y + (int)Math.Round(state.Y * _dpiScale);
-            }
+            RectInt32 bounds = ResolveIslandWindowBounds(state, displayWorkArea, _dpiScale);
+            int physX = bounds.X;
+            int physY = bounds.Y;
 
             if (_controller.IsOffscreen() || shouldDisplayDockedLineNow)
             {
@@ -205,20 +193,67 @@ namespace wisland
                 physY = virtualScreen.Y - physHeight - 64;
                 ShowLineWindow(physX, monitorTopPhys, physWidth);
                 UpdateShadowState();
+                bounds = new RectInt32(physX, physY, physWidth, physHeight);
             }
 
-            if (physX != _lastPhysX || physY != _lastPhysY || physWidth != _lastPhysW || physHeight != _lastPhysH)
-            {
-                this.AppWindow.MoveAndResize(new RectInt32(physX, physY, physWidth, physHeight));
-                _lastPhysX = physX;
-                _lastPhysY = physY;
-                _lastPhysW = physWidth;
-                _lastPhysH = physHeight;
-            }
+            ApplyWindowBounds(bounds);
 
             UpdateAnchorPhysicalPoint(displayWorkArea, state, physWidth, physHeight);
             UpdateSessionPickerOverlayPlacement();
             UpdateRenderLoopState();
+        }
+
+        private void ApplyInitialWindowState()
+        {
+            _controller.SnapToTargetState();
+
+            RectInt32 displayWorkArea = GetCurrentDisplayWorkArea();
+            _dpiScale = GetDisplayDpiScale(displayWorkArea);
+
+            IslandState state = _controller.Current;
+            ClampControllerPositionToDisplay(displayWorkArea, state.Width, state.Height, _dpiScale);
+
+            RectInt32 bounds = ResolveIslandWindowBounds(state, displayWorkArea, _dpiScale);
+            ApplyWindowBounds(bounds);
+            UpdateAnchorPhysicalPoint(displayWorkArea, state, bounds.Width, bounds.Height);
+        }
+
+        private RectInt32 ResolveIslandWindowBounds(IslandState state, RectInt32 displayWorkArea, double dpiScale)
+        {
+            int physWidth = GetPhysicalPixels(state.Width, dpiScale);
+            int physHeight = GetPhysicalPixels(state.Height, dpiScale);
+            int physX = displayWorkArea.X + (int)Math.Round((state.CenterX * dpiScale) - (physWidth / 2.0));
+            int physY = ResolveIslandWindowTop(state, displayWorkArea, dpiScale, physHeight);
+
+            return new RectInt32(physX, physY, physWidth, physHeight);
+        }
+
+        private int ResolveIslandWindowTop(IslandState state, RectInt32 displayWorkArea, double dpiScale, int physHeight)
+        {
+            bool isSettled = Math.Abs(state.Height - IslandConfig.CompactHeight) < 1.0
+                && Math.Abs(state.Y - _controller.TargetY) < 1.0;
+
+            if (isSettled && _controller.IsDocked && !_controller.IsHovered && !_controller.IsNotifying && !_controller.IsDragging)
+            {
+                int visiblePhys = GetDockPeekPhysicalPixels(dpiScale);
+                return displayWorkArea.Y + visiblePhys - physHeight;
+            }
+
+            return displayWorkArea.Y + (int)Math.Round(state.Y * dpiScale);
+        }
+
+        private void ApplyWindowBounds(RectInt32 bounds)
+        {
+            if (bounds.X != _lastPhysX || bounds.Y != _lastPhysY || bounds.Width != _lastPhysW || bounds.Height != _lastPhysH)
+            {
+                AppWindow.MoveAndResize(bounds);
+                _lastPhysX = bounds.X;
+                _lastPhysY = bounds.Y;
+                _lastPhysW = bounds.Width;
+                _lastPhysH = bounds.Height;
+            }
+
+            _hasInitializedWindowBounds = true;
         }
 
         private int GetDockPeekPhysicalPixels(double dpiScale)

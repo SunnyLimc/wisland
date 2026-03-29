@@ -12,6 +12,11 @@ namespace wisland
     {
         private void RootGrid_PointerPressed(object sender, Microsoft.UI.Xaml.Input.PointerRoutedEventArgs e)
         {
+            if (!_hasInitializedWindowBounds)
+            {
+                return;
+            }
+
             if (e.OriginalSource is DependencyObject origin && IsWithinButton(origin))
             {
                 return;

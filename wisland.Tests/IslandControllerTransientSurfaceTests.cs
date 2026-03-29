@@ -36,5 +36,21 @@ namespace wisland.Tests
             Assert.True(controller.Current.Width < IslandConfig.ExpandedWidth);
             Assert.True(controller.Current.ExpandedOpacity < 0.5);
         }
+
+        [Fact]
+        public void SnapToTargetStateStartsDockedCompactWindowAtRest()
+        {
+            IslandController controller = new();
+            controller.InitializePosition(centerX: 200, y: 0, isDocked: true);
+
+            controller.UpdateTargetState();
+            controller.SnapToTargetState();
+
+            Assert.Equal(IslandConfig.CompactWidth, controller.Current.Width);
+            Assert.Equal(IslandConfig.CompactHeight, controller.Current.Height);
+            Assert.True(controller.Current.Y < 0);
+            Assert.True(controller.Current.IsHitTestVisible);
+            Assert.False(controller.HasPendingAnimation());
+        }
     }
 }

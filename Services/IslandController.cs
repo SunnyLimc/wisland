@@ -114,6 +114,16 @@ namespace wisland.Services
             Current.IsHitTestVisible = Math.Max(Current.CompactOpacity, Current.ExpandedOpacity) > IslandConfig.HitTestOpacityThreshold;
         }
 
+        public void SnapToTargetState()
+        {
+            Current.Width = _targetWidth;
+            Current.Height = _targetHeight;
+            Current.Y = _targetY;
+            Current.CompactOpacity = _targetCompactOpacity;
+            Current.ExpandedOpacity = _targetExpandedOpacity;
+            Current.IsHitTestVisible = Math.Max(Current.CompactOpacity, Current.ExpandedOpacity) > IslandConfig.HitTestOpacityThreshold;
+        }
+
         // --- Drag Helpers ---
         public void HandleDrag(double centerX, double y)
         {
