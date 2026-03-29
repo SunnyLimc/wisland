@@ -6,6 +6,7 @@ using Microsoft.UI.Composition;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
 using Microsoft.UI.Xaml.Hosting;
+using Microsoft.UI.Xaml.Input;
 using Microsoft.UI.Xaml.Media;
 using Microsoft.UI.Xaml.Media.Animation;
 using Microsoft.UI.Xaml.Media.Imaging;
@@ -63,6 +64,17 @@ namespace wisland.Views
         private CubicBezierEasingFunction? _headerLabelShiftShrinkEasing;
         private Storyboard? _headerChipWidthStoryboard;
         private double _headerChipWidth = double.NaN;
+        private Visual? _headerChipVisual;
+        private Visual? _headerChipHoverVisual;
+        private Visual? _headerChipPressVisual;
+        private Visual? _headerChipFocusVisual;
+        private CubicBezierEasingFunction? _headerChipHoverEasing;
+        private CubicBezierEasingFunction? _headerChipPressEasing;
+        private bool _isHeaderChipPointerOver;
+        private bool _isHeaderChipPressed;
+        private bool _isHeaderChipHoverActive;
+        private bool _isHeaderChipPressActive;
+        private bool _isHeaderChipFocusActive;
 
         public event EventHandler? BackClick;
         public event EventHandler? PlayPauseClick;
@@ -127,6 +139,17 @@ namespace wisland.Views
             _headerTextSnapshots[0] = ReadHeaderTextSnapshotFromSlot(0);
             _headerTextSnapshots[1] = ReadHeaderTextSnapshotFromSlot(1);
 
+            SessionHeaderButton.PointerEntered += SessionHeaderButton_PointerEntered;
+            SessionHeaderButton.PointerExited += SessionHeaderButton_PointerExited;
+            SessionHeaderButton.PointerPressed += SessionHeaderButton_PointerPressed;
+            SessionHeaderButton.PointerReleased += SessionHeaderButton_PointerReleased;
+            SessionHeaderButton.PointerCanceled += SessionHeaderButton_PointerCanceled;
+            SessionHeaderButton.PointerCaptureLost += SessionHeaderButton_PointerCaptureLost;
+            SessionHeaderButton.GotFocus += SessionHeaderButton_GotFocus;
+            SessionHeaderButton.LostFocus += SessionHeaderButton_LostFocus;
+            SessionHeaderButton.IsEnabled = false;
+            SessionHeaderButton.IsTabStop = false;
+
             Loaded += OnLoaded;
         }
 
@@ -147,6 +170,7 @@ namespace wisland.Views
                 && !session.Value.IsWaitingForReconnect
                 && !showBusyTransportState);
             _canOpenSessionPicker = availableSessions.Count > 1;
+            UpdateHeaderChipActionability(useTransitions: IsLoaded);
 
             HeaderTextSnapshot nextHeaderTextSnapshot = CreateMediaHeaderTextSnapshot(
                 session,
@@ -165,6 +189,9 @@ namespace wisland.Views
 
         public void ShowNotification(string title, string message, string header)
         {
+            _canOpenSessionPicker = false;
+            UpdateHeaderChipActionability(useTransitions: false);
+
             AvatarStripSnapshot emptyAvatarStrip = AvatarStripSnapshot.Empty;
             ApplyHeaderTextSnapshot(
                 new HeaderTextSnapshot(header, ShowExpandHint: false),
@@ -301,9 +328,11 @@ namespace wisland.Views
             EnsureHeaderChipWidthInitialized(MeasureHeaderChipWidth(
                 _headerTextSnapshots[_headerLabelTransition.ActiveSlotIndex],
                 _avatarStripSnapshot));
+            InitializeHeaderChipInteractionMotion();
             ApplyMetadataColors();
             ApplyTransportIconColors();
             ApplyHeaderColors();
+            UpdateHeaderChipActionability(useTransitions: false);
         }
 
         private void MetadataViewport_SizeChanged(object sender, SizeChangedEventArgs e)
@@ -314,6 +343,230 @@ namespace wisland.Views
 
         private void HeaderAvatarViewport_SizeChanged(object sender, SizeChangedEventArgs e)
             => UpdateHeaderAvatarViewportBounds();
+
+        private void HeaderChipBorder_SizeChanged(object sender, SizeChangedEventArgs e)
+            => UpdateHeaderChipInteractionBounds();
+
+        private void SessionHeaderButton_PointerEntered(object sender, PointerRoutedEventArgs e)
+        {
+            _isHeaderChipPointerOver = true;
+            UpdateHeaderChipInteractionState(useTransitions: true);
+        }
+
+        private void SessionHeaderButton_PointerExited(object sender, PointerRoutedEventArgs e)
+        {
+            _isHeaderChipPointerOver = false;
+            _isHeaderChipPressed = false;
+            UpdateHeaderChipInteractionState(useTransitions: true);
+        }
+
+        private void SessionHeaderButton_PointerPressed(object sender, PointerRoutedEventArgs e)
+        {
+            if (!_canOpenSessionPicker)
+            {
+                return;
+            }
+
+            _isHeaderChipPointerOver = true;
+            _isHeaderChipPressed = true;
+            UpdateHeaderChipInteractionState(useTransitions: true);
+        }
+
+        private void SessionHeaderButton_PointerReleased(object sender, PointerRoutedEventArgs e)
+        {
+            _isHeaderChipPressed = false;
+            UpdateHeaderChipInteractionState(useTransitions: true);
+        }
+
+        private void SessionHeaderButton_PointerCanceled(object sender, PointerRoutedEventArgs e)
+        {
+            _isHeaderChipPressed = false;
+            UpdateHeaderChipInteractionState(useTransitions: true);
+        }
+
+        private void SessionHeaderButton_PointerCaptureLost(object sender, PointerRoutedEventArgs e)
+        {
+            _isHeaderChipPressed = false;
+            UpdateHeaderChipInteractionState(useTransitions: true);
+        }
+
+        private void SessionHeaderButton_GotFocus(object sender, RoutedEventArgs e)
+            => UpdateHeaderChipInteractionState(useTransitions: true);
+
+        private void SessionHeaderButton_LostFocus(object sender, RoutedEventArgs e)
+            => UpdateHeaderChipInteractionState(useTransitions: true);
+
+        private void InitializeHeaderChipInteractionMotion()
+        {
+            if (_headerChipVisual != null)
+            {
+                return;
+            }
+
+            ElementCompositionPreview.SetIsTranslationEnabled(HeaderChipRoot, true);
+            _headerChipVisual = ElementCompositionPreview.GetElementVisual(HeaderChipRoot);
+            _headerChipHoverVisual = ElementCompositionPreview.GetElementVisual(HeaderChipHoverLayer);
+            _headerChipPressVisual = ElementCompositionPreview.GetElementVisual(HeaderChipPressLayer);
+            _headerChipFocusVisual = ElementCompositionPreview.GetElementVisual(HeaderChipFocusRing);
+
+            Compositor compositor = _headerChipVisual.Compositor;
+            _headerChipHoverEasing = compositor.CreateCubicBezierEasingFunction(
+                new Vector2(0.18f, 1.0f),
+                new Vector2(0.28f, 1.0f));
+            _headerChipPressEasing = compositor.CreateCubicBezierEasingFunction(
+                new Vector2(0.32f, 0.0f),
+                new Vector2(0.18f, 1.0f));
+
+            _headerChipVisual.Scale = Vector3.One;
+            HeaderChipRoot.Translation = Vector3.Zero;
+            _headerChipHoverVisual.Opacity = 0.0f;
+            _headerChipPressVisual.Opacity = 0.0f;
+            _headerChipFocusVisual.Opacity = 0.0f;
+            UpdateHeaderChipInteractionBounds();
+        }
+
+        private void UpdateHeaderChipActionability(bool useTransitions)
+        {
+            SessionHeaderButton.IsEnabled = _canOpenSessionPicker;
+            SessionHeaderButton.IsTabStop = _canOpenSessionPicker;
+
+            if (!_canOpenSessionPicker)
+            {
+                _isHeaderChipPointerOver = false;
+                _isHeaderChipPressed = false;
+            }
+
+            UpdateHeaderChipInteractionState(useTransitions);
+        }
+
+        private void UpdateHeaderChipInteractionBounds()
+        {
+            if (_headerChipVisual == null)
+            {
+                return;
+            }
+
+            _headerChipVisual.CenterPoint = new Vector3(
+                (float)(HeaderChipBorder.ActualWidth * 0.5),
+                (float)(HeaderChipBorder.ActualHeight * 0.5),
+                0.0f);
+        }
+
+        private void UpdateHeaderChipInteractionState(bool useTransitions)
+        {
+            InitializeHeaderChipInteractionMotion();
+            if (_headerChipVisual == null
+                || _headerChipHoverVisual == null
+                || _headerChipPressVisual == null
+                || _headerChipFocusVisual == null)
+            {
+                return;
+            }
+
+            bool isHoverActive = _canOpenSessionPicker && _isHeaderChipPointerOver;
+            bool isPressActive = _canOpenSessionPicker && _isHeaderChipPressed && _isHeaderChipPointerOver;
+            bool isFocusActive = _canOpenSessionPicker && SessionHeaderButton.FocusState == FocusState.Keyboard;
+
+            Vector3 targetScale = isPressActive
+                ? new Vector3(IslandConfig.HeaderChipPressedScale, IslandConfig.HeaderChipPressedScale, 1.0f)
+                : isHoverActive
+                    ? new Vector3(IslandConfig.HeaderChipHoverScale, IslandConfig.HeaderChipHoverScale, 1.0f)
+                    : Vector3.One;
+            Vector3 targetTranslation = isPressActive
+                ? Vector3.Zero
+                : isHoverActive
+                    ? new Vector3(0.0f, IslandConfig.HeaderChipHoverTranslateY, 0.0f)
+                    : Vector3.Zero;
+
+            bool usePressMotion = _isHeaderChipPressActive || isPressActive;
+            TimeSpan motionDuration = TimeSpan.FromMilliseconds(
+                usePressMotion
+                    ? IslandConfig.HeaderChipPressDurationMs
+                    : IslandConfig.HeaderChipHoverDurationMs);
+            CompositionEasingFunction motionEasing = usePressMotion
+                ? _headerChipPressEasing!
+                : _headerChipHoverEasing!;
+
+            if (!useTransitions)
+            {
+                StopHeaderChipInteractionAnimations();
+                _headerChipVisual.Scale = targetScale;
+                HeaderChipRoot.Translation = targetTranslation;
+                _headerChipHoverVisual.Opacity = isHoverActive ? 1.0f : 0.0f;
+                _headerChipPressVisual.Opacity = isPressActive ? 1.0f : 0.0f;
+                _headerChipFocusVisual.Opacity = isFocusActive ? 1.0f : 0.0f;
+            }
+            else
+            {
+                _headerChipVisual.StartAnimation(
+                    "Scale",
+                    CreateHeaderChipVectorAnimation(targetScale, motionDuration, motionEasing));
+                _headerChipVisual.StartAnimation(
+                    "Translation",
+                    CreateHeaderChipVectorAnimation(targetTranslation, motionDuration, motionEasing));
+                _headerChipHoverVisual.StartAnimation(
+                    "Opacity",
+                    CreateHeaderChipOpacityAnimation(
+                        isHoverActive ? 1.0f : 0.0f,
+                        TimeSpan.FromMilliseconds(IslandConfig.HeaderChipHoverDurationMs),
+                        _headerChipHoverEasing!));
+                _headerChipPressVisual.StartAnimation(
+                    "Opacity",
+                    CreateHeaderChipOpacityAnimation(
+                        isPressActive ? 1.0f : 0.0f,
+                        TimeSpan.FromMilliseconds(IslandConfig.HeaderChipPressDurationMs),
+                        _headerChipPressEasing!));
+                _headerChipFocusVisual.StartAnimation(
+                    "Opacity",
+                    CreateHeaderChipOpacityAnimation(
+                        isFocusActive ? 1.0f : 0.0f,
+                        TimeSpan.FromMilliseconds(IslandConfig.HeaderChipHoverDurationMs),
+                        _headerChipHoverEasing!));
+            }
+
+            _isHeaderChipHoverActive = isHoverActive;
+            _isHeaderChipPressActive = isPressActive;
+            _isHeaderChipFocusActive = isFocusActive;
+        }
+
+        private void StopHeaderChipInteractionAnimations()
+        {
+            if (_headerChipVisual == null
+                || _headerChipHoverVisual == null
+                || _headerChipPressVisual == null
+                || _headerChipFocusVisual == null)
+            {
+                return;
+            }
+
+            _headerChipVisual.StopAnimation("Scale");
+            _headerChipVisual.StopAnimation("Translation");
+            _headerChipHoverVisual.StopAnimation("Opacity");
+            _headerChipPressVisual.StopAnimation("Opacity");
+            _headerChipFocusVisual.StopAnimation("Opacity");
+        }
+
+        private Vector3KeyFrameAnimation CreateHeaderChipVectorAnimation(
+            Vector3 target,
+            TimeSpan duration,
+            CompositionEasingFunction easing)
+        {
+            Vector3KeyFrameAnimation animation = _headerChipVisual!.Compositor.CreateVector3KeyFrameAnimation();
+            animation.Duration = duration;
+            animation.InsertKeyFrame(1.0f, target, easing);
+            return animation;
+        }
+
+        private ScalarKeyFrameAnimation CreateHeaderChipOpacityAnimation(
+            float target,
+            TimeSpan duration,
+            CompositionEasingFunction easing)
+        {
+            ScalarKeyFrameAnimation animation = _headerChipVisual!.Compositor.CreateScalarKeyFrameAnimation();
+            animation.Duration = duration;
+            animation.InsertKeyFrame(1.0f, target, easing);
+            return animation;
+        }
 
         private void InitializeHeaderLabelShiftMotion()
         {
@@ -886,7 +1139,7 @@ namespace wisland.Views
 
         private double MeasureHeaderChipWidth(HeaderTextSnapshot snapshot, AvatarStripSnapshot avatarSnapshot)
         {
-            Thickness padding = HeaderChipBorder.Padding;
+            Thickness padding = HeaderChipContentRoot.Margin;
             Thickness borderThickness = HeaderChipBorder.BorderThickness;
             double chromeWidth = padding.Left + padding.Right + borderThickness.Left + borderThickness.Right;
             return Math.Ceiling(MeasureHeaderContentWidth(snapshot, avatarSnapshot) + chromeWidth);
@@ -1153,11 +1406,21 @@ namespace wisland.Views
         {
             Color borderColor = Color.FromArgb(54, _subColor.R, _subColor.G, _subColor.B);
             Color backgroundColor = Color.FromArgb(20, _mainColor.R, _mainColor.G, _mainColor.B);
+            Color hoverBackgroundColor = Color.FromArgb(26, _mainColor.R, _mainColor.G, _mainColor.B);
+            Color hoverBorderColor = Color.FromArgb(72, _subColor.R, _subColor.G, _subColor.B);
+            Color pressBackgroundColor = Color.FromArgb(40, _mainColor.R, _mainColor.G, _mainColor.B);
+            Color pressBorderColor = Color.FromArgb(88, _subColor.R, _subColor.G, _subColor.B);
+            Color focusRingColor = Color.FromArgb(140, _mainColor.R, _mainColor.G, _mainColor.B);
             Color avatarFillColor = Color.FromArgb(34, _mainColor.R, _mainColor.G, _mainColor.B);
             Color avatarBorderColor = Color.FromArgb(68, _subColor.R, _subColor.G, _subColor.B);
 
             HeaderChipBorder.BorderBrush = new SolidColorBrush(borderColor);
             HeaderChipBorder.Background = new SolidColorBrush(backgroundColor);
+            HeaderChipHoverLayer.Background = new SolidColorBrush(hoverBackgroundColor);
+            HeaderChipHoverLayer.BorderBrush = new SolidColorBrush(hoverBorderColor);
+            HeaderChipPressLayer.Background = new SolidColorBrush(pressBackgroundColor);
+            HeaderChipPressLayer.BorderBrush = new SolidColorBrush(pressBorderColor);
+            HeaderChipFocusRing.BorderBrush = new SolidColorBrush(focusRingColor);
             HeaderLabelPrimary.Foreground = new SolidColorBrush(_subColor);
             HeaderLabelSecondary.Foreground = new SolidColorBrush(_subColor);
             SolidColorBrush expandGlyphBrush = new(new Color { A = 204, R = _subColor.R, G = _subColor.G, B = _subColor.B });
