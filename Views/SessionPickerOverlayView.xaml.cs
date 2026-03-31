@@ -47,22 +47,21 @@ namespace wisland.Views
             _secondaryColor = secondary;
             _surfaceColor = surface;
             ApplyPanelColors();
-            RebuildRows();
+            SyncRows();
         }
 
         public void SetRows(IReadOnlyList<SessionPickerRowModel> models)
         {
             _currentModels = models;
             UpdateListMaxHeight();
-            RebuildRows();
+            SyncRows();
             QueueLayoutMetricsUpdate();
         }
 
         public Size MeasureDesiredSize()
         {
             double width = IslandConfig.SessionPickerOverlayWidth;
-            double height = GetVisibleListHeight(_currentModels.Count)
-                + (IslandConfig.SessionPickerOverlayPanelPadding * 2.0);
+            double height = SessionPickerOverlayLayout.GetOverlayHeight(_currentModels.Count);
 
             return new Size(width, Math.Max(1.0, height));
         }
@@ -80,19 +79,43 @@ namespace wisland.Views
             });
         }
 
-        private void RebuildRows()
+        private void SyncRows()
         {
             _iconLoadToken++;
             long token = _iconLoadToken;
             string? preferredSelectionKey = (SessionList.SelectedItem as SessionPickerRowVisualModel)?.SessionKey;
+            Dictionary<string, SessionPickerRowVisualModel> existingRows = new(StringComparer.Ordinal);
+            HashSet<string> activeKeys = new(StringComparer.Ordinal);
 
-            _rows.Clear();
+            foreach (SessionPickerRowVisualModel row in _rows)
+            {
+                existingRows[row.SessionKey] = row;
+            }
+
             SessionPickerRowVisualModel? selectedItem = null;
 
             for (int i = 0; i < _currentModels.Count; i++)
             {
-                SessionPickerRowVisualModel row = CreateVisualModel(_currentModels[i]);
-                _rows.Add(row);
+                SessionPickerRowModel model = _currentModels[i];
+                activeKeys.Add(model.SessionKey);
+
+                SessionPickerRowVisualModel row;
+                if (existingRows.TryGetValue(model.SessionKey, out SessionPickerRowVisualModel? existingRow))
+                {
+                    row = existingRow;
+                    row.Update(model, _primaryColor, _secondaryColor);
+
+                    int currentIndex = _rows.IndexOf(row);
+                    if (currentIndex != i)
+                    {
+                        _rows.Move(currentIndex, i);
+                    }
+                }
+                else
+                {
+                    row = CreateVisualModel(model);
+                    _rows.Insert(i, row);
+                }
 
                 if (!string.IsNullOrWhiteSpace(preferredSelectionKey)
                     && string.Equals(row.SessionKey, preferredSelectionKey, StringComparison.Ordinal))
@@ -104,9 +127,17 @@ namespace wisland.Views
                     selectedItem = row;
                 }
 
-                if (!string.IsNullOrWhiteSpace(row.SourceAppId))
+                if (row.NeedsIconLoad)
                 {
                     _ = LoadIconAsync(row, token);
+                }
+            }
+
+            for (int i = _rows.Count - 1; i >= 0; i--)
+            {
+                if (!activeKeys.Contains(_rows[i].SessionKey))
+                {
+                    _rows.RemoveAt(i);
                 }
             }
 
@@ -135,9 +166,28 @@ namespace wisland.Views
 
             UpdateLayout();
 
-            int visibleCount = Math.Min(_currentModels.Count, IslandConfig.SessionPickerOverlayMaxVisibleItems);
+            if (TryMeasureRealizedRowBounds(out Rect unionBounds))
+            {
+                double inset = IslandConfig.SessionPickerOverlayPanelPadding;
+                metrics = new SessionPickerOverlayLayoutMetrics(
+                    Width: Math.Max(IslandConfig.SessionPickerOverlayWidth, unionBounds.Width + (inset * 2.0)),
+                    Height: Math.Max(1.0, unionBounds.Height + (inset * 2.0)));
+                return true;
+            }
+
+            metrics = new SessionPickerOverlayLayoutMetrics(
+                Width: IslandConfig.SessionPickerOverlayWidth,
+                Height: Math.Max(1.0, SessionPickerOverlayLayout.GetOverlayHeight(_currentModels.Count)));
+            return true;
+        }
+
+        private bool TryMeasureRealizedRowBounds(out Rect unionBounds)
+        {
+            unionBounds = default;
+            int visibleCount = Math.Min(
+                _currentModels.Count,
+                SessionPickerOverlayLayout.GetVisibleRowCount(_currentModels.Count));
             bool hasBounds = false;
-            Rect unionBounds = default;
 
             for (int index = 0; index < visibleCount; index++)
             {
@@ -158,16 +208,7 @@ namespace wisland.Views
                 hasBounds = true;
             }
 
-            if (!hasBounds)
-            {
-                return false;
-            }
-
-            double inset = IslandConfig.SessionPickerOverlayPanelPadding;
-            metrics = new SessionPickerOverlayLayoutMetrics(
-                Width: Math.Max(IslandConfig.SessionPickerOverlayWidth, unionBounds.Width + (inset * 2.0)),
-                Height: Math.Max(1.0, unionBounds.Height + (inset * 2.0)));
-            return true;
+            return hasBounds;
         }
 
         private static Rect Union(Rect left, Rect right)
@@ -199,8 +240,11 @@ namespace wisland.Views
         {
             try
             {
-                ImageSource? icon = await IconResolver.ResolveAsync(row.SourceAppId);
-                if (token != _iconLoadToken || icon == null)
+                string sourceAppId = row.SourceAppId;
+                ImageSource? icon = await IconResolver.ResolveAsync(sourceAppId);
+                if (token != _iconLoadToken
+                    || icon == null
+                    || !string.Equals(row.SourceAppId, sourceAppId, StringComparison.Ordinal))
                 {
                     return;
                 }
@@ -225,20 +269,8 @@ namespace wisland.Views
         }
 
         private void UpdateListMaxHeight()
-            => SessionList.MaxHeight = GetVisibleListHeight(IslandConfig.SessionPickerOverlayMaxVisibleItems)
-                + (IslandConfig.SessionPickerOverlayPanelPadding * 2.0);
-
-        private static double GetVisibleListHeight(int itemCount)
-        {
-            int visibleCount = Math.Clamp(itemCount, 0, IslandConfig.SessionPickerOverlayMaxVisibleItems);
-            if (visibleCount == 0)
-            {
-                return 0;
-            }
-
-            return visibleCount * IslandConfig.SessionPickerOverlayRowHeight
-                + (visibleCount * IslandConfig.SessionPickerOverlayItemSpacing);
-        }
+            => SessionList.MaxHeight = SessionPickerOverlayLayout.GetViewportHeight(
+                IslandConfig.SessionPickerOverlayMaxVisibleItems);
 
         private void SessionList_ItemClick(object sender, ItemClickEventArgs e)
         {
@@ -292,6 +324,12 @@ namespace wisland.Views
         {
             private ImageSource? _iconSource;
             private bool _isSelected;
+            private string _sourceAppId = string.Empty;
+            private string _sourceName = string.Empty;
+            private string _title = string.Empty;
+            private string _subtitle = string.Empty;
+            private string _statusText = string.Empty;
+            private string _monogram = string.Empty;
             private Brush _rowBackground = new SolidColorBrush(Microsoft.UI.Colors.Transparent);
             private Brush _rowBorderBrush = new SolidColorBrush(Microsoft.UI.Colors.Transparent);
             private Brush _rowHoverBackground = new SolidColorBrush(Microsoft.UI.Colors.Transparent);
@@ -330,15 +368,59 @@ namespace wisland.Views
 
             public string SessionKey { get; }
 
-            public string SourceAppId { get; }
+            public string SourceAppId
+            {
+                get => _sourceAppId;
+                private set => SetString(ref _sourceAppId, value);
+            }
 
-            public string SourceName { get; }
+            public string SourceName
+            {
+                get => _sourceName;
+                private set => SetString(ref _sourceName, value);
+            }
 
-            public string Title { get; }
+            public string Title
+            {
+                get => _title;
+                private set
+                {
+                    if (!SetString(ref _title, value))
+                    {
+                        return;
+                    }
 
-            public string Subtitle { get; }
+                    OnPropertyChanged(nameof(SecondaryLine));
+                }
+            }
 
-            public string StatusText { get; }
+            public string Subtitle
+            {
+                get => _subtitle;
+                private set
+                {
+                    if (!SetString(ref _subtitle, value))
+                    {
+                        return;
+                    }
+
+                    OnPropertyChanged(nameof(SecondaryLine));
+                }
+            }
+
+            public string StatusText
+            {
+                get => _statusText;
+                private set
+                {
+                    if (!SetString(ref _statusText, value))
+                    {
+                        return;
+                    }
+
+                    OnPropertyChanged(nameof(StatusVisibility));
+                }
+            }
 
             public bool IsSelected
             {
@@ -355,7 +437,11 @@ namespace wisland.Views
                 }
             }
 
-            public string Monogram { get; }
+            public string Monogram
+            {
+                get => _monogram;
+                private set => SetString(ref _monogram, value);
+            }
 
             public Brush RowBackground
             {
@@ -460,6 +546,27 @@ namespace wisland.Views
                 }
             }
 
+            public bool NeedsIconLoad
+                => !string.IsNullOrWhiteSpace(SourceAppId)
+                    && IconSource == null;
+
+            public void Update(SessionPickerRowModel model, Color primaryColor, Color secondaryColor)
+            {
+                bool sourceChanged = !string.Equals(SourceAppId, model.SourceAppId, StringComparison.Ordinal);
+                if (sourceChanged)
+                {
+                    SourceAppId = model.SourceAppId;
+                    IconSource = null;
+                }
+
+                SourceName = model.SourceName;
+                Title = model.Title;
+                Subtitle = model.Subtitle;
+                StatusText = model.StatusText;
+                Monogram = SessionPickerRowProjector.ResolveMonogram(model.SourceName);
+                ApplySelectionState(model.IsSelected, primaryColor, secondaryColor);
+            }
+
             public void ApplySelectionState(bool isSelected, Color primaryColor, Color secondaryColor)
             {
                 InteractionSurfacePalette rowPalette = InteractionSurfacePalette.Create(
@@ -489,6 +596,18 @@ namespace wisland.Views
 
             private static Color WithAlpha(Color color, byte alpha)
                 => Color.FromArgb(alpha, color.R, color.G, color.B);
+
+            private bool SetString(ref string field, string value, [CallerMemberName] string? propertyName = null)
+            {
+                if (string.Equals(field, value, StringComparison.Ordinal))
+                {
+                    return false;
+                }
+
+                field = value;
+                OnPropertyChanged(propertyName);
+                return true;
+            }
 
             private void SetBrush(ref Brush field, Brush value, [CallerMemberName] string? propertyName = null)
             {

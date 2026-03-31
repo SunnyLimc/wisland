@@ -16,6 +16,7 @@
 
   <ItemGroup>
     <Compile Include="..\Helpers\MediaSourceAppResolver.cs" Link="Helpers\MediaSourceAppResolver.cs" />
+    <Compile Include="..\Helpers\SessionPickerOverlayLayout.cs" Link="Helpers\SessionPickerOverlayLayout.cs" />
     <Compile Include="..\Services\Media\MediaFocusArbiter.cs" Link="Services\Media\MediaFocusArbiter.cs" />
     <Compile Include="..\Services\Media\MediaSourceNameFormatter.cs" Link="Services\Media\MediaSourceNameFormatter.cs" />
     <Compile Include="..\Services\Media\SessionPickerRowProjector.cs" Link="Services\Media\SessionPickerRowProjector.cs" />

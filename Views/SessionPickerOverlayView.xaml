@@ -13,7 +13,8 @@
             <Setter Property="HorizontalContentAlignment" Value="Stretch" />
             <Setter Property="VerticalContentAlignment" Value="Stretch" />
             <Setter Property="Padding" Value="12,10,12,10" />
-            <Setter Property="Margin" Value="0,0,0,6" />
+            <Setter Property="Margin" Value="0" />
+            <Setter Property="Height" Value="64" />
             <Setter Property="MinHeight" Value="58" />
             <Setter Property="Background" Value="Transparent" />
             <Setter Property="BorderThickness" Value="0" />
@@ -22,8 +23,7 @@
                 <Setter.Value>
                     <ControlTemplate TargetType="ListViewItem">
                         <Grid x:Name="LayoutRoot"
-                              Margin="{TemplateBinding Margin}"
-                              MinHeight="{TemplateBinding MinHeight}"
+                              Height="{TemplateBinding Height}"
                               Background="Transparent">
                             <VisualStateManager.VisualStateGroups>
                                 <VisualStateGroup x:Name="CommonStates">
@@ -157,47 +157,50 @@
                                 </VisualStateGroup>
                             </VisualStateManager.VisualStateGroups>
 
-                            <Border x:Name="FocusRing"
-                                    Margin="-2"
-                                    CornerRadius="18"
-                                    BorderThickness="1"
-                                    Background="Transparent"
-                                    BorderBrush="{Binding DataContext.RowFocusBorderBrush, ElementName=ContentPresenter}"
-                                    Opacity="0"
-                                    IsHitTestVisible="False" />
+                            <Grid Height="{TemplateBinding MinHeight}"
+                                  VerticalAlignment="Center">
+                                <Border x:Name="FocusRing"
+                                        Margin="-2"
+                                        CornerRadius="18"
+                                        BorderThickness="1"
+                                        Background="Transparent"
+                                        BorderBrush="{Binding DataContext.RowFocusBorderBrush, ElementName=ContentPresenter}"
+                                        Opacity="0"
+                                        IsHitTestVisible="False" />
 
-                            <Border x:Name="RowSurface"
-                                    CornerRadius="16"
-                                    BorderThickness="1"
-                                    Background="{Binding DataContext.RowBackground, ElementName=ContentPresenter}"
-                                    BorderBrush="{Binding DataContext.RowBorderBrush, ElementName=ContentPresenter}">
-                                <Grid>
-                                    <Border x:Name="HoverLayer"
-                                            CornerRadius="15"
-                                            BorderThickness="1"
-                                            Background="{Binding DataContext.RowHoverBackground, ElementName=ContentPresenter}"
-                                            BorderBrush="{Binding DataContext.RowHoverBorderBrush, ElementName=ContentPresenter}"
-                                            Opacity="0"
-                                            IsHitTestVisible="False" />
+                                <Border x:Name="RowSurface"
+                                        CornerRadius="16"
+                                        BorderThickness="1"
+                                        Background="{Binding DataContext.RowBackground, ElementName=ContentPresenter}"
+                                        BorderBrush="{Binding DataContext.RowBorderBrush, ElementName=ContentPresenter}">
+                                    <Grid>
+                                        <Border x:Name="HoverLayer"
+                                                CornerRadius="15"
+                                                BorderThickness="1"
+                                                Background="{Binding DataContext.RowHoverBackground, ElementName=ContentPresenter}"
+                                                BorderBrush="{Binding DataContext.RowHoverBorderBrush, ElementName=ContentPresenter}"
+                                                Opacity="0"
+                                                IsHitTestVisible="False" />
 
-                                    <Border x:Name="PressLayer"
-                                            Margin="1"
-                                            CornerRadius="14"
-                                            BorderThickness="1"
-                                            Background="{Binding DataContext.RowPressBackground, ElementName=ContentPresenter}"
-                                            BorderBrush="{Binding DataContext.RowPressBorderBrush, ElementName=ContentPresenter}"
-                                            Opacity="0"
-                                            IsHitTestVisible="False" />
+                                        <Border x:Name="PressLayer"
+                                                Margin="1"
+                                                CornerRadius="14"
+                                                BorderThickness="1"
+                                                Background="{Binding DataContext.RowPressBackground, ElementName=ContentPresenter}"
+                                                BorderBrush="{Binding DataContext.RowPressBorderBrush, ElementName=ContentPresenter}"
+                                                Opacity="0"
+                                                IsHitTestVisible="False" />
 
-                                    <ContentPresenter x:Name="ContentPresenter"
-                                                      Margin="{TemplateBinding Padding}"
-                                                      HorizontalAlignment="{TemplateBinding HorizontalContentAlignment}"
-                                                      VerticalAlignment="{TemplateBinding VerticalContentAlignment}"
-                                                      Content="{TemplateBinding Content}"
-                                                      ContentTemplate="{TemplateBinding ContentTemplate}"
-                                                      ContentTransitions="{TemplateBinding ContentTransitions}" />
-                                </Grid>
-                            </Border>
+                                        <ContentPresenter x:Name="ContentPresenter"
+                                                          Margin="{TemplateBinding Padding}"
+                                                          HorizontalAlignment="{TemplateBinding HorizontalContentAlignment}"
+                                                          VerticalAlignment="{TemplateBinding VerticalContentAlignment}"
+                                                          Content="{TemplateBinding Content}"
+                                                          ContentTemplate="{TemplateBinding ContentTemplate}"
+                                                          ContentTransitions="{TemplateBinding ContentTransitions}" />
+                                    </Grid>
+                                </Border>
+                            </Grid>
                         </Grid>
                     </ControlTemplate>
                 </Setter.Value>
@@ -218,7 +221,7 @@
 
         <Border x:Name="PanelBorder"
                 MinWidth="312"
-                Padding="8,0,8,0"
+                Padding="8"
                 CornerRadius="15"
                 BorderThickness="0"
                 HorizontalAlignment="Stretch"
@@ -227,21 +230,16 @@
                       Background="Transparent"
                       BorderThickness="0"
                       IsItemClickEnabled="True"
+                      Margin="0"
+                      Padding="0"
                       SelectionMode="Single"
                       HorizontalContentAlignment="Stretch"
+                      VerticalAlignment="Top"
                       ScrollViewer.HorizontalScrollBarVisibility="Disabled"
                       ScrollViewer.VerticalScrollBarVisibility="Auto"
                       ItemClick="SessionList_ItemClick"
                       SelectionChanged="SessionList_SelectionChanged"
                       KeyDown="SessionList_KeyDown">
-                <ListView.Header>
-                    <Border Height="8" Background="Transparent" />
-                </ListView.Header>
-
-                <ListView.Footer>
-                    <Border Height="8" Background="Transparent" />
-                </ListView.Footer>
-
                 <ListView.ItemContainerStyle>
                     <StaticResource ResourceKey="SessionPickerListItemStyle" />
                 </ListView.ItemContainerStyle>
