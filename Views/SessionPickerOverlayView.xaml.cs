@@ -20,18 +20,22 @@ namespace wisland.Views
     public sealed partial class SessionPickerOverlayView : UserControl
     {
         private static readonly MediaSourceIconResolver IconResolver = new();
+        private const double ScrollFadeOpacity = 1.0;
+        private const double ScrollFadeEpsilon = 0.5;
         private readonly ObservableCollection<SessionPickerRowVisualModel> _rows = new();
         private IReadOnlyList<SessionPickerRowModel> _currentModels = Array.Empty<SessionPickerRowModel>();
         private Color _primaryColor = Microsoft.UI.Colors.White;
         private Color _secondaryColor = Microsoft.UI.Colors.LightGray;
         private Color _surfaceColor = Color.FromArgb(236, 24, 28, 36);
         private long _iconLoadToken;
+        private ScrollViewer? _sessionListScrollViewer;
+        private SessionPickerOverlayLayoutMetrics? _lastPublishedLayoutMetrics;
 
         public SessionPickerOverlayView()
         {
             this.InitializeComponent();
             SessionList.ItemsSource = _rows;
-            UpdateListMaxHeight();
+            UpdateListViewport();
             ApplyPanelColors();
         }
 
@@ -53,17 +57,19 @@ namespace wisland.Views
         public void SetRows(IReadOnlyList<SessionPickerRowModel> models)
         {
             _currentModels = models;
-            UpdateListMaxHeight();
+            _lastPublishedLayoutMetrics = null;
+            UpdateListViewport();
             SyncRows();
             QueueLayoutMetricsUpdate();
+            QueueScrollChromeUpdate();
         }
 
         public Size MeasureDesiredSize()
         {
-            double width = IslandConfig.SessionPickerOverlayWidth;
-            double height = SessionPickerOverlayLayout.GetOverlayHeight(_currentModels.Count);
-
-            return new Size(width, Math.Max(1.0, height));
+            Size desiredSize = MeasurePanelDesiredSize();
+            return new Size(
+                Math.Max(IslandConfig.SessionPickerOverlayWidth, desiredSize.Width),
+                Math.Max(1.0, desiredSize.Height));
         }
 
         public void FocusList()
@@ -143,6 +149,7 @@ namespace wisland.Views
 
             SessionList.SelectedItem = selectedItem;
             UpdateRowSelectionVisuals(selectedItem);
+            QueueScrollChromeUpdate();
         }
 
         private void QueueLayoutMetricsUpdate()
@@ -152,6 +159,13 @@ namespace wisland.Views
         {
             if (TryBuildLayoutMetrics(out SessionPickerOverlayLayoutMetrics metrics))
             {
+                if (_lastPublishedLayoutMetrics.HasValue
+                    && _lastPublishedLayoutMetrics.Value.Equals(metrics))
+                {
+                    return;
+                }
+
+                _lastPublishedLayoutMetrics = metrics;
                 LayoutMetricsChanged?.Invoke(metrics);
             }
         }
@@ -166,58 +180,20 @@ namespace wisland.Views
 
             UpdateLayout();
 
-            if (TryMeasureRealizedRowBounds(out Rect unionBounds))
+            double actualHeight = PanelBorder.ActualHeight;
+            if (actualHeight > 0)
             {
-                double inset = IslandConfig.SessionPickerOverlayPanelPadding;
                 metrics = new SessionPickerOverlayLayoutMetrics(
-                    Width: Math.Max(IslandConfig.SessionPickerOverlayWidth, unionBounds.Width + (inset * 2.0)),
-                    Height: Math.Max(1.0, unionBounds.Height + (inset * 2.0)));
+                    Width: IslandConfig.SessionPickerOverlayWidth,
+                    Height: Math.Max(1.0, actualHeight));
                 return true;
             }
 
+            Size desiredSize = MeasurePanelDesiredSize();
             metrics = new SessionPickerOverlayLayoutMetrics(
-                Width: IslandConfig.SessionPickerOverlayWidth,
-                Height: Math.Max(1.0, SessionPickerOverlayLayout.GetOverlayHeight(_currentModels.Count)));
+                Width: Math.Max(IslandConfig.SessionPickerOverlayWidth, desiredSize.Width),
+                Height: Math.Max(1.0, desiredSize.Height));
             return true;
-        }
-
-        private bool TryMeasureRealizedRowBounds(out Rect unionBounds)
-        {
-            unionBounds = default;
-            int visibleCount = Math.Min(
-                _currentModels.Count,
-                SessionPickerOverlayLayout.GetVisibleRowCount(_currentModels.Count));
-            bool hasBounds = false;
-
-            for (int index = 0; index < visibleCount; index++)
-            {
-                if (SessionList.ContainerFromIndex(index) is not FrameworkElement container
-                    || container.ActualWidth <= 0
-                    || container.ActualHeight <= 0)
-                {
-                    return false;
-                }
-
-                Rect containerBounds = container
-                    .TransformToVisual(RootGrid)
-                    .TransformBounds(new Rect(0, 0, container.ActualWidth, container.ActualHeight));
-
-                unionBounds = hasBounds
-                    ? Union(unionBounds, containerBounds)
-                    : containerBounds;
-                hasBounds = true;
-            }
-
-            return hasBounds;
-        }
-
-        private static Rect Union(Rect left, Rect right)
-        {
-            double x = Math.Min(left.X, right.X);
-            double y = Math.Min(left.Y, right.Y);
-            double maxX = Math.Max(left.X + left.Width, right.X + right.Width);
-            double maxY = Math.Max(left.Y + left.Height, right.Y + right.Height);
-            return new Rect(x, y, maxX - x, maxY - y);
         }
 
         private SessionPickerRowVisualModel CreateVisualModel(SessionPickerRowModel model)
@@ -263,14 +239,29 @@ namespace wisland.Views
             Color backgroundColor = Color.FromArgb(alpha, _surfaceColor.R, _surfaceColor.G, _surfaceColor.B);
             Color borderColor = Color.FromArgb(72, _secondaryColor.R, _secondaryColor.G, _secondaryColor.B);
             RootGrid.Background = new SolidColorBrush(backgroundColor);
-            HostSurface.Background = new SolidColorBrush(backgroundColor);
+            HostSurface.Background = new SolidColorBrush(Microsoft.UI.Colors.Transparent);
+            HostSurface.BorderBrush = new SolidColorBrush(borderColor);
+            HostSurface.BorderThickness = new Thickness(1);
             PanelBorder.Background = new SolidColorBrush(Microsoft.UI.Colors.Transparent);
-            PanelBorder.BorderBrush = new SolidColorBrush(borderColor);
+            PanelBorder.BorderBrush = new SolidColorBrush(Microsoft.UI.Colors.Transparent);
+            TopEdgeFade.Background = CreateEdgeFadeBrush(backgroundColor, isTopEdge: true);
+            BottomEdgeFade.Background = CreateEdgeFadeBrush(backgroundColor, isTopEdge: false);
         }
 
-        private void UpdateListMaxHeight()
-            => SessionList.MaxHeight = SessionPickerOverlayLayout.GetViewportHeight(
-                IslandConfig.SessionPickerOverlayMaxVisibleItems);
+        private void UpdateListViewport()
+        {
+            double viewportHeight = SessionPickerOverlayLayout.GetViewportHeight(_currentModels.Count);
+            TopEdgeFade.Height = IslandConfig.SessionPickerOverlayEdgeFadeHeight;
+            BottomEdgeFade.Height = IslandConfig.SessionPickerOverlayEdgeFadeHeight;
+            SessionList.Height = viewportHeight;
+            SessionList.MaxHeight = viewportHeight;
+        }
+
+        private Size MeasurePanelDesiredSize()
+        {
+            PanelBorder.Measure(new Size(IslandConfig.SessionPickerOverlayWidth, double.PositiveInfinity));
+            return PanelBorder.DesiredSize;
+        }
 
         private void SessionList_ItemClick(object sender, ItemClickEventArgs e)
         {
@@ -287,10 +278,26 @@ namespace wisland.Views
             => HandleListKeyDown(e);
 
         private void RootGrid_SizeChanged(object sender, SizeChangedEventArgs e)
+        {
+            QueueLayoutMetricsUpdate();
+            QueueScrollChromeUpdate();
+        }
+
+        private void PanelBorder_SizeChanged(object sender, SizeChangedEventArgs e)
             => QueueLayoutMetricsUpdate();
 
         private void SessionList_KeyDown(object sender, KeyRoutedEventArgs e)
             => HandleListKeyDown(e);
+
+        private void SessionList_Loaded(object sender, RoutedEventArgs e)
+        {
+            EnsureSessionListScrollViewer();
+            QueueLayoutMetricsUpdate();
+            QueueScrollChromeUpdate();
+        }
+
+        private void SessionList_Unloaded(object sender, RoutedEventArgs e)
+            => DetachSessionListScrollViewer();
 
         private void HandleListKeyDown(KeyRoutedEventArgs e)
         {
@@ -318,6 +325,138 @@ namespace wisland.Views
                     _primaryColor,
                     _secondaryColor);
             }
+        }
+
+        private void EnsureSessionListScrollViewer()
+        {
+            if (_sessionListScrollViewer != null)
+            {
+                return;
+            }
+
+            _sessionListScrollViewer = FindScrollViewer(SessionList);
+            if (_sessionListScrollViewer != null)
+            {
+                _sessionListScrollViewer.ViewChanged += SessionListScrollViewer_ViewChanged;
+            }
+        }
+
+        private void DetachSessionListScrollViewer()
+        {
+            if (_sessionListScrollViewer == null)
+            {
+                return;
+            }
+
+            _sessionListScrollViewer.ViewChanged -= SessionListScrollViewer_ViewChanged;
+            _sessionListScrollViewer = null;
+        }
+
+        private void SessionListScrollViewer_ViewChanged(object? sender, ScrollViewerViewChangedEventArgs e)
+            => UpdateScrollEdgeChrome();
+
+        private void QueueScrollChromeUpdate()
+            => DispatcherQueue?.TryEnqueue(UpdateScrollEdgeChrome);
+
+        private void UpdateScrollEdgeChrome()
+        {
+            EnsureSessionListScrollViewer();
+
+            if (_currentModels.Count == 0 || _sessionListScrollViewer == null)
+            {
+                SetEdgeFadeState(0.0, 0.0);
+                return;
+            }
+
+            double scrollableHeight = _sessionListScrollViewer.ScrollableHeight;
+            if (scrollableHeight <= ScrollFadeEpsilon)
+            {
+                SetEdgeFadeState(0.0, 0.0);
+                return;
+            }
+
+            double verticalOffset = _sessionListScrollViewer.VerticalOffset;
+            double topOpacity = verticalOffset > ScrollFadeEpsilon ? ScrollFadeOpacity : 0.0;
+            double bottomOpacity = verticalOffset < scrollableHeight - ScrollFadeEpsilon
+                ? ScrollFadeOpacity
+                : 0.0;
+
+            SetEdgeFadeState(topOpacity, bottomOpacity);
+        }
+
+        private void SetEdgeFadeState(double topOpacity, double bottomOpacity)
+        {
+            TopEdgeFade.Opacity = topOpacity;
+            BottomEdgeFade.Opacity = bottomOpacity;
+        }
+
+        private static ScrollViewer? FindScrollViewer(DependencyObject root)
+        {
+            if (root is ScrollViewer scrollViewer)
+            {
+                return scrollViewer;
+            }
+
+            int childCount = VisualTreeHelper.GetChildrenCount(root);
+            for (int childIndex = 0; childIndex < childCount; childIndex++)
+            {
+                DependencyObject child = VisualTreeHelper.GetChild(root, childIndex);
+                ScrollViewer? match = FindScrollViewer(child);
+                if (match != null)
+                {
+                    return match;
+                }
+            }
+
+            return null;
+        }
+
+        private static Brush CreateEdgeFadeBrush(Color backgroundColor, bool isTopEdge)
+        {
+            LinearGradientBrush brush = new()
+            {
+                StartPoint = new Point(0.5, 0),
+                EndPoint = new Point(0.5, 1)
+            };
+
+            if (isTopEdge)
+            {
+                brush.GradientStops.Add(new GradientStop
+                {
+                    Color = backgroundColor,
+                    Offset = 0
+                });
+                brush.GradientStops.Add(new GradientStop
+                {
+                    Color = backgroundColor,
+                    Offset = 0.35
+                });
+                brush.GradientStops.Add(new GradientStop
+                {
+                    Color = Color.FromArgb(0, backgroundColor.R, backgroundColor.G, backgroundColor.B),
+                    Offset = 1
+                });
+            }
+            else
+            {
+                brush.GradientStops.Add(new GradientStop
+                {
+                    Color = Color.FromArgb(0, backgroundColor.R, backgroundColor.G, backgroundColor.B),
+                    Offset = 0
+                });
+                brush.GradientStops.Add(new GradientStop
+                {
+                    Color = backgroundColor,
+                    Offset = 0.65
+                });
+                brush.GradientStops.Add(new GradientStop
+                {
+                    Color = backgroundColor,
+                    Offset = 1
+                });
+            }
+
+            return brush;
         }
 
         private sealed class SessionPickerRowVisualModel : INotifyPropertyChanged

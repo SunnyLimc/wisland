@@ -40,7 +40,6 @@ namespace wisland
             SessionPickerWindow sessionPickerWindow = new();
             sessionPickerWindow.DismissRequested += SessionPickerWindow_DismissRequested;
             sessionPickerWindow.SessionSelected += SessionPickerWindow_SessionSelected;
-            sessionPickerWindow.FrameInsetsChanged += SessionPickerWindow_FrameInsetsChanged;
             sessionPickerWindow.Closed += SessionPickerWindow_Closed;
             sessionPickerWindow.View.LayoutMetricsChanged += SessionPickerView_LayoutMetricsChanged;
             _sessionPickerWindow = sessionPickerWindow;
@@ -66,7 +65,6 @@ namespace wisland
 
             sessionPickerWindow.DismissRequested -= SessionPickerWindow_DismissRequested;
             sessionPickerWindow.SessionSelected -= SessionPickerWindow_SessionSelected;
-            sessionPickerWindow.FrameInsetsChanged -= SessionPickerWindow_FrameInsetsChanged;
             sessionPickerWindow.Closed -= SessionPickerWindow_Closed;
             sessionPickerWindow.View.LayoutMetricsChanged -= SessionPickerView_LayoutMetricsChanged;
             sessionPickerWindow.CloseOverlayWindow();
@@ -270,14 +268,6 @@ namespace wisland
             }
         }
 
-        private void SessionPickerWindow_FrameInsetsChanged(WindowFrameInsets insets)
-        {
-            if (_isSessionPickerOpen)
-            {
-                UpdateSessionPickerOverlayPlacement();
-            }
-        }
-
         private void SessionPickerWindow_Closed(object sender, WindowEventArgs args)
         {
             if (!ReferenceEquals(sender, _sessionPickerWindow))
@@ -294,7 +284,6 @@ namespace wisland
             _sessionPickerWindow = null;
             sessionPickerWindow.DismissRequested -= SessionPickerWindow_DismissRequested;
             sessionPickerWindow.SessionSelected -= SessionPickerWindow_SessionSelected;
-            sessionPickerWindow.FrameInsetsChanged -= SessionPickerWindow_FrameInsetsChanged;
             sessionPickerWindow.Closed -= SessionPickerWindow_Closed;
             sessionPickerWindow.View.LayoutMetricsChanged -= SessionPickerView_LayoutMetricsChanged;
             ClearSessionPickerOverlayState(reconcileHover: true);

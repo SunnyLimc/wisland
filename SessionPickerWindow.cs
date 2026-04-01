@@ -13,6 +13,7 @@ namespace wisland
         private bool _hasBeenShown;
         private bool _suppressDismiss;
         private WindowFrameInsets? _frameInsets;
+        private RectInt32? _lastClientBounds;
 
         public SessionPickerWindow()
         {
@@ -42,8 +43,6 @@ namespace wisland
 
         public event Action<string>? SessionSelected;
 
-        public event Action<WindowFrameInsets>? FrameInsetsChanged;
-
         public void ShowOverlay(RectInt32 bounds)
         {
             ApplyBounds(bounds);
@@ -70,13 +69,23 @@ namespace wisland
             }
 
             CaptureFrameInsets();
-            View.FocusList();
+            ReapplyBoundsIfNeeded();
+            DispatcherQueue?.TryEnqueue(() =>
+            {
+                ReapplyBoundsIfNeeded();
+                View.FocusList();
+            });
         }
 
         public void MoveOverlay(RectInt32 bounds)
         {
             if (_hasBeenShown)
             {
+                if (_lastClientBounds.HasValue && _lastClientBounds.Value.Equals(bounds))
+                {
+                    return;
+                }
+
                 ApplyBounds(bounds);
             }
         }
@@ -140,14 +149,18 @@ namespace wisland
         private void ApplyBounds(RectInt32 bounds)
         {
             ConfigureChrome();
+            _lastClientBounds = bounds;
             WindowFrameInsets insets = _frameInsets ?? default;
             int moveX = bounds.X - insets.Left;
             int moveY = bounds.Y - insets.Top;
             int clientWidth = Math.Max(1, bounds.Width);
             int clientHeight = Math.Max(1, bounds.Height);
+            int outerWidth = Math.Max(1, clientWidth + insets.Left + insets.Right);
+            int outerHeight = Math.Max(1, clientHeight + insets.Top + insets.Bottom);
 
-            AppWindow.Move(new PointInt32(moveX, moveY));
-            AppWindow.ResizeClient(new SizeInt32(clientWidth, clientHeight));
+            // ResizeClient() was leaving this secondary WinUI window with a larger client area
+            // than requested, so convert the measured client rect into an explicit outer rect.
+            AppWindow.MoveAndResize(new RectInt32(moveX, moveY, outerWidth, outerHeight));
         }
 
         private void CaptureFrameInsets()
@@ -160,7 +173,15 @@ namespace wisland
             }
 
             _frameInsets = insets;
-            FrameInsetsChanged?.Invoke(insets);
+            ReapplyBoundsIfNeeded();
+        }
+
+        private void ReapplyBoundsIfNeeded()
+        {
+            if (IsOverlayVisible && _lastClientBounds.HasValue)
+            {
+                ApplyBounds(_lastClientBounds.Value);
+            }
         }
 
         private void SessionPickerWindow_Activated(object sender, WindowActivatedEventArgs args)

@@ -214,7 +214,7 @@
           SizeChanged="RootGrid_SizeChanged"
           KeyDown="RootGrid_KeyDown">
         <Border x:Name="HostSurface"
-                CornerRadius="15"
+                CornerRadius="0"
                 HorizontalAlignment="Stretch"
                 VerticalAlignment="Stretch"
                 IsHitTestVisible="False" />
@@ -222,103 +222,124 @@
         <Border x:Name="PanelBorder"
                 MinWidth="312"
                 Padding="8"
-                CornerRadius="15"
+                CornerRadius="0"
                 BorderThickness="0"
                 HorizontalAlignment="Stretch"
-                VerticalAlignment="Stretch">
-            <ListView x:Name="SessionList"
-                      Background="Transparent"
-                      BorderThickness="0"
-                      IsItemClickEnabled="True"
-                      Margin="0"
-                      Padding="0"
-                      SelectionMode="Single"
-                      HorizontalContentAlignment="Stretch"
-                      VerticalAlignment="Top"
-                      ScrollViewer.HorizontalScrollBarVisibility="Disabled"
-                      ScrollViewer.VerticalScrollBarVisibility="Auto"
-                      ItemClick="SessionList_ItemClick"
-                      SelectionChanged="SessionList_SelectionChanged"
-                      KeyDown="SessionList_KeyDown">
-                <ListView.ItemContainerStyle>
-                    <StaticResource ResourceKey="SessionPickerListItemStyle" />
-                </ListView.ItemContainerStyle>
+                SizeChanged="PanelBorder_SizeChanged"
+                VerticalAlignment="Top">
+            <Grid>
+                <ListView x:Name="SessionList"
+                          Background="Transparent"
+                          BorderThickness="0"
+                          IsItemClickEnabled="True"
+                          Margin="0"
+                          Padding="0"
+                          SelectionMode="Single"
+                          HorizontalContentAlignment="Stretch"
+                          VerticalAlignment="Top"
+                          Loaded="SessionList_Loaded"
+                          Unloaded="SessionList_Unloaded"
+                          ScrollViewer.HorizontalScrollBarVisibility="Disabled"
+                          ScrollViewer.VerticalScrollBarVisibility="Auto"
+                          ItemClick="SessionList_ItemClick"
+                          SelectionChanged="SessionList_SelectionChanged"
+                          KeyDown="SessionList_KeyDown">
+                    <ListView.ItemContainerStyle>
+                        <StaticResource ResourceKey="SessionPickerListItemStyle" />
+                    </ListView.ItemContainerStyle>
 
-                <ListView.ItemTemplate>
-                    <DataTemplate>
-                        <Grid ColumnSpacing="10">
-                            <Grid.ColumnDefinitions>
-                                <ColumnDefinition Width="Auto" />
-                                <ColumnDefinition Width="*" />
-                                <ColumnDefinition Width="Auto" />
-                                <ColumnDefinition Width="Auto" />
-                            </Grid.ColumnDefinitions>
+                    <ListView.ItemTemplate>
+                        <DataTemplate>
+                            <Grid ColumnSpacing="10">
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="Auto" />
+                                    <ColumnDefinition Width="*" />
+                                    <ColumnDefinition Width="Auto" />
+                                    <ColumnDefinition Width="Auto" />
+                                </Grid.ColumnDefinitions>
 
-                            <Border Grid.Column="0"
-                                    Width="28"
-                                    Height="28"
-                                    CornerRadius="14"
-                                    Background="{Binding BadgeBackground}"
-                                    BorderBrush="{Binding BadgeBorderBrush}"
-                                    BorderThickness="1">
-                                <Grid>
-                                    <Image Source="{Binding IconSource}"
-                                           Width="18"
-                                           Height="18"
-                                           HorizontalAlignment="Center"
-                                           VerticalAlignment="Center"
-                                           Visibility="{Binding IconVisibility}" />
-                                    <TextBlock Text="{Binding Monogram}"
+                                <Border Grid.Column="0"
+                                        Width="28"
+                                        Height="28"
+                                        CornerRadius="14"
+                                        Background="{Binding BadgeBackground}"
+                                        BorderBrush="{Binding BadgeBorderBrush}"
+                                        BorderThickness="1">
+                                    <Grid>
+                                        <Image Source="{Binding IconSource}"
+                                               Width="18"
+                                               Height="18"
                                                HorizontalAlignment="Center"
                                                VerticalAlignment="Center"
+                                               Visibility="{Binding IconVisibility}" />
+                                        <TextBlock Text="{Binding Monogram}"
+                                                   HorizontalAlignment="Center"
+                                                   VerticalAlignment="Center"
+                                                   FontSize="11"
+                                                   FontWeight="Bold"
+                                                   Foreground="{Binding PrimaryForeground}"
+                                                   Visibility="{Binding MonogramVisibility}" />
+                                    </Grid>
+                                </Border>
+
+                                <StackPanel Grid.Column="1"
+                                            Spacing="3"
+                                            VerticalAlignment="Center">
+                                    <TextBlock Text="{Binding SourceName}"
                                                FontSize="11"
-                                               FontWeight="Bold"
+                                               FontWeight="SemiBold"
+                                               Foreground="{Binding SecondaryForeground}"
+                                               TextTrimming="CharacterEllipsis" />
+                                    <TextBlock Text="{Binding SecondaryLine}"
+                                               FontSize="13"
+                                               FontWeight="SemiBold"
                                                Foreground="{Binding PrimaryForeground}"
-                                               Visibility="{Binding MonogramVisibility}" />
-                                </Grid>
-                            </Border>
+                                               TextTrimming="CharacterEllipsis" />
+                                </StackPanel>
 
-                            <StackPanel Grid.Column="1"
-                                        Spacing="3"
-                                        VerticalAlignment="Center">
-                                <TextBlock Text="{Binding SourceName}"
-                                           FontSize="11"
-                                           FontWeight="SemiBold"
-                                           Foreground="{Binding SecondaryForeground}"
-                                           TextTrimming="CharacterEllipsis" />
-                                <TextBlock Text="{Binding SecondaryLine}"
-                                           FontSize="13"
-                                           FontWeight="SemiBold"
-                                           Foreground="{Binding PrimaryForeground}"
-                                           TextTrimming="CharacterEllipsis" />
-                            </StackPanel>
+                                <Border Grid.Column="2"
+                                        VerticalAlignment="Center"
+                                        Padding="8,3,8,3"
+                                        CornerRadius="10"
+                                        Background="{Binding StatusBackground}"
+                                        BorderBrush="{Binding StatusBorderBrush}"
+                                        BorderThickness="1"
+                                        Visibility="{Binding StatusVisibility}">
+                                    <TextBlock Text="{Binding StatusText}"
+                                               FontSize="10"
+                                               FontWeight="SemiBold"
+                                               Foreground="{Binding StatusForeground}" />
+                                </Border>
 
-                            <Border Grid.Column="2"
-                                    VerticalAlignment="Center"
-                                    Padding="8,3,8,3"
-                                    CornerRadius="10"
-                                    Background="{Binding StatusBackground}"
-                                    BorderBrush="{Binding StatusBorderBrush}"
-                                    BorderThickness="1"
-                                    Visibility="{Binding StatusVisibility}">
-                                <TextBlock Text="{Binding StatusText}"
-                                           FontSize="10"
-                                           FontWeight="SemiBold"
-                                           Foreground="{Binding StatusForeground}" />
-                            </Border>
+                                <Border Grid.Column="3"
+                                        Width="16"
+                                        Height="16"
+                                        Margin="8,0,0,0"
+                                        VerticalAlignment="Center"
+                                        Background="Transparent"
+                                        Opacity="0"
+                                        IsHitTestVisible="False" />
+                            </Grid>
+                        </DataTemplate>
+                    </ListView.ItemTemplate>
+                </ListView>
 
-                            <Border Grid.Column="3"
-                                    Width="16"
-                                    Height="16"
-                                    Margin="8,0,0,0"
-                                    VerticalAlignment="Center"
-                                    Background="Transparent"
-                                    Opacity="0"
-                                    IsHitTestVisible="False" />
-                        </Grid>
-                    </DataTemplate>
-                </ListView.ItemTemplate>
-            </ListView>
+                <Border x:Name="TopEdgeFade"
+                        Height="16"
+                        VerticalAlignment="Top"
+                        Background="Transparent"
+                        CornerRadius="0"
+                        IsHitTestVisible="False"
+                        Opacity="0" />
+
+                <Border x:Name="BottomEdgeFade"
+                        Height="16"
+                        VerticalAlignment="Bottom"
+                        Background="Transparent"
+                        CornerRadius="0"
+                        IsHitTestVisible="False"
+                        Opacity="0" />
+            </Grid>
         </Border>
     </Grid>
 </UserControl>
