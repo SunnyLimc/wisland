@@ -45,6 +45,7 @@ namespace wisland.Views
         private readonly TextBlock[] _headerAvatarFallbacks;
         private readonly TextBlock[] _headerLabels;
         private readonly FontIcon[] _headerExpandGlyphs;
+        private readonly Visual[] _headerExpandGlyphVisuals = new Visual[2];
         private readonly long[] _avatarLoadTokens = new long[4];
         private readonly RectangleGeometry _headerAvatarViewportClip = new();
 
@@ -70,11 +71,14 @@ namespace wisland.Views
         private Visual? _headerChipFocusVisual;
         private CubicBezierEasingFunction? _headerChipHoverEasing;
         private CubicBezierEasingFunction? _headerChipPressEasing;
+        private CubicBezierEasingFunction? _headerExpandGlyphEasing;
+        private CubicBezierEasingFunction? _headerExpandGlyphScaleEasing;
         private bool _isHeaderChipPointerOver;
         private bool _isHeaderChipPressed;
         private bool _isHeaderChipHoverActive;
         private bool _isHeaderChipPressActive;
         private bool _isHeaderChipFocusActive;
+        private bool _isSessionPickerExpanded;
 
         public event EventHandler? BackClick;
         public event EventHandler? PlayPauseClick;
@@ -212,6 +216,25 @@ namespace wisland.Views
             ApplyHeaderColors();
         }
 
+        public void SetSessionPickerExpanded(
+            bool isExpanded,
+            bool useTransitions = true,
+            int? durationOverrideMs = null)
+        {
+            bool stateChanged = _isSessionPickerExpanded != isExpanded;
+            _isSessionPickerExpanded = isExpanded;
+            int durationMs = Math.Max(1, durationOverrideMs ?? IslandConfig.HeaderExpandGlyphToggleDurationMs);
+
+            if (!stateChanged && useTransitions)
+            {
+                return;
+            }
+
+            ApplyHeaderExpandGlyphStateToAllSlots(
+                useTransitions && stateChanged && IsLoaded,
+                durationMs);
+        }
+
         public Rect GetSessionPickerAnchorBounds(UIElement relativeTo)
         {
             GeneralTransform transform = HeaderChipBorder.TransformToVisual(relativeTo);
@@ -329,6 +352,7 @@ namespace wisland.Views
                 _headerTextSnapshots[_headerLabelTransition.ActiveSlotIndex],
                 _avatarStripSnapshot));
             InitializeHeaderChipInteractionMotion();
+            InitializeHeaderExpandGlyphMotion();
             ApplyMetadataColors();
             ApplyTransportIconColors();
             ApplyHeaderColors();
@@ -339,7 +363,10 @@ namespace wisland.Views
             => _metadataTransition.UpdateViewportBounds();
 
         private void HeaderLabelViewport_SizeChanged(object sender, SizeChangedEventArgs e)
-            => _headerLabelTransition.UpdateViewportBounds();
+        {
+            _headerLabelTransition.UpdateViewportBounds();
+            UpdateHeaderExpandGlyphBounds();
+        }
 
         private void HeaderAvatarViewport_SizeChanged(object sender, SizeChangedEventArgs e)
             => UpdateHeaderAvatarViewportBounds();
@@ -423,6 +450,37 @@ namespace wisland.Views
             _headerChipPressVisual.Opacity = 0.0f;
             _headerChipFocusVisual.Opacity = 0.0f;
             UpdateHeaderChipInteractionBounds();
+        }
+
+        private void InitializeHeaderExpandGlyphMotion()
+        {
+            if (_headerExpandGlyphVisuals[0] != null)
+            {
+                return;
+            }
+
+            Compositor compositor = _headerChipVisual?.Compositor
+                ?? ElementCompositionPreview.GetElementVisual(HeaderExpandGlyphPrimary).Compositor;
+
+            _headerExpandGlyphEasing = compositor.CreateCubicBezierEasingFunction(
+                new Vector2(0.22f, 0.92f),
+                new Vector2(0.18f, 1.0f));
+            _headerExpandGlyphScaleEasing = compositor.CreateCubicBezierEasingFunction(
+                new Vector2(0.2f, 0.9f),
+                new Vector2(0.16f, 1.0f));
+
+            for (int slotIndex = 0; slotIndex < _headerExpandGlyphs.Length; slotIndex++)
+            {
+                FontIcon glyph = _headerExpandGlyphs[slotIndex];
+                Visual visual = ElementCompositionPreview.GetElementVisual(glyph);
+                _headerExpandGlyphVisuals[slotIndex] = visual;
+                visual.RotationAxis = new Vector3(0.0f, 0.0f, 1.0f);
+                visual.Scale = Vector3.One;
+                visual.Opacity = 1.0f;
+            }
+
+            UpdateHeaderExpandGlyphBounds();
+            ApplyHeaderExpandGlyphStateToAllSlots(useTransitions: false, IslandConfig.HeaderExpandGlyphToggleDurationMs);
         }
 
         private void UpdateHeaderChipActionability(bool useTransitions)
@@ -546,6 +604,76 @@ namespace wisland.Views
             _headerChipFocusVisual.StopAnimation("Opacity");
         }
 
+        private void UpdateHeaderExpandGlyphBounds()
+        {
+            for (int slotIndex = 0; slotIndex < _headerExpandGlyphs.Length; slotIndex++)
+            {
+                Visual? visual = _headerExpandGlyphVisuals[slotIndex];
+                if (visual == null)
+                {
+                    continue;
+                }
+
+                FontIcon glyph = _headerExpandGlyphs[slotIndex];
+                float width = (float)Math.Max(glyph.ActualWidth, glyph.FontSize);
+                float height = (float)Math.Max(glyph.ActualHeight, glyph.FontSize);
+                visual.CenterPoint = new Vector3(width * 0.5f, height * 0.5f, 0.0f);
+            }
+        }
+
+        private void ApplyHeaderExpandGlyphStateToAllSlots(bool useTransitions, int durationMs)
+        {
+            InitializeHeaderExpandGlyphMotion();
+            for (int slotIndex = 0; slotIndex < _headerExpandGlyphs.Length; slotIndex++)
+            {
+                ApplyHeaderExpandGlyphStateToSlot(slotIndex, useTransitions, durationMs);
+            }
+        }
+
+        private void ApplyHeaderExpandGlyphStateToSlot(int slotIndex, bool useTransitions, int durationMs)
+        {
+            InitializeHeaderExpandGlyphMotion();
+
+            Visual? visual = _headerExpandGlyphVisuals[slotIndex];
+            if (visual == null)
+            {
+                return;
+            }
+
+            StopHeaderExpandGlyphAnimations(slotIndex);
+            UpdateHeaderExpandGlyphBounds();
+
+            float targetRotation = _isSessionPickerExpanded ? 180.0f : 0.0f;
+
+            if (!useTransitions || _headerExpandGlyphs[slotIndex].Visibility != Visibility.Visible)
+            {
+                visual.RotationAngleInDegrees = targetRotation;
+                visual.Scale = Vector3.One;
+                visual.Opacity = 1.0f;
+                return;
+            }
+
+            TimeSpan duration = TimeSpan.FromMilliseconds(durationMs);
+            visual.StartAnimation(
+                "RotationAngleInDegrees",
+                CreateHeaderExpandGlyphRotationAnimation(targetRotation, duration));
+            visual.StartAnimation(
+                "Scale",
+                CreateHeaderExpandGlyphScaleAnimation(_isSessionPickerExpanded, duration));
+        }
+
+        private void StopHeaderExpandGlyphAnimations(int slotIndex)
+        {
+            Visual? visual = _headerExpandGlyphVisuals[slotIndex];
+            if (visual == null)
+            {
+                return;
+            }
+
+            visual.StopAnimation("RotationAngleInDegrees");
+            visual.StopAnimation("Scale");
+        }
+
         private Vector3KeyFrameAnimation CreateHeaderChipVectorAnimation(
             Vector3 target,
             TimeSpan duration,
@@ -565,6 +693,29 @@ namespace wisland.Views
             ScalarKeyFrameAnimation animation = _headerChipVisual!.Compositor.CreateScalarKeyFrameAnimation();
             animation.Duration = duration;
             animation.InsertKeyFrame(1.0f, target, easing);
+            return animation;
+        }
+
+        private ScalarKeyFrameAnimation CreateHeaderExpandGlyphRotationAnimation(float target, TimeSpan duration)
+        {
+            ScalarKeyFrameAnimation animation = _headerExpandGlyphVisuals[0]!.Compositor.CreateScalarKeyFrameAnimation();
+            animation.Duration = duration;
+            animation.InsertKeyFrame(1.0f, target, _headerExpandGlyphEasing);
+            return animation;
+        }
+
+        private Vector3KeyFrameAnimation CreateHeaderExpandGlyphScaleAnimation(bool isExpanded, TimeSpan duration)
+        {
+            Vector3KeyFrameAnimation animation = _headerExpandGlyphVisuals[0]!.Compositor.CreateVector3KeyFrameAnimation();
+            animation.Duration = duration;
+
+            float middleScale = isExpanded
+                ? IslandConfig.HeaderExpandGlyphOpenPeakScale
+                : IslandConfig.HeaderExpandGlyphCloseDipScale;
+            Vector3 middle = new(middleScale, middleScale, 1.0f);
+
+            animation.InsertKeyFrame(0.58f, middle, _headerExpandGlyphScaleEasing);
+            animation.InsertKeyFrame(1.0f, Vector3.One, _headerExpandGlyphScaleEasing);
             return animation;
         }
 
@@ -1324,6 +1475,10 @@ namespace wisland.Views
             _headerExpandGlyphs[slotIndex].Visibility = snapshot.ShowExpandHint
                 ? Visibility.Visible
                 : Visibility.Collapsed;
+            ApplyHeaderExpandGlyphStateToSlot(
+                slotIndex,
+                useTransitions: false,
+                durationMs: IslandConfig.HeaderExpandGlyphToggleDurationMs);
         }
 
         private void ApplyMetadataSnapshotToSlot(int slotIndex, MetadataSnapshot snapshot)

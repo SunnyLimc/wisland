@@ -15,9 +15,19 @@ namespace wisland
         private bool _isSessionPickerOpen;
         private SessionPickerOverlayLayoutMetrics? _sessionPickerLayoutMetrics;
         private WindowFrameInsets? _mainWindowFrameInsets;
+        private SessionPickerOverlayAnimationPhase _sessionPickerOverlayAnimationPhase;
+        private TimeSpan? _sessionPickerOverlayAnimationStartTime;
+        private RectInt32 _sessionPickerOverlayAnimationFromBounds;
+        private RectInt32 _sessionPickerOverlayAnimationToBounds;
+        private RectInt32? _sessionPickerOverlayPresentedBounds;
+        private bool _sessionPickerOverlayCloseReconcileHover = true;
+        private int _sessionPickerOverlayCloseDurationMs = IslandConfig.SessionPickerOverlayPassiveDismissDurationMs;
 
         private bool HasBlockingSurfaceOpen
             => _isContextFlyoutOpen || _isSessionPickerOpen;
+
+        private bool IsSessionPickerOverlayAnimating
+            => _sessionPickerOverlayAnimationPhase != SessionPickerOverlayAnimationPhase.None;
 
         private void InitializeSessionPickerOverlay()
         {
@@ -76,6 +86,8 @@ namespace wisland
             _isSessionPickerOpen = false;
             _sessionPickerLayoutMetrics = null;
             _controller.IsTransientSurfaceOpen = false;
+            ExpandedContent.SetSessionPickerExpanded(false, useTransitions: false);
+            ResetSessionPickerOverlayAnimationState();
 
             if (_isClosed)
             {
@@ -94,7 +106,7 @@ namespace wisland
         {
             if (_isSessionPickerOpen)
             {
-                HideSessionPickerOverlay();
+                HideSessionPickerOverlay(isToggleDismiss: true);
                 return;
             }
 
@@ -108,11 +120,13 @@ namespace wisland
         }
 
         private void SessionPickerWindow_DismissRequested(object? sender, EventArgs e)
-            => HideSessionPickerOverlay();
+            => HideSessionPickerOverlay(dismissKind: SessionPickerOverlayDismissKind.Passive);
 
         private void SessionPickerWindow_SessionSelected(string sessionKey)
         {
-            HideSessionPickerOverlay(reconcileHover: false);
+            HideSessionPickerOverlay(
+                reconcileHover: false,
+                dismissKind: SessionPickerOverlayDismissKind.Selection);
             SelectSession(sessionKey, GetDirectionToSession(sessionKey));
         }
 
@@ -134,20 +148,41 @@ namespace wisland
                 context.DisplayedSession?.SessionKey);
 
             sessionPickerWindow.View.SetRows(rows);
-            if (!TryGetSessionPickerWindowBounds(out RectInt32 bounds))
+            if (!TryGetSessionPickerAnimatedBounds(out RectInt32 startBounds, out RectInt32 endBounds))
             {
                 return;
             }
 
             _isSessionPickerOpen = true;
             _controller.IsTransientSurfaceOpen = true;
-            sessionPickerWindow.ShowOverlay(bounds);
+            ExpandedContent.SetSessionPickerExpanded(
+                true,
+                useTransitions: true,
+                durationOverrideMs: IslandConfig.SessionPickerOverlayOpenDurationMs);
+            BeginSessionPickerOpenAnimation(startBounds, endBounds);
             UpdateState();
         }
 
-        private void HideSessionPickerOverlay(bool reconcileHover = true)
+        private void HideSessionPickerOverlay(
+            bool reconcileHover = true,
+            SessionPickerOverlayDismissKind dismissKind = SessionPickerOverlayDismissKind.Passive,
+            bool isToggleDismiss = false)
         {
             if (!_isSessionPickerOpen)
+            {
+                return;
+            }
+
+            ExpandedContent.SetSessionPickerExpanded(
+                false,
+                useTransitions: true,
+                durationOverrideMs: isToggleDismiss
+                    ? IslandConfig.SessionPickerOverlayToggleDismissDurationMs
+                    : dismissKind == SessionPickerOverlayDismissKind.Selection
+                    ? IslandConfig.SessionPickerOverlaySelectionDismissDurationMs
+                    : IslandConfig.SessionPickerOverlayPassiveDismissDurationMs);
+
+            if (TryBeginSessionPickerCloseAnimation(reconcileHover, dismissKind, isToggleDismiss))
             {
                 return;
             }
@@ -184,7 +219,19 @@ namespace wisland
 
             if (TryGetSessionPickerWindowBounds(out RectInt32 bounds))
             {
+                if (_sessionPickerOverlayAnimationPhase == SessionPickerOverlayAnimationPhase.Opening)
+                {
+                    _sessionPickerOverlayAnimationToBounds = bounds;
+                    return;
+                }
+
+                if (_sessionPickerOverlayAnimationPhase == SessionPickerOverlayAnimationPhase.Closing)
+                {
+                    return;
+                }
+
                 _sessionPickerWindow.MoveOverlay(bounds);
+                _sessionPickerOverlayPresentedBounds = bounds;
             }
         }
 
@@ -289,6 +336,177 @@ namespace wisland
             ClearSessionPickerOverlayState(reconcileHover: true);
         }
 
+        private bool TryGetSessionPickerAnimatedBounds(out RectInt32 startBounds, out RectInt32 endBounds)
+        {
+            startBounds = default;
+            endBounds = default;
+
+            if (!TryGetSessionPickerWindowBounds(out endBounds)
+                || !TryGetSessionPickerAnchorPhysicalBounds(out RectInt32 anchorBounds))
+            {
+                return false;
+            }
+
+            startBounds = BuildSessionPickerAnimationStartBounds(anchorBounds, endBounds);
+            return true;
+        }
+
+        private RectInt32 BuildSessionPickerAnimationStartBounds(RectInt32 anchorBounds, RectInt32 endBounds)
+        {
+            int minStartHeight = GetPhysicalPixels(IslandConfig.SessionPickerOverlayAnimationStartMinHeight, _dpiScale);
+            int maxStartHeight = GetPhysicalPixels(IslandConfig.SessionPickerOverlayAnimationStartMaxHeight, _dpiScale);
+            int screenMargin = GetPhysicalPixels(IslandConfig.SessionPickerOverlayScreenMargin, _dpiScale);
+            RectInt32 workArea = GetCurrentDisplayWorkArea();
+            int startWidth = Math.Max(1, (int)Math.Round(
+                endBounds.Width * IslandConfig.SessionPickerOverlayAnimationStartWidthScale));
+            int scaledStartHeight = Math.Max(1, (int)Math.Round(
+                endBounds.Height * IslandConfig.SessionPickerOverlayAnimationStartHeightScale));
+            int startHeight = Math.Clamp(scaledStartHeight, minStartHeight, maxStartHeight);
+            int anchorCenterX = anchorBounds.X + (anchorBounds.Width / 2);
+            int anchorBottom = anchorBounds.Y + anchorBounds.Height;
+            int rawStartX = anchorCenterX - (startWidth / 2);
+            int rawStartY = anchorBottom - (int)Math.Round(
+                startHeight * IslandConfig.SessionPickerOverlayAnimationAnchorOverlapRatio);
+            int minX = workArea.X + screenMargin;
+            int maxX = workArea.X + Math.Max(screenMargin, workArea.Width - startWidth - screenMargin);
+            int minY = workArea.Y + screenMargin;
+            int maxY = workArea.Y + Math.Max(screenMargin, workArea.Height - startHeight - screenMargin);
+            int startX = Math.Clamp(rawStartX, minX, maxX);
+            int startY = Math.Clamp(rawStartY, minY, maxY);
+
+            return new RectInt32(startX, startY, startWidth, startHeight);
+        }
+
+        private void BeginSessionPickerOpenAnimation(RectInt32 startBounds, RectInt32 endBounds)
+        {
+            if (_sessionPickerWindow == null)
+            {
+                return;
+            }
+
+            _sessionPickerOverlayAnimationPhase = SessionPickerOverlayAnimationPhase.Opening;
+            _sessionPickerOverlayAnimationStartTime = null;
+            _sessionPickerOverlayAnimationFromBounds = startBounds;
+            _sessionPickerOverlayAnimationToBounds = endBounds;
+            _sessionPickerOverlayPresentedBounds = startBounds;
+            _sessionPickerOverlayCloseReconcileHover = true;
+
+            _sessionPickerWindow.View.PrepareShowAnimation();
+            _sessionPickerWindow.ShowOverlay(startBounds);
+            _sessionPickerWindow.View.StartShowAnimation();
+            StartRenderLoop();
+        }
+
+        private bool TryBeginSessionPickerCloseAnimation(
+            bool reconcileHover,
+            SessionPickerOverlayDismissKind dismissKind,
+            bool isToggleDismiss)
+        {
+            if (_sessionPickerWindow == null)
+            {
+                return false;
+            }
+
+            _sessionPickerOverlayCloseReconcileHover &= reconcileHover;
+            if (_sessionPickerOverlayAnimationPhase == SessionPickerOverlayAnimationPhase.Closing)
+            {
+                return true;
+            }
+
+            RectInt32 fromBounds = _sessionPickerOverlayPresentedBounds
+                ?? (TryGetSessionPickerWindowBounds(out RectInt32 currentBounds)
+                    ? currentBounds
+                    : default);
+            if (fromBounds.Width <= 0 || fromBounds.Height <= 0)
+            {
+                return false;
+            }
+
+            if (_sessionPickerOverlayAnimationPhase == SessionPickerOverlayAnimationPhase.Opening)
+            {
+                fromBounds = _sessionPickerOverlayAnimationToBounds;
+                _sessionPickerWindow.MoveOverlay(fromBounds);
+            }
+
+            _sessionPickerOverlayAnimationPhase = SessionPickerOverlayAnimationPhase.Closing;
+            _sessionPickerOverlayAnimationStartTime = null;
+            _sessionPickerOverlayAnimationFromBounds = fromBounds;
+            _sessionPickerOverlayAnimationToBounds = fromBounds;
+            _sessionPickerOverlayPresentedBounds = fromBounds;
+            _sessionPickerOverlayCloseDurationMs = _sessionPickerWindow.View.StartHideAnimation(
+                dismissKind == SessionPickerOverlayDismissKind.Selection,
+                isToggleDismiss);
+            StartRenderLoop();
+            return true;
+        }
+
+        private void TickSessionPickerOverlayAnimation(TimeSpan renderingTime)
+        {
+            if (_sessionPickerWindow == null || _sessionPickerOverlayAnimationPhase == SessionPickerOverlayAnimationPhase.None)
+            {
+                return;
+            }
+
+            _sessionPickerOverlayAnimationStartTime ??= renderingTime;
+            double elapsedMs = (renderingTime - _sessionPickerOverlayAnimationStartTime.Value).TotalMilliseconds;
+            double durationMs = _sessionPickerOverlayAnimationPhase == SessionPickerOverlayAnimationPhase.Opening
+                ? IslandConfig.SessionPickerOverlayOpenDurationMs
+                : _sessionPickerOverlayCloseDurationMs;
+            double progress = Math.Clamp(elapsedMs / durationMs, 0.0, 1.0);
+
+            if (_sessionPickerOverlayAnimationPhase == SessionPickerOverlayAnimationPhase.Opening)
+            {
+                double eased = EaseOutCubic(progress);
+                RectInt32 bounds = LerpRect(
+                    _sessionPickerOverlayAnimationFromBounds,
+                    _sessionPickerOverlayAnimationToBounds,
+                    eased);
+                _sessionPickerWindow.MoveOverlay(bounds);
+                _sessionPickerOverlayPresentedBounds = bounds;
+            }
+
+            if (progress < 1.0)
+            {
+                return;
+            }
+
+            if (_sessionPickerOverlayAnimationPhase == SessionPickerOverlayAnimationPhase.Opening)
+            {
+                _sessionPickerWindow.MoveOverlay(_sessionPickerOverlayAnimationToBounds);
+                _sessionPickerOverlayPresentedBounds = _sessionPickerOverlayAnimationToBounds;
+                _sessionPickerOverlayAnimationPhase = SessionPickerOverlayAnimationPhase.None;
+                _sessionPickerOverlayAnimationStartTime = null;
+                return;
+            }
+
+            _sessionPickerWindow.HideOverlay();
+            ClearSessionPickerOverlayState(_sessionPickerOverlayCloseReconcileHover);
+        }
+
+        private void ResetSessionPickerOverlayAnimationState()
+        {
+            _sessionPickerOverlayAnimationPhase = SessionPickerOverlayAnimationPhase.None;
+            _sessionPickerOverlayAnimationStartTime = null;
+            _sessionPickerOverlayAnimationFromBounds = default;
+            _sessionPickerOverlayAnimationToBounds = default;
+            _sessionPickerOverlayPresentedBounds = null;
+            _sessionPickerOverlayCloseReconcileHover = true;
+            _sessionPickerOverlayCloseDurationMs = IslandConfig.SessionPickerOverlayPassiveDismissDurationMs;
+        }
+
+        private static RectInt32 LerpRect(RectInt32 from, RectInt32 to, double progress)
+            => new(
+                LerpInt(from.X, to.X, progress),
+                LerpInt(from.Y, to.Y, progress),
+                Math.Max(1, LerpInt(from.Width, to.Width, progress)),
+                Math.Max(1, LerpInt(from.Height, to.Height, progress)));
+
+        private static int LerpInt(int from, int to, double progress)
+            => (int)Math.Round(from + ((to - from) * progress));
+
+        private static double EaseOutCubic(double t)
+            => 1.0 - Math.Pow(1.0 - t, 3.0);
+
         private WindowFrameInsets GetMainWindowFrameInsets()
         {
             IntPtr hwnd = WinRT.Interop.WindowNative.GetWindowHandle(this);
@@ -303,6 +521,19 @@ namespace wisland
             }
 
             return _mainWindowFrameInsets ?? default;
+        }
+
+        private enum SessionPickerOverlayAnimationPhase
+        {
+            None,
+            Opening,
+            Closing
+        }
+
+        private enum SessionPickerOverlayDismissKind
+        {
+            Passive,
+            Selection
         }
     }
 }

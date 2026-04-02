@@ -45,22 +45,14 @@ namespace wisland
 
         public void ShowOverlay(RectInt32 bounds)
         {
+            EnsurePrimed();
             ApplyBounds(bounds);
 
             _suppressDismiss = true;
             try
             {
-                if (!_hasBeenShown)
-                {
-                    _hasBeenShown = true;
-                    Activate();
-                }
-                else
-                {
-                    AppWindow.Show();
-                    Activate();
-                }
-
+                AppWindow.Show();
+                Activate();
                 IsOverlayVisible = true;
             }
             finally
@@ -132,6 +124,32 @@ namespace wisland
         private void View_SessionSelected(string sessionKey)
             => SessionSelected?.Invoke(sessionKey);
 
+        private void EnsurePrimed()
+        {
+            if (_hasBeenShown)
+            {
+                return;
+            }
+
+            RectInt32 primingBounds = GetPrimingBounds();
+            _suppressDismiss = true;
+            try
+            {
+                ApplyBounds(primingBounds);
+                _hasBeenShown = true;
+                Activate();
+                CaptureFrameInsets();
+                ApplyBounds(primingBounds);
+                View.UpdateLayout();
+                AppWindow.Hide();
+                IsOverlayVisible = false;
+            }
+            finally
+            {
+                _suppressDismiss = false;
+            }
+        }
+
         private void ConfigureChrome()
         {
             var hwnd = WinRT.Interop.WindowNative.GetWindowHandle(this);
@@ -182,6 +200,18 @@ namespace wisland
             {
                 ApplyBounds(_lastClientBounds.Value);
             }
+        }
+
+        private static RectInt32 GetPrimingBounds()
+        {
+            const int primingSize = 32;
+            const int primingMargin = 64;
+            RectInt32 virtualScreen = WindowInterop.GetVirtualScreenBounds();
+            return new RectInt32(
+                virtualScreen.X - primingSize - primingMargin,
+                virtualScreen.Y - primingSize - primingMargin,
+                primingSize,
+                primingSize);
         }
 
         private void SessionPickerWindow_Activated(object sender, WindowActivatedEventArgs args)

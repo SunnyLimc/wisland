@@ -2,10 +2,13 @@ using System;
 using System.Collections.Generic;
 using System.Collections.ObjectModel;
 using System.ComponentModel;
+using System.Numerics;
 using System.Runtime.CompilerServices;
 using System.Threading.Tasks;
+using Microsoft.UI.Composition;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
+using Microsoft.UI.Xaml.Hosting;
 using Microsoft.UI.Xaml.Input;
 using Microsoft.UI.Xaml.Media;
 using Windows.Foundation;
@@ -30,6 +33,14 @@ namespace wisland.Views
         private long _iconLoadToken;
         private ScrollViewer? _sessionListScrollViewer;
         private SessionPickerOverlayLayoutMetrics? _lastPublishedLayoutMetrics;
+        private Visual? _chromeVisual;
+        private Visual? _panelVisual;
+        private Compositor? _panelCompositor;
+        private Visual? _sessionListVisual;
+        private InsetClip? _sessionListClip;
+        private CubicBezierEasingFunction? _panelShowEasing;
+        private CubicBezierEasingFunction? _panelOpacityEasing;
+        private CubicBezierEasingFunction? _listRevealEasing;
 
         public SessionPickerOverlayView()
         {
@@ -70,6 +81,101 @@ namespace wisland.Views
             return new Size(
                 Math.Max(IslandConfig.SessionPickerOverlayWidth, desiredSize.Width),
                 Math.Max(1.0, desiredSize.Height));
+        }
+
+        public void PrepareShowAnimation()
+        {
+            EnsureChromeAnimationVisual();
+            EnsurePanelAnimationVisual();
+            EnsureSessionListAnimationVisual();
+            StopChromeAnimations();
+            StopPanelAnimations();
+            StopSessionListAnimations();
+            UpdatePanelAnimationCenterPoint();
+
+            if (_chromeVisual != null)
+            {
+                _chromeVisual.Opacity = 1.0f;
+                _chromeVisual.Offset = Vector3.Zero;
+            }
+
+            if (_panelVisual == null)
+            {
+                return;
+            }
+
+            _panelVisual.Opacity = (float)IslandConfig.SessionPickerOverlayPanelStartOpacity;
+            _panelVisual.Offset = new Vector3(
+                0.0f,
+                (float)IslandConfig.SessionPickerOverlayPanelStartOffsetY,
+                0.0f);
+
+            PrepareSessionListShowAnimation();
+        }
+
+        public void StartShowAnimation()
+        {
+            EnsurePanelAnimationVisual();
+            UpdatePanelAnimationCenterPoint();
+
+            if (_panelCompositor == null || _panelVisual == null)
+            {
+                return;
+            }
+
+            CompositionScopedBatch batch = _panelCompositor.CreateScopedBatch(CompositionBatchTypes.Animation);
+            _panelVisual.StartAnimation("Opacity", CreatePanelOpacityAnimation(1.0f, IslandConfig.SessionPickerOverlayOpenDurationMs, _panelOpacityEasing));
+            _panelVisual.StartAnimation("Offset", CreatePanelOffsetAnimation(
+                Vector3.Zero,
+                IslandConfig.SessionPickerOverlayOpenDurationMs,
+                _panelShowEasing));
+            batch.End();
+            StartSessionListShowAnimation();
+        }
+
+        public int StartHideAnimation(bool isSelectionDismiss, bool isToggleDismiss)
+        {
+            EnsureChromeAnimationVisual();
+            EnsurePanelAnimationVisual();
+            EnsureSessionListAnimationVisual();
+            StopChromeAnimations();
+            StopPanelAnimations();
+            StopSessionListAnimations();
+            RestoreFullyVisibleAnimatedState();
+            UpdatePanelAnimationCenterPoint();
+
+            if (_chromeVisual == null || _panelCompositor == null)
+            {
+                return isToggleDismiss
+                    ? IslandConfig.SessionPickerOverlayToggleDismissDurationMs
+                    : isSelectionDismiss
+                        ? IslandConfig.SessionPickerOverlaySelectionDismissDurationMs
+                        : IslandConfig.SessionPickerOverlayPassiveDismissDurationMs;
+            }
+
+            int durationMs = isToggleDismiss
+                ? IslandConfig.SessionPickerOverlayToggleDismissDurationMs
+                : isSelectionDismiss
+                    ? IslandConfig.SessionPickerOverlaySelectionDismissDurationMs
+                    : IslandConfig.SessionPickerOverlayPassiveDismissDurationMs;
+            float dismissOffsetY = (float)(isToggleDismiss
+                ? IslandConfig.SessionPickerOverlayToggleDismissOffsetY
+                : isSelectionDismiss
+                    ? IslandConfig.SessionPickerOverlaySelectionDismissOffsetY
+                    : IslandConfig.SessionPickerOverlayPassiveDismissOffsetY);
+            float targetOpacity = (float)(isToggleDismiss
+                ? IslandConfig.SessionPickerOverlayToggleDismissTargetOpacity
+                : isSelectionDismiss
+                    ? IslandConfig.SessionPickerOverlaySelectionDismissTargetOpacity
+                    : IslandConfig.SessionPickerOverlayPassiveDismissTargetOpacity);
+
+            _chromeVisual.Opacity = 1.0f;
+            _chromeVisual.Offset = Vector3.Zero;
+            _chromeVisual.StartAnimation("Opacity", CreateChromeOpacityAnimation(targetOpacity, durationMs));
+            _chromeVisual.StartAnimation("Offset", CreateChromeOffsetAnimation(
+                new Vector3(0.0f, dismissOffsetY, 0.0f),
+                durationMs));
+            return durationMs;
         }
 
         public void FocusList()
@@ -178,17 +284,6 @@ namespace wisland.Views
                 return false;
             }
 
-            UpdateLayout();
-
-            double actualHeight = PanelBorder.ActualHeight;
-            if (actualHeight > 0)
-            {
-                metrics = new SessionPickerOverlayLayoutMetrics(
-                    Width: IslandConfig.SessionPickerOverlayWidth,
-                    Height: Math.Max(1.0, actualHeight));
-                return true;
-            }
-
             Size desiredSize = MeasurePanelDesiredSize();
             metrics = new SessionPickerOverlayLayoutMetrics(
                 Width: Math.Max(IslandConfig.SessionPickerOverlayWidth, desiredSize.Width),
@@ -239,6 +334,7 @@ namespace wisland.Views
             Color backgroundColor = Color.FromArgb(alpha, _surfaceColor.R, _surfaceColor.G, _surfaceColor.B);
             Color borderColor = Color.FromArgb(72, _secondaryColor.R, _secondaryColor.G, _secondaryColor.B);
             RootGrid.Background = new SolidColorBrush(backgroundColor);
+            ChromeRoot.Background = new SolidColorBrush(backgroundColor);
             HostSurface.Background = new SolidColorBrush(Microsoft.UI.Colors.Transparent);
             HostSurface.BorderBrush = new SolidColorBrush(borderColor);
             HostSurface.BorderThickness = new Thickness(1);
@@ -284,13 +380,18 @@ namespace wisland.Views
         }
 
         private void PanelBorder_SizeChanged(object sender, SizeChangedEventArgs e)
-            => QueueLayoutMetricsUpdate();
+        {
+            UpdatePanelAnimationCenterPoint();
+            QueueLayoutMetricsUpdate();
+        }
 
         private void SessionList_KeyDown(object sender, KeyRoutedEventArgs e)
             => HandleListKeyDown(e);
 
         private void SessionList_Loaded(object sender, RoutedEventArgs e)
         {
+            EnsurePanelAnimationVisual();
+            EnsureSessionListAnimationVisual();
             EnsureSessionListScrollViewer();
             QueueLayoutMetricsUpdate();
             QueueScrollChromeUpdate();
@@ -409,6 +510,225 @@ namespace wisland.Views
             }
 
             return null;
+        }
+
+        private void EnsureChromeAnimationVisual()
+        {
+            if (_chromeVisual != null)
+            {
+                return;
+            }
+
+            _chromeVisual = ElementCompositionPreview.GetElementVisual(ChromeRoot);
+            _panelCompositor = _chromeVisual.Compositor;
+        }
+
+        private void EnsurePanelAnimationVisual()
+        {
+            if (_panelVisual != null)
+            {
+                return;
+            }
+
+            EnsureChromeAnimationVisual();
+            _panelVisual = ElementCompositionPreview.GetElementVisual(PanelBorder);
+            _panelShowEasing = _panelCompositor.CreateCubicBezierEasingFunction(
+                new Vector2(0.18f, 0.9f),
+                new Vector2(0.2f, 1.0f));
+            _panelOpacityEasing = _panelCompositor.CreateCubicBezierEasingFunction(
+                new Vector2(0.2f, 0.0f),
+                new Vector2(0.0f, 1.0f));
+            UpdatePanelAnimationCenterPoint();
+        }
+
+        private void EnsureSessionListAnimationVisual()
+        {
+            if (_sessionListVisual != null && _sessionListClip != null)
+            {
+                return;
+            }
+
+            EnsurePanelAnimationVisual();
+            if (_panelCompositor == null)
+            {
+                return;
+            }
+
+            _sessionListVisual = ElementCompositionPreview.GetElementVisual(SessionList);
+            _sessionListClip = _panelCompositor.CreateInsetClip();
+            _sessionListVisual.Clip = _sessionListClip;
+            _listRevealEasing = _panelCompositor.CreateCubicBezierEasingFunction(
+                new Vector2(0.22f, 0.84f),
+                new Vector2(0.18f, 1.0f));
+        }
+
+        private void StopChromeAnimations()
+        {
+            if (_chromeVisual == null)
+            {
+                return;
+            }
+
+            _chromeVisual.StopAnimation("Opacity");
+            _chromeVisual.StopAnimation("Offset");
+        }
+
+        private void UpdatePanelAnimationCenterPoint()
+        {
+            if (_panelVisual == null)
+            {
+                return;
+            }
+
+            float width = (float)Math.Max(0.0, PanelBorder.ActualWidth);
+            _panelVisual.CenterPoint = new Vector3(width * 0.5f, 0.0f, 0.0f);
+        }
+
+        private void StopPanelAnimations()
+        {
+            if (_panelVisual == null)
+            {
+                return;
+            }
+
+            _panelVisual.StopAnimation("Opacity");
+            _panelVisual.StopAnimation("Offset");
+        }
+
+        private void PrepareSessionListShowAnimation()
+        {
+            EnsureSessionListAnimationVisual();
+            if (_sessionListVisual == null || _sessionListClip == null)
+            {
+                return;
+            }
+
+            UpdateLayout();
+
+            float listHeight = (float)Math.Max(0.0, SessionList.ActualHeight);
+            _sessionListVisual.Opacity = (float)IslandConfig.SessionPickerOverlayListStartOpacity;
+            _sessionListVisual.Offset = new Vector3(
+                0.0f,
+                (float)IslandConfig.SessionPickerOverlayListStartOffsetY,
+                0.0f);
+            _sessionListClip.LeftInset = 0.0f;
+            _sessionListClip.TopInset = 0.0f;
+            _sessionListClip.RightInset = 0.0f;
+            _sessionListClip.BottomInset = GetListRevealStartInset(listHeight);
+        }
+
+        private void StartSessionListShowAnimation()
+        {
+            EnsureSessionListAnimationVisual();
+            if (_sessionListVisual == null || _sessionListClip == null || _panelCompositor == null)
+            {
+                return;
+            }
+
+            UpdateLayout();
+
+            float listHeight = (float)Math.Max(0.0, SessionList.ActualHeight);
+            _sessionListVisual.Opacity = (float)IslandConfig.SessionPickerOverlayListStartOpacity;
+            _sessionListVisual.Offset = new Vector3(
+                0.0f,
+                (float)IslandConfig.SessionPickerOverlayListStartOffsetY,
+                0.0f);
+            _sessionListClip.BottomInset = GetListRevealStartInset(listHeight);
+
+            ScalarKeyFrameAnimation listOpacityAnimation = _panelCompositor.CreateScalarKeyFrameAnimation();
+            listOpacityAnimation.Duration = TimeSpan.FromMilliseconds(IslandConfig.SessionPickerOverlayListRevealDurationMs);
+            listOpacityAnimation.DelayTime = TimeSpan.FromMilliseconds(IslandConfig.SessionPickerOverlayListRevealDelayMs);
+            listOpacityAnimation.InsertKeyFrame(1.0f, 1.0f, _panelOpacityEasing);
+
+            ScalarKeyFrameAnimation listClipAnimation = _panelCompositor.CreateScalarKeyFrameAnimation();
+            listClipAnimation.Duration = TimeSpan.FromMilliseconds(IslandConfig.SessionPickerOverlayListRevealDurationMs);
+            listClipAnimation.DelayTime = TimeSpan.FromMilliseconds(IslandConfig.SessionPickerOverlayListRevealDelayMs);
+            listClipAnimation.InsertKeyFrame(1.0f, 0.0f, _listRevealEasing);
+
+            Vector3KeyFrameAnimation listOffsetAnimation = _panelCompositor.CreateVector3KeyFrameAnimation();
+            listOffsetAnimation.Duration = TimeSpan.FromMilliseconds(IslandConfig.SessionPickerOverlayListRevealDurationMs);
+            listOffsetAnimation.DelayTime = TimeSpan.FromMilliseconds(IslandConfig.SessionPickerOverlayListRevealDelayMs);
+            listOffsetAnimation.InsertKeyFrame(1.0f, Vector3.Zero, _listRevealEasing);
+
+            _sessionListVisual.StartAnimation("Opacity", listOpacityAnimation);
+            _sessionListVisual.StartAnimation("Offset", listOffsetAnimation);
+            _sessionListClip.StartAnimation("BottomInset", listClipAnimation);
+        }
+
+        private void StopSessionListAnimations()
+        {
+            _sessionListVisual?.StopAnimation("Opacity");
+            _sessionListVisual?.StopAnimation("Offset");
+            _sessionListClip?.StopAnimation("BottomInset");
+        }
+
+        private void RestoreFullyVisibleAnimatedState()
+        {
+            if (_panelVisual != null)
+            {
+                _panelVisual.Opacity = 1.0f;
+                _panelVisual.Offset = Vector3.Zero;
+            }
+
+            if (_sessionListVisual != null)
+            {
+                _sessionListVisual.Opacity = 1.0f;
+                _sessionListVisual.Offset = Vector3.Zero;
+            }
+
+            if (_sessionListClip != null)
+            {
+                _sessionListClip.LeftInset = 0.0f;
+                _sessionListClip.TopInset = 0.0f;
+                _sessionListClip.RightInset = 0.0f;
+                _sessionListClip.BottomInset = 0.0f;
+            }
+        }
+
+        private static float GetListRevealStartInset(float listHeight)
+        {
+            if (listHeight <= 0.0f)
+            {
+                return 0.0f;
+            }
+
+            float inset = (float)Math.Clamp(
+                listHeight * IslandConfig.SessionPickerOverlayListStartInsetRatio,
+                IslandConfig.SessionPickerOverlayListStartInsetMin,
+                IslandConfig.SessionPickerOverlayListStartInsetMax);
+            return Math.Clamp(inset, 0.0f, listHeight);
+        }
+
+        private ScalarKeyFrameAnimation CreatePanelOpacityAnimation(float targetOpacity, int durationMs, CompositionEasingFunction? easing)
+        {
+            ScalarKeyFrameAnimation animation = _panelCompositor!.CreateScalarKeyFrameAnimation();
+            animation.Duration = TimeSpan.FromMilliseconds(durationMs);
+            animation.InsertKeyFrame(1.0f, targetOpacity, easing);
+            return animation;
+        }
+
+        private Vector3KeyFrameAnimation CreatePanelOffsetAnimation(Vector3 targetOffset, int durationMs, CompositionEasingFunction? easing)
+        {
+            Vector3KeyFrameAnimation animation = _panelCompositor!.CreateVector3KeyFrameAnimation();
+            animation.Duration = TimeSpan.FromMilliseconds(durationMs);
+            animation.InsertKeyFrame(1.0f, targetOffset, easing);
+            return animation;
+        }
+
+        private ScalarKeyFrameAnimation CreateChromeOpacityAnimation(float targetOpacity, int durationMs)
+        {
+            ScalarKeyFrameAnimation animation = _panelCompositor!.CreateScalarKeyFrameAnimation();
+            animation.Duration = TimeSpan.FromMilliseconds(durationMs);
+            animation.InsertKeyFrame(1.0f, targetOpacity, _panelOpacityEasing);
+            return animation;
+        }
+
+        private Vector3KeyFrameAnimation CreateChromeOffsetAnimation(Vector3 targetOffset, int durationMs)
+        {
+            Vector3KeyFrameAnimation animation = _panelCompositor!.CreateVector3KeyFrameAnimation();
+            animation.Duration = TimeSpan.FromMilliseconds(durationMs);
+            animation.InsertKeyFrame(1.0f, targetOffset, _panelShowEasing);
+            return animation;
         }
 
         private static Brush CreateEdgeFadeBrush(Color backgroundColor, bool isTopEdge)

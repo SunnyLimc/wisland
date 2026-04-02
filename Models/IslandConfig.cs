@@ -62,6 +62,9 @@ namespace wisland.Models
         public const float HeaderChipHoverTranslateY = -0.5f;
         public const int HeaderChipHoverDurationMs = 180;
         public const int HeaderChipPressDurationMs = 110;
+        public const int HeaderExpandGlyphToggleDurationMs = 170;
+        public const float HeaderExpandGlyphOpenPeakScale = 1.08f;
+        public const float HeaderExpandGlyphCloseDipScale = 0.92f;
         public const int SessionPickerRowHoverDurationMs = HeaderChipHoverDurationMs;
         public const int SessionPickerRowPressDurationMs = HeaderChipPressDurationMs;
         public const float HeaderLabelShiftGrowDelayProgress = 0.06f;
@@ -105,6 +108,30 @@ namespace wisland.Models
         public const double SessionPickerOverlayPanelPadding = 8.0;
         public const double SessionPickerOverlayWindowGap = 8.0;
         public const double SessionPickerOverlayScreenMargin = 8.0;
+        public const int SessionPickerOverlayOpenDurationMs = 180;
+        public const double SessionPickerOverlayAnimationStartWidthScale = 0.82;
+        public const double SessionPickerOverlayAnimationStartHeightScale = 0.22;
+        public const double SessionPickerOverlayAnimationStartMinHeight = 28.0;
+        public const double SessionPickerOverlayAnimationStartMaxHeight = 56.0;
+        public const double SessionPickerOverlayAnimationAnchorOverlapRatio = 0.45;
+        public const double SessionPickerOverlayPanelStartOpacity = 0.92;
+        public const double SessionPickerOverlayPanelStartOffsetY = -4.0;
+        public const int SessionPickerOverlayListRevealDurationMs = 160;
+        public const int SessionPickerOverlayListRevealDelayMs = 18;
+        public const double SessionPickerOverlayListStartOpacity = 0.84;
+        public const double SessionPickerOverlayListStartOffsetY = 2.0;
+        public const double SessionPickerOverlayListStartInsetRatio = 0.18;
+        public const double SessionPickerOverlayListStartInsetMin = 12.0;
+        public const double SessionPickerOverlayListStartInsetMax = 28.0;
+        public const int SessionPickerOverlayToggleDismissDurationMs = 156;
+        public const double SessionPickerOverlayToggleDismissTargetOpacity = 0.9;
+        public const double SessionPickerOverlayToggleDismissOffsetY = -2.0;
+        public const int SessionPickerOverlayPassiveDismissDurationMs = 120;
+        public const int SessionPickerOverlaySelectionDismissDurationMs = 96;
+        public const double SessionPickerOverlayPassiveDismissTargetOpacity = 0.9;
+        public const double SessionPickerOverlaySelectionDismissTargetOpacity = 0.94;
+        public const double SessionPickerOverlayPassiveDismissOffsetY = 0.0;
+        public const double SessionPickerOverlaySelectionDismissOffsetY = -2.0;
 
         // --- Opacity Thresholds ---
         public const double HitTestOpacityThreshold = 0.5;

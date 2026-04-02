@@ -200,6 +200,7 @@ namespace wisland
 
             UpdateAnchorPhysicalPoint(displayWorkArea, state, physWidth, physHeight);
             UpdateSessionPickerOverlayPlacement();
+            TickSessionPickerOverlayAnimation(renderingTime);
             UpdateRenderLoopState();
         }
 
@@ -312,6 +313,11 @@ namespace wisland
             }
 
             if (_controller.HasPendingAnimation())
+            {
+                return true;
+            }
+
+            if (IsSessionPickerOverlayAnimating)
             {
                 return true;
             }
