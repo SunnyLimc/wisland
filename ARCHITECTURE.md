@@ -381,6 +381,7 @@ Dedicated secondary shell surface for the multi-session drop list.
 - top and bottom scroll boundaries are softened with fade chrome instead of extra spacer rows
 - runtime `SessionPickerOverlayLayoutMetrics` publish the realized panel height, while horizontal anchoring stays tied to the chip's geometric center
 - `SessionPickerWindow` converts desired client bounds into an explicit outer `AppWindow` rect, because the secondary WinUI overlay window did not size reliably via `ResizeClient(...)`
+- dismiss opacity / offset / duration presets are centralized in `SessionPickerOverlayDismissMotion`, so chevron timing and overlay content dismiss stay aligned
 
 ### `DirectionalContentTransitionCoordinator`
 

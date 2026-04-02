@@ -21,7 +21,8 @@ namespace wisland
         private RectInt32 _sessionPickerOverlayAnimationToBounds;
         private RectInt32? _sessionPickerOverlayPresentedBounds;
         private bool _sessionPickerOverlayCloseReconcileHover = true;
-        private int _sessionPickerOverlayCloseDurationMs = IslandConfig.SessionPickerOverlayPassiveDismissDurationMs;
+        private int _sessionPickerOverlayCloseDurationMs = SessionPickerOverlayDismissMotion.FromKind(
+            SessionPickerOverlayDismissKind.Passive).DurationMs;
 
         private bool HasBlockingSurfaceOpen
             => _isContextFlyoutOpen || _isSessionPickerOpen;
@@ -106,7 +107,7 @@ namespace wisland
         {
             if (_isSessionPickerOpen)
             {
-                HideSessionPickerOverlay(isToggleDismiss: true);
+                HideSessionPickerOverlay(dismissKind: SessionPickerOverlayDismissKind.Toggle);
                 return;
             }
 
@@ -165,24 +166,21 @@ namespace wisland
 
         private void HideSessionPickerOverlay(
             bool reconcileHover = true,
-            SessionPickerOverlayDismissKind dismissKind = SessionPickerOverlayDismissKind.Passive,
-            bool isToggleDismiss = false)
+            SessionPickerOverlayDismissKind dismissKind = SessionPickerOverlayDismissKind.Passive)
         {
             if (!_isSessionPickerOpen)
             {
                 return;
             }
 
+            SessionPickerOverlayDismissMotion dismissMotion = SessionPickerOverlayDismissMotion.FromKind(dismissKind);
+
             ExpandedContent.SetSessionPickerExpanded(
                 false,
                 useTransitions: true,
-                durationOverrideMs: isToggleDismiss
-                    ? IslandConfig.SessionPickerOverlayToggleDismissDurationMs
-                    : dismissKind == SessionPickerOverlayDismissKind.Selection
-                    ? IslandConfig.SessionPickerOverlaySelectionDismissDurationMs
-                    : IslandConfig.SessionPickerOverlayPassiveDismissDurationMs);
+                durationOverrideMs: dismissMotion.DurationMs);
 
-            if (TryBeginSessionPickerCloseAnimation(reconcileHover, dismissKind, isToggleDismiss))
+            if (TryBeginSessionPickerCloseAnimation(reconcileHover, dismissMotion))
             {
                 return;
             }
@@ -399,8 +397,7 @@ namespace wisland
 
         private bool TryBeginSessionPickerCloseAnimation(
             bool reconcileHover,
-            SessionPickerOverlayDismissKind dismissKind,
-            bool isToggleDismiss)
+            SessionPickerOverlayDismissMotion dismissMotion)
         {
             if (_sessionPickerWindow == null)
             {
@@ -433,9 +430,8 @@ namespace wisland
             _sessionPickerOverlayAnimationFromBounds = fromBounds;
             _sessionPickerOverlayAnimationToBounds = fromBounds;
             _sessionPickerOverlayPresentedBounds = fromBounds;
-            _sessionPickerOverlayCloseDurationMs = _sessionPickerWindow.View.StartHideAnimation(
-                dismissKind == SessionPickerOverlayDismissKind.Selection,
-                isToggleDismiss);
+            _sessionPickerOverlayCloseDurationMs = dismissMotion.DurationMs;
+            _sessionPickerWindow.View.StartHideAnimation(dismissMotion);
             StartRenderLoop();
             return true;
         }
@@ -491,7 +487,8 @@ namespace wisland
             _sessionPickerOverlayAnimationToBounds = default;
             _sessionPickerOverlayPresentedBounds = null;
             _sessionPickerOverlayCloseReconcileHover = true;
-            _sessionPickerOverlayCloseDurationMs = IslandConfig.SessionPickerOverlayPassiveDismissDurationMs;
+            _sessionPickerOverlayCloseDurationMs = SessionPickerOverlayDismissMotion.FromKind(
+                SessionPickerOverlayDismissKind.Passive).DurationMs;
         }
 
         private static RectInt32 LerpRect(RectInt32 from, RectInt32 to, double progress)
@@ -528,12 +525,6 @@ namespace wisland
             None,
             Opening,
             Closing
-        }
-
-        private enum SessionPickerOverlayDismissKind
-        {
-            Passive,
-            Selection
         }
     }
 }

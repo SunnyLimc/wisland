@@ -28,5 +28,6 @@
     <Compile Include="..\Models\IslandConfig.cs" Link="Models\IslandConfig.cs" />
     <Compile Include="..\Models\IslandState.cs" Link="Models\IslandState.cs" />
     <Compile Include="..\Models\DirectionalTransitionProfile.cs" Link="Models\DirectionalTransitionProfile.cs" />
+    <Compile Include="..\Models\SessionPickerOverlayDismissMotion.cs" Link="Models\SessionPickerOverlayDismissMotion.cs" />
   </ItemGroup>
 </Project>

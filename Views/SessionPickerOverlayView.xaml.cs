@@ -133,7 +133,7 @@ namespace wisland.Views
             StartSessionListShowAnimation();
         }
 
-        public int StartHideAnimation(bool isSelectionDismiss, bool isToggleDismiss)
+        public void StartHideAnimation(SessionPickerOverlayDismissMotion dismissMotion)
         {
             EnsureChromeAnimationVisual();
             EnsurePanelAnimationVisual();
@@ -146,36 +146,15 @@ namespace wisland.Views
 
             if (_chromeVisual == null || _panelCompositor == null)
             {
-                return isToggleDismiss
-                    ? IslandConfig.SessionPickerOverlayToggleDismissDurationMs
-                    : isSelectionDismiss
-                        ? IslandConfig.SessionPickerOverlaySelectionDismissDurationMs
-                        : IslandConfig.SessionPickerOverlayPassiveDismissDurationMs;
+                return;
             }
-
-            int durationMs = isToggleDismiss
-                ? IslandConfig.SessionPickerOverlayToggleDismissDurationMs
-                : isSelectionDismiss
-                    ? IslandConfig.SessionPickerOverlaySelectionDismissDurationMs
-                    : IslandConfig.SessionPickerOverlayPassiveDismissDurationMs;
-            float dismissOffsetY = (float)(isToggleDismiss
-                ? IslandConfig.SessionPickerOverlayToggleDismissOffsetY
-                : isSelectionDismiss
-                    ? IslandConfig.SessionPickerOverlaySelectionDismissOffsetY
-                    : IslandConfig.SessionPickerOverlayPassiveDismissOffsetY);
-            float targetOpacity = (float)(isToggleDismiss
-                ? IslandConfig.SessionPickerOverlayToggleDismissTargetOpacity
-                : isSelectionDismiss
-                    ? IslandConfig.SessionPickerOverlaySelectionDismissTargetOpacity
-                    : IslandConfig.SessionPickerOverlayPassiveDismissTargetOpacity);
 
             _chromeVisual.Opacity = 1.0f;
             _chromeVisual.Offset = Vector3.Zero;
-            _chromeVisual.StartAnimation("Opacity", CreateChromeOpacityAnimation(targetOpacity, durationMs));
+            _chromeVisual.StartAnimation("Opacity", CreateChromeOpacityAnimation(dismissMotion.TargetOpacity, dismissMotion.DurationMs));
             _chromeVisual.StartAnimation("Offset", CreateChromeOffsetAnimation(
-                new Vector3(0.0f, dismissOffsetY, 0.0f),
-                durationMs));
-            return durationMs;
+                new Vector3(0.0f, dismissMotion.OffsetY, 0.0f),
+                dismissMotion.DurationMs));
         }
 
         public void FocusList()
@@ -603,18 +582,7 @@ namespace wisland.Views
                 return;
             }
 
-            UpdateLayout();
-
-            float listHeight = (float)Math.Max(0.0, SessionList.ActualHeight);
-            _sessionListVisual.Opacity = (float)IslandConfig.SessionPickerOverlayListStartOpacity;
-            _sessionListVisual.Offset = new Vector3(
-                0.0f,
-                (float)IslandConfig.SessionPickerOverlayListStartOffsetY,
-                0.0f);
-            _sessionListClip.LeftInset = 0.0f;
-            _sessionListClip.TopInset = 0.0f;
-            _sessionListClip.RightInset = 0.0f;
-            _sessionListClip.BottomInset = GetListRevealStartInset(listHeight);
+            ApplySessionListRevealStartState();
         }
 
         private void StartSessionListShowAnimation()
@@ -625,15 +593,7 @@ namespace wisland.Views
                 return;
             }
 
-            UpdateLayout();
-
-            float listHeight = (float)Math.Max(0.0, SessionList.ActualHeight);
-            _sessionListVisual.Opacity = (float)IslandConfig.SessionPickerOverlayListStartOpacity;
-            _sessionListVisual.Offset = new Vector3(
-                0.0f,
-                (float)IslandConfig.SessionPickerOverlayListStartOffsetY,
-                0.0f);
-            _sessionListClip.BottomInset = GetListRevealStartInset(listHeight);
+            ApplySessionListRevealStartState();
 
             ScalarKeyFrameAnimation listOpacityAnimation = _panelCompositor.CreateScalarKeyFrameAnimation();
             listOpacityAnimation.Duration = TimeSpan.FromMilliseconds(IslandConfig.SessionPickerOverlayListRevealDurationMs);
@@ -678,11 +638,41 @@ namespace wisland.Views
 
             if (_sessionListClip != null)
             {
-                _sessionListClip.LeftInset = 0.0f;
-                _sessionListClip.TopInset = 0.0f;
-                _sessionListClip.RightInset = 0.0f;
-                _sessionListClip.BottomInset = 0.0f;
+                SetSessionListClipInsets(0.0f);
             }
+        }
+
+        private void ApplySessionListRevealStartState()
+        {
+            if (_sessionListVisual == null || _sessionListClip == null)
+            {
+                return;
+            }
+
+            UpdateLayout();
+
+            _sessionListVisual.Opacity = (float)IslandConfig.SessionPickerOverlayListStartOpacity;
+            _sessionListVisual.Offset = new Vector3(
+                0.0f,
+                (float)IslandConfig.SessionPickerOverlayListStartOffsetY,
+                0.0f);
+            SetSessionListClipInsets(GetListRevealStartInset(GetSessionListActualHeight()));
+        }
+
+        private float GetSessionListActualHeight()
+            => (float)Math.Max(0.0, SessionList.ActualHeight);
+
+        private void SetSessionListClipInsets(float bottomInset)
+        {
+            if (_sessionListClip == null)
+            {
+                return;
+            }
+
+            _sessionListClip.LeftInset = 0.0f;
+            _sessionListClip.TopInset = 0.0f;
+            _sessionListClip.RightInset = 0.0f;
+            _sessionListClip.BottomInset = bottomInset;
         }
 
         private static float GetListRevealStartInset(float listHeight)
