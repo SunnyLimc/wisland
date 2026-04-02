@@ -510,11 +510,17 @@ namespace wisland.Views
             }
 
             EnsureChromeAnimationVisual();
+            Compositor? compositor = _panelCompositor;
+            if (compositor == null)
+            {
+                return;
+            }
+
             _panelVisual = ElementCompositionPreview.GetElementVisual(PanelBorder);
-            _panelShowEasing = _panelCompositor.CreateCubicBezierEasingFunction(
+            _panelShowEasing = compositor.CreateCubicBezierEasingFunction(
                 new Vector2(0.18f, 0.9f),
                 new Vector2(0.2f, 1.0f));
-            _panelOpacityEasing = _panelCompositor.CreateCubicBezierEasingFunction(
+            _panelOpacityEasing = compositor.CreateCubicBezierEasingFunction(
                 new Vector2(0.2f, 0.0f),
                 new Vector2(0.0f, 1.0f));
             UpdatePanelAnimationCenterPoint();
