@@ -41,11 +41,15 @@ namespace wisland.Views
         private CubicBezierEasingFunction? _panelShowEasing;
         private CubicBezierEasingFunction? _panelOpacityEasing;
         private CubicBezierEasingFunction? _listRevealEasing;
+        private bool _isCorrectingSessionListOffset;
+        private double _sessionListViewportCompensation;
 
         public SessionPickerOverlayView()
         {
             this.InitializeComponent();
             SessionList.ItemsSource = _rows;
+            ScrollIndicator.Width = IslandConfig.SessionPickerOverlayScrollIndicatorWidth;
+            ScrollIndicator.Margin = new Thickness(0, 0, IslandConfig.SessionPickerOverlayScrollIndicatorRightInset, 0);
             UpdateListViewport();
             ApplyPanelColors();
         }
@@ -161,9 +165,15 @@ namespace wisland.Views
         {
             DispatcherQueue?.TryEnqueue(() =>
             {
-                if (SessionList.SelectedItem != null)
+                bool hasOverflow = SessionPickerOverlayLayout.HasScrollableOverflow(_currentModels.Count);
+
+                if (SessionList.SelectedItem != null && hasOverflow)
                 {
                     SessionList.ScrollIntoView(SessionList.SelectedItem, ScrollIntoViewAlignment.Leading);
+                }
+                else if (!hasOverflow)
+                {
+                    ResetSessionListVerticalOffset();
                 }
 
                 SessionList.Focus(FocusState.Programmatic);
@@ -207,6 +217,8 @@ namespace wisland.Views
                     row = CreateVisualModel(model);
                     _rows.Insert(i, row);
                 }
+
+                row.OuterMargin = GetRowOuterMargin(i, _currentModels.Count);
 
                 if (!string.IsNullOrWhiteSpace(preferredSelectionKey)
                     && string.Equals(row.SessionKey, preferredSelectionKey, StringComparison.Ordinal))
@@ -321,15 +333,65 @@ namespace wisland.Views
             PanelBorder.BorderBrush = new SolidColorBrush(Microsoft.UI.Colors.Transparent);
             TopEdgeFade.Background = CreateEdgeFadeBrush(backgroundColor, isTopEdge: true);
             BottomEdgeFade.Background = CreateEdgeFadeBrush(backgroundColor, isTopEdge: false);
+            ScrollIndicator.Background = new SolidColorBrush(Color.FromArgb(
+                148,
+                _secondaryColor.R,
+                _secondaryColor.G,
+                _secondaryColor.B));
         }
 
         private void UpdateListViewport()
         {
-            double viewportHeight = SessionPickerOverlayLayout.GetViewportHeight(_currentModels.Count);
+            if (SessionPickerOverlayLayout.HasScrollableOverflow(_currentModels.Count)
+                || _currentModels.Count <= 0)
+            {
+                _sessionListViewportCompensation = 0.0;
+            }
+
+            SessionPickerOverlayViewportMetrics metrics = SessionPickerOverlayLayout.GetViewportMetrics(
+                _currentModels.Count,
+                _sessionListViewportCompensation);
+            ApplyScrollAffordanceLayout(metrics);
             TopEdgeFade.Height = IslandConfig.SessionPickerOverlayEdgeFadeHeight;
             BottomEdgeFade.Height = IslandConfig.SessionPickerOverlayEdgeFadeHeight;
-            SessionList.Height = viewportHeight;
-            SessionList.MaxHeight = viewportHeight;
+            SessionList.Height = metrics.Height;
+            SessionList.MaxHeight = metrics.Height;
+        }
+
+        private void ApplyScrollAffordanceLayout(SessionPickerOverlayViewportMetrics metrics)
+        {
+            PanelBorder.Padding = new Thickness(
+                IslandConfig.SessionPickerOverlayPanelPadding,
+                IslandConfig.SessionPickerOverlayPanelPadding,
+                metrics.PanelRightPadding,
+                IslandConfig.SessionPickerOverlayPanelPadding);
+            SessionList.Padding = new Thickness(0, metrics.EdgeInset, 0, metrics.EdgeInset);
+            SessionList.Margin = new Thickness(0, 0, metrics.ListRightMargin, 0);
+            ApplySessionListScrollMode(metrics.ShowsScrollAffordance);
+            Visibility affordanceVisibility = metrics.ShowsScrollAffordance ? Visibility.Visible : Visibility.Collapsed;
+            ScrollIndicator.Visibility = affordanceVisibility;
+            TopEdgeFade.Visibility = affordanceVisibility;
+            BottomEdgeFade.Visibility = affordanceVisibility;
+        }
+
+        private void ApplySessionListScrollMode(bool hasOverflow)
+        {
+            ScrollMode verticalScrollMode = hasOverflow ? ScrollMode.Enabled : ScrollMode.Disabled;
+            ScrollViewer.SetVerticalScrollMode(SessionList, verticalScrollMode);
+            ScrollViewer.SetIsVerticalRailEnabled(SessionList, hasOverflow);
+
+            if (_sessionListScrollViewer == null)
+            {
+                return;
+            }
+
+            _sessionListScrollViewer.VerticalScrollMode = verticalScrollMode;
+            _sessionListScrollViewer.IsVerticalRailEnabled = hasOverflow;
+
+            if (!hasOverflow)
+            {
+                ResetSessionListVerticalOffset();
+            }
         }
 
         private Size MeasurePanelDesiredSize()
@@ -372,6 +434,7 @@ namespace wisland.Views
             EnsurePanelAnimationVisual();
             EnsureSessionListAnimationVisual();
             EnsureSessionListScrollViewer();
+            NormalizeNonScrollableSessionListState();
             QueueLayoutMetricsUpdate();
             QueueScrollChromeUpdate();
         }
@@ -407,6 +470,11 @@ namespace wisland.Views
             }
         }
 
+        private static Thickness GetRowOuterMargin(int index, int totalCount)
+            => index >= 0 && index < totalCount - 1
+                ? new Thickness(0, 0, 0, IslandConfig.SessionPickerOverlayItemSpacing)
+                : new Thickness(0);
+
         private void EnsureSessionListScrollViewer()
         {
             if (_sessionListScrollViewer != null)
@@ -418,6 +486,7 @@ namespace wisland.Views
             if (_sessionListScrollViewer != null)
             {
                 _sessionListScrollViewer.ViewChanged += SessionListScrollViewer_ViewChanged;
+                ApplySessionListScrollMode(SessionPickerOverlayLayout.HasScrollableOverflow(_currentModels.Count));
             }
         }
 
@@ -442,9 +511,13 @@ namespace wisland.Views
         {
             EnsureSessionListScrollViewer();
 
-            if (_currentModels.Count == 0 || _sessionListScrollViewer == null)
+            if (_currentModels.Count == 0
+                || _sessionListScrollViewer == null
+                || !SessionPickerOverlayLayout.HasScrollableOverflow(_currentModels.Count))
             {
+                NormalizeNonScrollableSessionListState();
                 SetEdgeFadeState(0.0, 0.0);
+                SetScrollIndicatorState(0.0, 0.0, 0.0);
                 return;
             }
 
@@ -452,8 +525,11 @@ namespace wisland.Views
             if (scrollableHeight <= ScrollFadeEpsilon)
             {
                 SetEdgeFadeState(0.0, 0.0);
+                SetScrollIndicatorState(0.0, 0.0, 0.0);
                 return;
             }
+
+            UpdateScrollIndicator();
 
             double verticalOffset = _sessionListScrollViewer.VerticalOffset;
             double topOpacity = verticalOffset > ScrollFadeEpsilon ? ScrollFadeOpacity : 0.0;
@@ -468,6 +544,122 @@ namespace wisland.Views
         {
             TopEdgeFade.Opacity = topOpacity;
             BottomEdgeFade.Opacity = bottomOpacity;
+        }
+
+        private void NormalizeNonScrollableSessionListState()
+        {
+            if (_sessionListScrollViewer == null
+                || _isCorrectingSessionListOffset
+                || SessionPickerOverlayLayout.HasScrollableOverflow(_currentModels.Count))
+            {
+                return;
+            }
+
+            double verticalOffset = _sessionListScrollViewer.VerticalOffset;
+            double scrollableHeight = _sessionListScrollViewer.ScrollableHeight;
+            if (verticalOffset <= ScrollFadeEpsilon && scrollableHeight <= ScrollFadeEpsilon)
+            {
+                return;
+            }
+
+            if (TryApplyNonScrollableViewportCompensation(scrollableHeight))
+            {
+                return;
+            }
+
+            ResetSessionListVerticalOffset(scheduleAsync: true);
+        }
+
+        private bool TryApplyNonScrollableViewportCompensation(double scrollableHeight)
+        {
+            if (scrollableHeight <= ScrollFadeEpsilon
+                || scrollableHeight > IslandConfig.SessionPickerOverlayNonScrollableViewportCompensationLimit)
+            {
+                return false;
+            }
+
+            double targetCompensation = Math.Max(_sessionListViewportCompensation, scrollableHeight);
+            if (Math.Abs(targetCompensation - _sessionListViewportCompensation) <= 0.01)
+            {
+                return false;
+            }
+
+            _sessionListViewportCompensation = targetCompensation;
+            UpdateListViewport();
+            QueueLayoutMetricsUpdate();
+            QueueScrollChromeUpdate();
+            return true;
+        }
+
+        private void ResetSessionListVerticalOffset(bool scheduleAsync = false)
+        {
+            if (_sessionListScrollViewer == null)
+            {
+                return;
+            }
+
+            if (!scheduleAsync)
+            {
+                _sessionListScrollViewer.ChangeView(null, 0.0, null, true);
+                return;
+            }
+
+            if (_isCorrectingSessionListOffset)
+            {
+                return;
+            }
+
+            _isCorrectingSessionListOffset = true;
+            if (DispatcherQueue?.TryEnqueue(() =>
+                {
+                    try
+                    {
+                        _sessionListScrollViewer?.ChangeView(null, 0.0, null, true);
+                    }
+                    finally
+                    {
+                        _isCorrectingSessionListOffset = false;
+                    }
+                }) == true)
+            {
+                return;
+            }
+
+            _isCorrectingSessionListOffset = false;
+            _sessionListScrollViewer.ChangeView(null, 0.0, null, true);
+        }
+
+        private void UpdateScrollIndicator()
+        {
+            if (_sessionListScrollViewer == null)
+            {
+                SetScrollIndicatorState(0.0, 0.0, 0.0);
+                return;
+            }
+
+            if (!SessionPickerOverlayLayout.TryGetScrollIndicatorMetrics(
+                viewportHeight: Math.Max(
+                    0.0,
+                    _sessionListScrollViewer.ViewportHeight > 0.0
+                        ? _sessionListScrollViewer.ViewportHeight
+                        : SessionList.ActualHeight),
+                scrollableHeight: _sessionListScrollViewer.ScrollableHeight,
+                verticalOffset: _sessionListScrollViewer.VerticalOffset,
+                minThumbHeight: IslandConfig.SessionPickerOverlayScrollIndicatorMinHeight,
+                out SessionPickerOverlayScrollIndicatorMetrics metrics))
+            {
+                SetScrollIndicatorState(0.0, 0.0, 0.0);
+                return;
+            }
+
+            SetScrollIndicatorState(1.0, metrics.Height, metrics.OffsetY);
+        }
+
+        private void SetScrollIndicatorState(double opacity, double height, double offsetY)
+        {
+            ScrollIndicator.Opacity = opacity;
+            ScrollIndicator.Height = height;
+            ScrollIndicatorTransform.Y = offsetY;
         }
 
         private static ScrollViewer? FindScrollViewer(DependencyObject root)
@@ -796,6 +988,7 @@ namespace wisland.Views
             private Brush _badgeBorderBrush = new SolidColorBrush(Microsoft.UI.Colors.Transparent);
             private Brush _statusBackground = new SolidColorBrush(Microsoft.UI.Colors.Transparent);
             private Brush _statusBorderBrush = new SolidColorBrush(Microsoft.UI.Colors.Transparent);
+            private Thickness _outerMargin;
 
             public SessionPickerRowVisualModel(
                 string sessionKey,
@@ -970,6 +1163,12 @@ namespace wisland.Views
 
             public Brush StatusForeground => SecondaryForeground;
 
+            public Thickness OuterMargin
+            {
+                get => _outerMargin;
+                set => SetThickness(ref _outerMargin, value);
+            }
+
             public string SecondaryLine
                 => string.IsNullOrWhiteSpace(Subtitle)
                     ? Title
@@ -1067,6 +1266,17 @@ namespace wisland.Views
             private void SetBrush(ref Brush field, Brush value, [CallerMemberName] string? propertyName = null)
             {
                 if (ReferenceEquals(field, value))
+                {
+                    return;
+                }
+
+                field = value;
+                OnPropertyChanged(propertyName);
+            }
+
+            private void SetThickness(ref Thickness field, Thickness value, [CallerMemberName] string? propertyName = null)
+            {
+                if (field.Equals(value))
                 {
                     return;
                 }

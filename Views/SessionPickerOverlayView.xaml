@@ -14,7 +14,6 @@
             <Setter Property="VerticalContentAlignment" Value="Stretch" />
             <Setter Property="Padding" Value="12,10,12,10" />
             <Setter Property="Margin" Value="0" />
-            <Setter Property="Height" Value="64" />
             <Setter Property="MinHeight" Value="58" />
             <Setter Property="Background" Value="Transparent" />
             <Setter Property="BorderThickness" Value="0" />
@@ -158,6 +157,7 @@
                             </VisualStateManager.VisualStateGroups>
 
                             <Grid Height="{TemplateBinding MinHeight}"
+                                  Margin="{Binding DataContext.OuterMargin, ElementName=ContentPresenter}"
                                   VerticalAlignment="Center">
                                 <Border x:Name="FocusRing"
                                         Margin="-2"
@@ -241,11 +241,18 @@
                               VerticalAlignment="Top"
                               Loaded="SessionList_Loaded"
                               Unloaded="SessionList_Unloaded"
+                              ScrollViewer.BringIntoViewOnFocusChange="False"
                               ScrollViewer.HorizontalScrollBarVisibility="Disabled"
-                              ScrollViewer.VerticalScrollBarVisibility="Auto"
+                              ScrollViewer.VerticalScrollBarVisibility="Hidden"
                               ItemClick="SessionList_ItemClick"
                               SelectionChanged="SessionList_SelectionChanged"
                               KeyDown="SessionList_KeyDown">
+                        <ListView.ItemsPanel>
+                            <ItemsPanelTemplate>
+                                <StackPanel Orientation="Vertical" />
+                            </ItemsPanelTemplate>
+                        </ListView.ItemsPanel>
+
                         <ListView.ItemContainerStyle>
                             <StaticResource ResourceKey="SessionPickerListItemStyle" />
                         </ListView.ItemContainerStyle>
@@ -325,6 +332,21 @@
                             </DataTemplate>
                         </ListView.ItemTemplate>
                     </ListView>
+
+                    <Border x:Name="ScrollIndicator"
+                            Width="3"
+                            Height="0"
+                            Margin="0,0,1,0"
+                            HorizontalAlignment="Right"
+                            VerticalAlignment="Top"
+                            Background="Transparent"
+                            CornerRadius="1.5"
+                            IsHitTestVisible="False"
+                            Opacity="0">
+                        <Border.RenderTransform>
+                            <TranslateTransform x:Name="ScrollIndicatorTransform" />
+                        </Border.RenderTransform>
+                    </Border>
 
                     <Border x:Name="TopEdgeFade"
                             Height="16"

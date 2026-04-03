@@ -106,6 +106,19 @@ namespace wisland.Models
         public const double SessionPickerOverlayItemSpacing = 6.0;
         public const double SessionPickerOverlayEdgeFadeHeight = 16.0;
         public const double SessionPickerOverlayPanelPadding = 8.0;
+        public const double SessionPickerOverlayNonScrollableViewportEdgeInset = 2.0;
+        public const double SessionPickerOverlayScrollIndicatorWidth = 3.0;
+        public const double SessionPickerOverlayScrollIndicatorGap = 2.0;
+        public const double SessionPickerOverlayScrollIndicatorRightInset = 1.0;
+        public const double SessionPickerOverlayScrollIndicatorGutterWidth =
+            SessionPickerOverlayScrollIndicatorGap
+            + SessionPickerOverlayScrollIndicatorWidth
+            + SessionPickerOverlayScrollIndicatorRightInset;
+        public const double SessionPickerOverlayPanelRightPadding =
+            SessionPickerOverlayPanelPadding - SessionPickerOverlayScrollIndicatorGutterWidth;
+        public const double SessionPickerOverlayNonScrollableViewportCompensationLimit = 2.0;
+        public const double SessionPickerOverlayScrollIndicatorMinHeight = 32.0;
+        public const double SessionPickerOverlayScrollIndicatorMaxViewportRatio = 0.66;
         public const double SessionPickerOverlayWindowGap = 8.0;
         public const double SessionPickerOverlayScreenMargin = 8.0;
         public const int SessionPickerOverlayOpenDurationMs = 180;
