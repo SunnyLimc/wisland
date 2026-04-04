@@ -1,4 +1,3 @@
-using System;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Media;
 using Windows.Graphics;
@@ -81,20 +80,20 @@ namespace wisland
 
         private void MainWindow_Activated(object sender, WindowActivatedEventArgs args)
         {
-            ReconcileStartupWindowBounds("activated");
+            ReconcileStartupWindowBounds();
         }
 
         private void RootGrid_Loaded(object sender, RoutedEventArgs e)
         {
-            ReconcileStartupWindowBounds("loaded");
+            ReconcileStartupWindowBounds();
         }
 
         private void RootGrid_SizeChanged(object sender, SizeChangedEventArgs e)
         {
-            ReconcileStartupWindowBounds("size-changed");
+            ReconcileStartupWindowBounds();
         }
 
-        private void ReconcileStartupWindowBounds(string reason)
+        private void ReconcileStartupWindowBounds()
         {
             if (_isClosed || _hasCompletedStartupBoundsReconcile)
             {
@@ -134,14 +133,6 @@ namespace wisland
             }
 
             _startupBoundsReconcileAttempts++;
-            string signature = FormattableString.Invariant(
-                $"reason={reason};attempt={_startupBoundsReconcileAttempts};dpi={_dpiScale:F3};expectedW={expectedWidth:F2};expectedH={expectedHeight:F2};actualW={RootGrid.ActualWidth:F2};actualH={RootGrid.ActualHeight:F2};physW={physWidth};physH={physHeight};cachedW={_lastPhysW};cachedH={_lastPhysH}");
-            if (!string.Equals(signature, _lastStartupBoundsReconcileSignature, StringComparison.Ordinal))
-            {
-                _lastStartupBoundsReconcileSignature = signature;
-                Logger.Info($"Startup island bounds reconcile requested: {signature}");
-            }
-
             RectInt32 bounds = ResolveIslandWindowBounds(state, displayWorkArea, _dpiScale);
             ApplyWindowBounds(bounds, force: true);
             UpdateAnchorPhysicalPoint(displayWorkArea, state, physWidth, physHeight);

@@ -88,8 +88,6 @@ namespace wisland
         private float _lastClipTop = float.NaN;
         private float _lastClipRight = float.NaN;
         private float _lastClipBottom = float.NaN;
-        private string? _lastCompactProgressCoverageSignature;
-        private string? _lastStartupBoundsReconcileSignature;
         private int _startupBoundsReconcileAttempts;
         private bool _hasCompletedStartupBoundsReconcile;
 
