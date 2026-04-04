@@ -4,9 +4,11 @@ using Microsoft.UI.Xaml.Controls;
 using Microsoft.UI.Xaml.Media;
 using System;
 using System.Numerics;
+using Windows.Foundation;
 using Windows.Graphics;
 using wisland.Helpers;
 using wisland.Models;
+using wisland.Controls;
 
 namespace wisland
 {
@@ -57,17 +59,20 @@ namespace wisland
             double renderWidth = GetLogicalPixels(physWidth, _dpiScale);
             double renderHeight = GetLogicalPixels(physHeight, _dpiScale);
             double physicalPixelLogical = GetLogicalPixels(1, _dpiScale);
+            bool isCompactSurfaceState = CompactSurfaceLayout.IsCompactState(state.Height);
+            double visualWidth = CompactSurfaceLayout.ResolveExtent(renderWidth, RootGrid.ActualWidth, isCompactSurfaceState);
+            double visualHeight = CompactSurfaceLayout.ResolveExtent(renderHeight, RootGrid.ActualHeight, isCompactSurfaceState);
 
-            if (Math.Abs(renderWidth - _lastRenderedIslandWidth) > 0.01)
+            if (Math.Abs(visualWidth - _lastRenderedIslandWidth) > 0.01)
             {
-                IslandBorder.Width = renderWidth;
-                _lastRenderedIslandWidth = renderWidth;
+                IslandBorder.Width = visualWidth;
+                _lastRenderedIslandWidth = visualWidth;
             }
 
-            if (Math.Abs(renderHeight - _lastRenderedIslandHeight) > 0.01)
+            if (Math.Abs(visualHeight - _lastRenderedIslandHeight) > 0.01)
             {
-                IslandBorder.Height = renderHeight;
-                _lastRenderedIslandHeight = renderHeight;
+                IslandBorder.Height = visualHeight;
+                _lastRenderedIslandHeight = visualHeight;
             }
 
             bool isDockPeekState = _controller.IsDocked
@@ -88,7 +93,15 @@ namespace wisland
                 IslandProgressBar.Margin = new Thickness(0, -progressTopBleed, 0, -physicalPixelLogical);
             }
 
-            IslandProgressBar.Update(dt, t, GetDisplayedProgress(), renderWidth, renderHeight);
+            IslandProgressBar.Update(dt, t, GetDisplayedProgress(), visualWidth, visualHeight);
+            LogCompactProgressCoverageIfNeeded(
+                state,
+                isDockPeekState,
+                shouldDisplayDockedLineNow,
+                renderHeight,
+                visualHeight,
+                physHeight,
+                physicalPixelLogical);
 
             if (_isMediaProgressResetPending && IslandProgressBar.IsSettledAtZero)
             {
@@ -105,7 +118,7 @@ namespace wisland
                 }
             }
 
-            double radius = Math.Min(renderHeight / 2.0, 20.0);
+            double radius = Math.Min(visualHeight / 2.0, 20.0);
             bool cornerShapeChanged = !_lastRenderedDockPeekState.HasValue
                 || _lastRenderedDockPeekState.Value != isDockPeekState
                 || Math.Abs(radius - _lastRenderedCornerRadius) > 0.01;
@@ -127,14 +140,14 @@ namespace wisland
                 _lastRenderedCornerRadius = radius;
             }
 
-            float clipRight = (float)renderWidth;
+            float clipRight = (float)visualWidth;
             if (float.IsNaN(_lastClipRight) || Math.Abs(_lastClipRight - clipRight) > 0.01f)
             {
                 _contentClip.Right = clipRight;
                 _lastClipRight = clipRight;
             }
 
-            float clipBottom = (float)(renderHeight + physicalPixelLogical);
+            float clipBottom = (float)(visualHeight + physicalPixelLogical);
             if (float.IsNaN(_lastClipBottom) || Math.Abs(_lastClipBottom - clipBottom) > 0.01f)
             {
                 _contentClip.Bottom = clipBottom;
@@ -145,7 +158,7 @@ namespace wisland
             {
                 int visiblePhys = GetDockPeekPhysicalPixels(_dpiScale);
                 double visibleLogical = GetLogicalPixels(visiblePhys, _dpiScale);
-                float clipTop = (float)(renderHeight - visibleLogical);
+                float clipTop = (float)(visualHeight - visibleLogical);
                 if (float.IsNaN(_lastClipTop) || Math.Abs(_lastClipTop - clipTop) > 0.01f)
                 {
                     _contentClip.Top = clipTop;
@@ -268,6 +281,76 @@ namespace wisland
 
         private static double GetLogicalPixels(int physicalPixels, double dpiScale)
             => physicalPixels / dpiScale;
+
+        private void LogCompactProgressCoverageIfNeeded(
+            IslandState state,
+            bool isDockPeekState,
+            bool shouldDisplayDockedLineNow,
+            double requestedHeight,
+            double visualHeight,
+            int physHeight,
+            double physicalPixelLogical)
+        {
+            bool isCompactNormalState = state.Height <= IslandConfig.CompactHeight + 1.0
+                && !isDockPeekState
+                && !shouldDisplayDockedLineNow;
+            if (!isCompactNormalState || !IslandProgressBar.IsEffectVisible)
+            {
+                return;
+            }
+
+            XamlRoot? xamlRoot = RootGrid.XamlRoot;
+            if (RootGrid.ActualHeight <= 0.0
+                || IslandBorder.ActualHeight <= 0.0
+                || IslandProgressBar.ActualHeight <= 0.0
+                || xamlRoot == null)
+            {
+                return;
+            }
+
+            Rect islandBounds;
+            Rect progressBounds;
+            try
+            {
+                islandBounds = IslandBorder
+                    .TransformToVisual(RootGrid)
+                    .TransformBounds(new Rect(0, 0, IslandBorder.ActualWidth, IslandBorder.ActualHeight));
+                progressBounds = IslandProgressBar
+                    .TransformToVisual(RootGrid)
+                    .TransformBounds(new Rect(0, 0, IslandProgressBar.ActualWidth, IslandProgressBar.ActualHeight));
+            }
+            catch
+            {
+                return;
+            }
+
+            double rootUncoveredByIslandTop = Math.Max(0.0, islandBounds.Top);
+            double rootUncoveredByIslandBottom = Math.Max(0.0, RootGrid.ActualHeight - islandBounds.Bottom);
+            double islandUncoveredByProgressTop = Math.Max(0.0, progressBounds.Top - islandBounds.Top);
+            double islandUncoveredByProgressBottom = Math.Max(0.0, islandBounds.Bottom - progressBounds.Bottom);
+            double rootUncoveredByProgressTop = Math.Max(0.0, progressBounds.Top);
+            double rootUncoveredByProgressBottom = Math.Max(0.0, RootGrid.ActualHeight - progressBounds.Bottom);
+            if (rootUncoveredByIslandTop <= 0.2
+                && rootUncoveredByIslandBottom <= 0.2
+                && islandUncoveredByProgressTop <= 0.2
+                && islandUncoveredByProgressBottom <= 0.2
+                && rootUncoveredByProgressTop <= 0.2
+                && rootUncoveredByProgressBottom <= 0.2)
+            {
+                return;
+            }
+
+            LiquidProgressBarDiagnostics diagnostics = IslandProgressBar.GetDiagnosticsSnapshot();
+            string signature = FormattableString.Invariant(
+                $"dpi={_dpiScale:F3};scale={xamlRoot.RasterizationScale:F3};requestedH={requestedHeight:F2};visualH={visualHeight:F2};physH={physHeight};pixel={physicalPixelLogical:F3};rootH={RootGrid.ActualHeight:F2};hostH={HostSurface.ActualHeight:F2};islandTop={islandBounds.Top:F2};islandBottom={islandBounds.Bottom:F2};islandH={islandBounds.Height:F2};progressTop={progressBounds.Top:F2};progressBottom={progressBounds.Bottom:F2};progressH={progressBounds.Height:F2};rootGapTop={rootUncoveredByIslandTop:F2};rootGapBottom={rootUncoveredByIslandBottom:F2};progressGapTop={islandUncoveredByProgressTop:F2};progressGapBottom={islandUncoveredByProgressBottom:F2};rootProgressGapTop={rootUncoveredByProgressTop:F2};rootProgressGapBottom={rootUncoveredByProgressBottom:F2};marginTop={IslandProgressBar.Margin.Top:F3};marginBottom={IslandProgressBar.Margin.Bottom:F3};clipTop={_contentClip.Top:F2};clipBottom={_contentClip.Bottom:F2};controlH={diagnostics.ControlActualHeight:F2};progressRootH={diagnostics.RootActualHeight:F2};layerH={diagnostics.ProgressLayerActualHeight:F2};baseH={diagnostics.BaseActualHeight:F2};tailH={diagnostics.TailActualHeight:F2};laserH={diagnostics.LaserCoreActualHeight:F2}");
+            if (string.Equals(signature, _lastCompactProgressCoverageSignature, StringComparison.Ordinal))
+            {
+                return;
+            }
+
+            _lastCompactProgressCoverageSignature = signature;
+            Logger.Info($"Compact progress coverage anomaly detected: {signature}");
+        }
 
         private void StartRenderLoop()
         {

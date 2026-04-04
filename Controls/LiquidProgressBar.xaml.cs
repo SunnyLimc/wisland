@@ -6,6 +6,17 @@ using wisland.Models;
 
 namespace wisland.Controls
 {
+    public readonly record struct LiquidProgressBarDiagnostics(
+        double ControlActualWidth,
+        double ControlActualHeight,
+        double RootActualWidth,
+        double RootActualHeight,
+        double ProgressLayerActualWidth,
+        double ProgressLayerActualHeight,
+        double BaseActualHeight,
+        double TailActualHeight,
+        double LaserCoreActualHeight);
+
     public sealed partial class LiquidProgressBar : UserControl
     {
         private const double HorizontalInset = 6.0;
@@ -47,6 +58,18 @@ namespace wisland.Controls
                 && Math.Abs(_targetProgressWidth - HorizontalInset) <= 0.05
                 && Math.Abs(_currentProgressWidth - HorizontalInset) <= 0.25
                 && _smoothedVelocity <= 0.01;
+
+        public LiquidProgressBarDiagnostics GetDiagnosticsSnapshot()
+            => new(
+                ControlActualWidth: ActualWidth,
+                ControlActualHeight: ActualHeight,
+                RootActualWidth: RootGrid.ActualWidth,
+                RootActualHeight: RootGrid.ActualHeight,
+                ProgressLayerActualWidth: LiquidGlassProgressLayer.ActualWidth,
+                ProgressLayerActualHeight: LiquidGlassProgressLayer.ActualHeight,
+                BaseActualHeight: ProgressBase.ActualHeight,
+                TailActualHeight: ProgressTail.ActualHeight,
+                LaserCoreActualHeight: ProgressLaserCore.ActualHeight);
 
         public void SetEffectVisible(bool isVisible)
         {

@@ -15,6 +15,7 @@
   </ItemGroup>
 
   <ItemGroup>
+    <Compile Include="..\Helpers\CompactSurfaceLayout.cs" Link="Helpers\CompactSurfaceLayout.cs" />
     <Compile Include="..\Helpers\MediaSourceAppResolver.cs" Link="Helpers\MediaSourceAppResolver.cs" />
     <Compile Include="..\Helpers\SessionPickerOverlayLayout.cs" Link="Helpers\SessionPickerOverlayLayout.cs" />
     <Compile Include="..\Services\Media\MediaFocusArbiter.cs" Link="Services\Media\MediaFocusArbiter.cs" />

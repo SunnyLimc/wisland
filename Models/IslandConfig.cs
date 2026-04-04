@@ -83,6 +83,7 @@ namespace wisland.Models
         public const double DockPeekOffset = 5; // Reduced from 6 for "just progress" look
         public const double MaximizedDockPeekOffset = 1; // Ultra-thin line
         public const int NativeLinePhysicalHeight = 3;
+        public const double CompactSurfaceExtentSnapTolerance = 2.0;
 
         // --- Timing ---
         public const int ForegroundCheckIntervalMs = 500;
