@@ -92,6 +92,7 @@ namespace wisland
             }
 
             IslandProgressBar.Update(dt, t, GetDisplayedProgress(), visualWidth, visualHeight);
+            RectInt32 bounds = ResolveIslandWindowBounds(state, displayWorkArea, _dpiScale);
 
             if (_isMediaProgressResetPending && IslandProgressBar.IsSettledAtZero)
             {
@@ -148,7 +149,21 @@ namespace wisland
             {
                 int visiblePhys = GetDockPeekPhysicalPixels(_dpiScale);
                 double visibleLogical = GetLogicalPixels(visiblePhys, _dpiScale);
-                float clipTop = (float)(visualHeight - visibleLogical);
+                double clipTopLogical = Math.Clamp(visualHeight - visibleLogical, 0.0, visualHeight);
+                double rasterScale = RootGrid.XamlRoot?.RasterizationScale > 0.0
+                    ? RootGrid.XamlRoot.RasterizationScale
+                    : _dpiScale;
+                if (TryGetProjectedClientBounds(bounds, out RectInt32 clientBounds))
+                {
+                    clipTopLogical = CompactSurfaceLayout.ResolveDockPeekClipTop(
+                        visualHeight,
+                        visibleLogical,
+                        clientBounds,
+                        displayWorkArea,
+                        rasterScale);
+                }
+
+                float clipTop = (float)clipTopLogical;
                 if (float.IsNaN(_lastClipTop) || Math.Abs(_lastClipTop - clipTop) > 0.01f)
                 {
                     _contentClip.Top = clipTop;
@@ -186,7 +201,6 @@ namespace wisland
                 CompactContent.IsHitTestVisible = compactHitTestVisible;
             }
 
-            RectInt32 bounds = ResolveIslandWindowBounds(state, displayWorkArea, _dpiScale);
             int physX = bounds.X;
             int physY = bounds.Y;
 
@@ -275,6 +289,28 @@ namespace wisland
 
         private static double GetLogicalPixels(int physicalPixels, double dpiScale)
             => physicalPixels / dpiScale;
+
+        private bool TryGetProjectedClientBounds(RectInt32 targetWindowBounds, out RectInt32 clientBounds)
+        {
+            clientBounds = default;
+            IntPtr hwnd = WinRT.Interop.WindowNative.GetWindowHandle(this);
+            if (!WindowInterop.TryGetClientScreenBounds(hwnd, out RectInt32 actualClientBounds))
+            {
+                return false;
+            }
+
+            if (!_hasInitializedWindowBounds)
+            {
+                clientBounds = actualClientBounds;
+                return true;
+            }
+
+            clientBounds = CompactSurfaceLayout.ProjectClientBounds(
+                actualClientBounds,
+                new RectInt32(_lastPhysX, _lastPhysY, _lastPhysW, _lastPhysH),
+                targetWindowBounds);
+            return true;
+        }
 
         private void StartRenderLoop()
         {

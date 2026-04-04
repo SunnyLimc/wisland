@@ -1,11 +1,67 @@
 using wisland.Helpers;
 using wisland.Models;
+using Windows.Graphics;
 using Xunit;
 
 namespace wisland.Tests
 {
     public sealed class CompactSurfaceLayoutTests
     {
+        [Fact]
+        public void ResolveDockPeekClipTopUsesActualVisibleSliceWhenWindowCrossesDisplayTop()
+        {
+            RectInt32 clientBounds = new(0, -33, 250, 39);
+            RectInt32 displayBounds = new(0, 0, 2560, 1440);
+
+            double clipTop = CompactSurfaceLayout.ResolveDockPeekClipTop(
+                surfaceHeight: 30.4,
+                fallbackVisibleLogical: 0.8,
+                clientBounds,
+                displayBounds,
+                rasterScale: 1.25);
+
+            Assert.Equal(26.4, clipTop, precision: 6);
+        }
+
+        [Fact]
+        public void ResolveDockPeekClipTopFallsBackToPeekHeightWhenVisibleSliceIsUnavailable()
+        {
+            double clipTop = CompactSurfaceLayout.ResolveDockPeekClipTop(
+                surfaceHeight: 30.4,
+                fallbackVisibleLogical: 0.8,
+                new RectInt32(),
+                new RectInt32(),
+                rasterScale: 1.25);
+
+            Assert.Equal(29.6, clipTop, precision: 6);
+        }
+
+        [Fact]
+        public void TryGetVisibleVerticalSliceReturnsVisibleClientSegmentInLogicalPixels()
+        {
+            Assert.True(CompactSurfaceLayout.TryGetVisibleVerticalSlice(
+                new RectInt32(0, -33, 250, 39),
+                new RectInt32(0, 0, 2560, 1440),
+                1.25,
+                30.4,
+                out double visibleTop,
+                out double visibleBottom));
+            Assert.Equal(26.4, visibleTop, precision: 6);
+            Assert.Equal(30.4, visibleBottom, precision: 6);
+        }
+
+        [Fact]
+        public void ProjectClientBoundsAdvancesClientSliceWithCurrentFrameWindowMove()
+        {
+            RectInt32 projected = CompactSurfaceLayout.ProjectClientBounds(
+                new RectInt32(100, -33, 250, 39),
+                new RectInt32(100, -33, 250, 38),
+                new RectInt32(100, -32, 250, 38));
+
+            Assert.Equal(-32, projected.Y);
+            Assert.Equal(39, projected.Height);
+        }
+
         [Fact]
         public void NeedsBoundsReconcileWhenActualExtentIsUnavailable()
         {

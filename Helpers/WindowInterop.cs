@@ -282,5 +282,28 @@ namespace wisland.Helpers
                 Math.Max(0, bottom));
             return true;
         }
+
+        public static bool TryGetClientScreenBounds(IntPtr hwnd, out RectInt32 bounds)
+        {
+            bounds = default;
+            if (hwnd == IntPtr.Zero
+                || !GetClientRect(hwnd, out RECT clientRect))
+            {
+                return false;
+            }
+
+            POINT clientOrigin = new POINT { X = 0, Y = 0 };
+            if (!ClientToScreen(hwnd, ref clientOrigin))
+            {
+                return false;
+            }
+
+            bounds = new RectInt32(
+                clientOrigin.X,
+                clientOrigin.Y,
+                Math.Max(0, clientRect.right - clientRect.left),
+                Math.Max(0, clientRect.bottom - clientRect.top));
+            return true;
+        }
     }
 }
