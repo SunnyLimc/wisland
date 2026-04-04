@@ -84,6 +84,7 @@ namespace wisland.Models
         public const double MaximizedDockPeekOffset = 1; // Ultra-thin line
         public const int NativeLinePhysicalHeight = 3;
         public const double CompactSurfaceExtentSnapTolerance = 2.0;
+        public const int StartupBoundsReconcileMaxPasses = 4;
 
         // --- Timing ---
         public const int ForegroundCheckIntervalMs = 500;

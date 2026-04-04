@@ -256,9 +256,13 @@ namespace wisland
             return displayWorkArea.Y + (int)Math.Round(state.Y * dpiScale);
         }
 
-        private void ApplyWindowBounds(RectInt32 bounds)
+        private void ApplyWindowBounds(RectInt32 bounds, bool force = false)
         {
-            if (bounds.X != _lastPhysX || bounds.Y != _lastPhysY || bounds.Width != _lastPhysW || bounds.Height != _lastPhysH)
+            if (force
+                || bounds.X != _lastPhysX
+                || bounds.Y != _lastPhysY
+                || bounds.Width != _lastPhysW
+                || bounds.Height != _lastPhysH)
             {
                 AppWindow.MoveAndResize(bounds);
                 _lastPhysX = bounds.X;

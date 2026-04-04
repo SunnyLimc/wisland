@@ -7,6 +7,24 @@ namespace wisland.Tests
     public sealed class CompactSurfaceLayoutTests
     {
         [Fact]
+        public void NeedsBoundsReconcileWhenActualExtentIsUnavailable()
+        {
+            Assert.True(CompactSurfaceLayout.NeedsBoundsReconcile(30.22, 0.0, 0.444));
+        }
+
+        [Fact]
+        public void NeedsBoundsReconcileWhenResidualExceedsPhysicalPixel()
+        {
+            Assert.True(CompactSurfaceLayout.NeedsBoundsReconcile(30.22, 32.00, 0.444));
+        }
+
+        [Fact]
+        public void DoesNotNeedBoundsReconcileWithinPhysicalPixelThreshold()
+        {
+            Assert.False(CompactSurfaceLayout.NeedsBoundsReconcile(31.11, 31.56, 0.444));
+        }
+
+        [Fact]
         public void ResolveExtentSnapsToActualExtentForCompactResidualWithinTolerance()
         {
             double requestedHeight = 30.22;

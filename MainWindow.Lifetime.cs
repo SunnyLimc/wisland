@@ -1,6 +1,9 @@
+using System;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Media;
 using Windows.Graphics;
+using wisland.Helpers;
+using wisland.Models;
 
 namespace wisland
 {
@@ -37,6 +40,9 @@ namespace wisland
             _notificationCts = null;
 
             RootGrid.ActualThemeChanged -= RootGrid_ActualThemeChanged;
+            RootGrid.Loaded -= RootGrid_Loaded;
+            RootGrid.SizeChanged -= RootGrid_SizeChanged;
+            this.Activated -= MainWindow_Activated;
             _uiSettings.ColorValuesChanged -= UiSettings_ColorValuesChanged;
             StopRenderLoop();
             _hoverDebounceTimer.Tick -= HoverDebounceTimer_Tick;
@@ -71,6 +77,75 @@ namespace wisland
 
             DisposeSessionPickerOverlay();
             Application.Current.Exit();
+        }
+
+        private void MainWindow_Activated(object sender, WindowActivatedEventArgs args)
+        {
+            ReconcileStartupWindowBounds("activated");
+        }
+
+        private void RootGrid_Loaded(object sender, RoutedEventArgs e)
+        {
+            ReconcileStartupWindowBounds("loaded");
+        }
+
+        private void RootGrid_SizeChanged(object sender, SizeChangedEventArgs e)
+        {
+            ReconcileStartupWindowBounds("size-changed");
+        }
+
+        private void ReconcileStartupWindowBounds(string reason)
+        {
+            if (_isClosed || _hasCompletedStartupBoundsReconcile)
+            {
+                return;
+            }
+
+            RectInt32 displayWorkArea = GetCurrentDisplayWorkArea();
+            _dpiScale = GetDisplayDpiScale(displayWorkArea);
+
+            IslandState state = _controller.Current;
+            ClampControllerPositionToDisplay(displayWorkArea, state.Width, state.Height, _dpiScale);
+
+            int physWidth = GetPhysicalPixels(state.Width, _dpiScale);
+            int physHeight = GetPhysicalPixels(state.Height, _dpiScale);
+            double expectedWidth = GetLogicalPixels(physWidth, _dpiScale);
+            double expectedHeight = GetLogicalPixels(physHeight, _dpiScale);
+            double physicalPixelLogical = GetLogicalPixels(1, _dpiScale);
+
+            bool widthMismatch = CompactSurfaceLayout.NeedsBoundsReconcile(
+                expectedWidth,
+                RootGrid.ActualWidth,
+                physicalPixelLogical);
+            bool heightMismatch = CompactSurfaceLayout.NeedsBoundsReconcile(
+                expectedHeight,
+                RootGrid.ActualHeight,
+                physicalPixelLogical);
+
+            if (!widthMismatch && !heightMismatch)
+            {
+                _hasCompletedStartupBoundsReconcile = true;
+                return;
+            }
+
+            if (_startupBoundsReconcileAttempts >= IslandConfig.StartupBoundsReconcileMaxPasses)
+            {
+                return;
+            }
+
+            _startupBoundsReconcileAttempts++;
+            string signature = FormattableString.Invariant(
+                $"reason={reason};attempt={_startupBoundsReconcileAttempts};dpi={_dpiScale:F3};expectedW={expectedWidth:F2};expectedH={expectedHeight:F2};actualW={RootGrid.ActualWidth:F2};actualH={RootGrid.ActualHeight:F2};physW={physWidth};physH={physHeight};cachedW={_lastPhysW};cachedH={_lastPhysH}");
+            if (!string.Equals(signature, _lastStartupBoundsReconcileSignature, StringComparison.Ordinal))
+            {
+                _lastStartupBoundsReconcileSignature = signature;
+                Logger.Info($"Startup island bounds reconcile requested: {signature}");
+            }
+
+            RectInt32 bounds = ResolveIslandWindowBounds(state, displayWorkArea, _dpiScale);
+            ApplyWindowBounds(bounds, force: true);
+            UpdateAnchorPhysicalPoint(displayWorkArea, state, physWidth, physHeight);
+            StartRenderLoop();
         }
     }
 }

@@ -89,6 +89,9 @@ namespace wisland
         private float _lastClipRight = float.NaN;
         private float _lastClipBottom = float.NaN;
         private string? _lastCompactProgressCoverageSignature;
+        private string? _lastStartupBoundsReconcileSignature;
+        private int _startupBoundsReconcileAttempts;
+        private bool _hasCompletedStartupBoundsReconcile;
 
         public MainWindow()
         {
@@ -96,7 +99,10 @@ namespace wisland
             {
                 this.InitializeComponent();
                 this.ExtendsContentIntoTitleBar = true;
+                this.Activated += MainWindow_Activated;
                 RootGrid.ActualThemeChanged += RootGrid_ActualThemeChanged;
+                RootGrid.Loaded += RootGrid_Loaded;
+                RootGrid.SizeChanged += RootGrid_SizeChanged;
                 _uiSettings.ColorValuesChanged += UiSettings_ColorValuesChanged;
                 _foregroundWindowMonitor = new ForegroundWindowMonitor(
                     () => WinRT.Interop.WindowNative.GetWindowHandle(this),
