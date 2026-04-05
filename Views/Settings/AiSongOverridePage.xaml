@@ -1,0 +1,62 @@
+<?xml version="1.0" encoding="utf-8"?>
+<UserControl
+    x:Class="wisland.Views.Settings.AiSongOverridePage"
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+    xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+    mc:Ignorable="d">
+
+        <Grid Background="Transparent">
+                <ScrollViewer Background="Transparent"
+                                          Padding="32,24,32,24">
+                        <StackPanel Spacing="16"
+                MaxWidth="600">
+                                <TextBlock Text="AI Song Override"
+                    Style="{StaticResource TitleTextBlockStyle}"/>
+                                  <TextBlock Text="When enabled, song titles and artist names from media sessions are sent to the configured AI model for cleanup. The AI removes tags like '(Official Video)', separates combined title and artist strings, and returns cleaner metadata. Google AI Studio profiles can also opt into Google grounding search when the selected Gemini model supports it."
+                       Style="{StaticResource BodyTextBlockStyle}"
+                       Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                       TextWrapping="WrapWholeWords"/>
+
+            <ToggleSwitch x:Name="EnableToggle"
+                    Header="Use AI to resolve song metadata"
+                          Toggled="EnableToggle_Toggled"/>
+
+            <ComboBox x:Name="ModelSelector"
+                    Header="AI Model"
+                    Width="320"
+                      SelectionChanged="ModelSelector_SelectionChanged"
+                      PlaceholderText="Select a model..."/>
+
+            <TextBlock x:Name="NoModelsHint"
+                       Text="No AI models configured. Add one in the AI Models page first."
+                       Foreground="{ThemeResource SystemFillColorCautionBrush}"
+                       Visibility="Collapsed"
+                    TextWrapping="WrapWholeWords"/>
+
+            <!-- Cache section -->
+            <TextBlock Text="Cache"
+                    Style="{StaticResource SubtitleTextBlockStyle}"
+                    Margin="0,16,0,0"/>
+            <TextBlock Text="Resolved song metadata is cached locally to avoid redundant AI calls. Clear the cache to force re-resolution."
+                       Style="{StaticResource BodyTextBlockStyle}"
+                       Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                       TextWrapping="WrapWholeWords"/>
+
+            <TextBlock x:Name="CacheCountText"
+                    Text="Cached entries: 0"/>
+
+            <StackPanel Orientation="Horizontal"
+                    Spacing="8">
+                <Button x:Name="ClearLastButton"
+                        Content="Clear Last Entry"
+                        Click="ClearLast_Click"/>
+                <Button x:Name="ClearAllButton"
+                        Content="Clear All Cache"
+                        Click="ClearAll_Click"/>
+            </StackPanel>
+                        </StackPanel>
+                </ScrollViewer>
+        </Grid>
+</UserControl>

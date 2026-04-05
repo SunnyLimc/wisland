@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using System.Threading;
 using System.Threading.Tasks;
 using wisland.Models;
 using wisland.Services;
@@ -23,6 +24,8 @@ namespace wisland
         private DateTimeOffset? _transportWaitingStartedUtc;
         private DateTimeOffset? _transportWaitingUntilUtc;
         private readonly List<string> _sessionVisualOrderKeys = new();
+        private CancellationTokenSource? _aiResolveCts;
+        private string? _lastAiResolveContentIdentity;
 
         private async Task InitializeMediaAsync()
         {
@@ -56,6 +59,7 @@ namespace wisland
         private void SyncMediaUI()
         {
             DisplayedMediaContext context = ResolveDisplayedMediaContext();
+            context = ApplyAiOverride(context);
             string? nextContentIdentity = CreateContentIdentity(context.DisplayedSession, context.ShowTransportSwitchingHint);
             string? nextProgressIdentity = CreateProgressIdentity(context.DisplayedSession);
             bool contentChanged = !string.Equals(_lastDisplayedContentIdentity, nextContentIdentity, StringComparison.Ordinal);
@@ -96,7 +100,72 @@ namespace wisland
             {
                 _lastDisplayedContentIdentity = nextContentIdentity;
                 ClearPendingMediaTransitionDirection();
+                TryRequestAiResolveAsync(context);
             }
+        }
+
+        private DisplayedMediaContext ApplyAiOverride(DisplayedMediaContext context)
+        {
+            if (!_settings.AiSongOverrideEnabled || _aiSongResolver == null || !context.DisplayedSession.HasValue)
+                return context;
+
+            var session = context.DisplayedSession.Value;
+            var cached = _aiSongResolver.TryGetCached(session.SourceAppId, session.Title, session.Artist);
+            if (cached == null)
+                return context;
+
+            var overridden = session with { Title = cached.Title, Artist = cached.Artist };
+            return context with
+            {
+                DisplayedSession = overridden,
+                CompactText = cached.Title
+            };
+        }
+
+        private async void TryRequestAiResolveAsync(DisplayedMediaContext context)
+        {
+            if (!_settings.AiSongOverrideEnabled || _aiSongResolver == null || !context.DisplayedSession.HasValue)
+                return;
+
+            var session = context.DisplayedSession.Value;
+
+            // Already resolved from cache — no need to call AI
+            var cached = _aiSongResolver.TryGetCached(session.SourceAppId, session.Title, session.Artist);
+            if (cached != null)
+                return;
+
+            // Cancel any previous in-flight request
+            _aiResolveCts?.Cancel();
+            var cts = new CancellationTokenSource();
+            _aiResolveCts = cts;
+
+            string contentIdentity = CreateContentIdentity(context.DisplayedSession, context.ShowTransportSwitchingHint) ?? string.Empty;
+            _lastAiResolveContentIdentity = contentIdentity;
+
+            try
+            {
+                var result = await _aiSongResolver.ResolveAsync(
+                    session.SourceAppId, session.Title, session.Artist, cts.Token);
+
+                if (cts.Token.IsCancellationRequested)
+                    return;
+
+                // Only update UI if we're still displaying the same content
+                if (result != null && string.Equals(_lastAiResolveContentIdentity, contentIdentity, StringComparison.Ordinal))
+                {
+                    SyncMediaUI();
+                }
+            }
+            catch (OperationCanceledException) { }
+        }
+
+        internal void OnAiSettingsChanged()
+        {
+            DispatcherQueue?.TryEnqueue(() =>
+            {
+                _lastDisplayedContentIdentity = null;
+                SyncMediaUI();
+            });
         }
 
         private MediaSessionSnapshot? GetDisplayedMediaSessionSnapshot()

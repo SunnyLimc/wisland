@@ -1,0 +1,34 @@
+<?xml version="1.0" encoding="utf-8"?>
+<UserControl
+    x:Class="wisland.Views.Settings.AppearancePage"
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+    xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+    mc:Ignorable="d">
+
+        <Grid Background="Transparent">
+                <ScrollViewer Background="Transparent"
+                                          Padding="32,24,32,24">
+                        <StackPanel Spacing="16"
+                MaxWidth="600">
+                                <TextBlock Text="Appearance"
+                    Style="{StaticResource TitleTextBlockStyle}"/>
+                                <TextBlock Text="Choose the backdrop style used by the island and settings window."
+                       Style="{StaticResource BodyTextBlockStyle}"
+                       Foreground="{ThemeResource TextFillColorSecondaryBrush}"/>
+
+                                <RadioButtons x:Name="BackdropSelector"
+                    Header="Backdrop Style"
+                          SelectionChanged="BackdropSelector_SelectionChanged">
+                                        <RadioButton Content="Mica"
+                        Tag="Mica"/>
+                                        <RadioButton Content="Acrylic"
+                        Tag="Acrylic"/>
+                                        <RadioButton Content="None"
+                        Tag="None"/>
+                                </RadioButtons>
+                        </StackPanel>
+                </ScrollViewer>
+        </Grid>
+</UserControl>

@@ -30,23 +30,17 @@
                 Height="30"
                 HorizontalAlignment="Center"
                 VerticalAlignment="Center">
-             
+
             <Border.ContextFlyout>
                 <MenuFlyout Opening="IslandContextFlyout_Opening"
                             Closed="IslandContextFlyout_Closed">
-                    <MenuFlyoutItem Text="Test Notification" Click="TestNotification_Click"/>
-                    <MenuFlyoutItem Text="Test Task Progress" Click="TestProgress_Click"/>
-                    <MenuFlyoutSeparator/>
-                    <MenuFlyoutSubItem Text="Backdrop Style">
-                        <MenuFlyoutItem Text="Mica" Click="Mica_Click"/>
-                        <MenuFlyoutItem Text="Acrylic" Click="Acrylic_Click"/>
-                        <MenuFlyoutItem Text="None" Click="None_Click"/>
-                    </MenuFlyoutSubItem>
+                    <MenuFlyoutItem Text="Settings"
+                            Click="Settings_Click"/>
                     <MenuFlyoutSeparator/>
                     <MenuFlyoutItem Text="Exit" Click="Exit_Click"/>
                 </MenuFlyout>
             </Border.ContextFlyout>
-            
+
             <Grid x:Name="ContentContainer">
                 <controls:LiquidProgressBar x:Name="IslandProgressBar" />
 
@@ -55,8 +49,8 @@
 
                 <!-- Expanded State Content -->
                 <views:ExpandedMediaView x:Name="ExpandedContent" Opacity="0" IsHitTestVisible="False"
-                                         BackClick="SkipPrevious_Click" 
-                                         PlayPauseClick="PlayPause_Click" 
+                                         BackClick="SkipPrevious_Click"
+                                         PlayPauseClick="PlayPause_Click"
                                          ForwardClick="SkipNext_Click" />
             </Grid>
         </Border>

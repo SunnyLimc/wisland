@@ -63,6 +63,9 @@ namespace wisland
             _mediaService.TrackChanged -= OnTrackChanged;
             _mediaService.Dispose();
 
+            _aiResolveCts?.Cancel();
+            _aiResolveCts = null;
+
             DisposeSessionPickerOverlay();
             _shellVisibilityService.Dispose();
         }
@@ -73,6 +76,9 @@ namespace wisland
             {
                 return;
             }
+
+            try { _settingsWindow?.Close(); } catch { }
+            _settingsWindow = null;
 
             DisposeSessionPickerOverlay();
             Application.Current.Exit();

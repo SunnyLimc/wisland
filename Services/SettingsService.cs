@@ -1,5 +1,8 @@
 using System;
+using System.Collections.Generic;
 using System.IO;
+using System.Security.Cryptography;
+using System.Text;
 using System.Text.Json;
 using wisland.Helpers;
 using wisland.Models;
@@ -42,6 +45,15 @@ namespace wisland.Services
         /// <summary>Last display-relative top position in logical pixels.</summary>
         public double? RelativeTopY { get; set; }
 
+        /// <summary>Configured AI model profiles.</summary>
+        public List<AiModelProfile> AiModels { get; set; } = new();
+
+        /// <summary>ID of the active AI model used for song resolution.</summary>
+        public string? ActiveAiModelId { get; set; }
+
+        /// <summary>Whether AI song metadata override is enabled.</summary>
+        public bool AiSongOverrideEnabled { get; set; }
+
         /// <summary>
         /// Load settings from disk. Returns silently with defaults if file doesn't exist or is corrupted.
         /// </summary>
@@ -64,6 +76,9 @@ namespace wisland.Services
                     AnchorPhysicalY = SanitizeAnchorPhysical(data.AnchorPhysicalY);
                     RelativeCenterX = SanitizeRelativeCenterX(data.RelativeCenterX);
                     RelativeTopY = SanitizeRelativeTopY(data.RelativeTopY);
+                    AiModels = DeserializeAiModels(data.AiModels);
+                    ActiveAiModelId = data.ActiveAiModelId;
+                    AiSongOverrideEnabled = data.AiSongOverrideEnabled;
                 }
             }
             catch (Exception ex)
@@ -85,6 +100,7 @@ namespace wisland.Services
 
                 var data = new SettingsData
                 {
+                    SettingsVersion = 1,
                     BackdropType = FormatBackdropType(BackdropType),
                     CenterX = SanitizeCenterX(CenterX),
                     LastY = SanitizeLastY(LastY),
@@ -92,7 +108,10 @@ namespace wisland.Services
                     AnchorPhysicalX = SanitizeAnchorPhysical(AnchorPhysicalX),
                     AnchorPhysicalY = SanitizeAnchorPhysical(AnchorPhysicalY),
                     RelativeCenterX = SanitizeRelativeCenterX(RelativeCenterX),
-                    RelativeTopY = SanitizeRelativeTopY(RelativeTopY)
+                    RelativeTopY = SanitizeRelativeTopY(RelativeTopY),
+                    AiModels = SerializeAiModels(AiModels),
+                    ActiveAiModelId = ActiveAiModelId,
+                    AiSongOverrideEnabled = AiSongOverrideEnabled
                 };
 
                 var json = JsonSerializer.Serialize(data, JsonOptions);
@@ -129,8 +148,77 @@ namespace wisland.Services
         private static double? SanitizeRelativeTopY(double? value)
             => value.HasValue && double.IsFinite(value.Value) && value.Value >= 0 ? value : null;
 
+        private static string ProtectApiKey(string plainText)
+        {
+            if (string.IsNullOrEmpty(plainText)) return string.Empty;
+            byte[] plainBytes = Encoding.UTF8.GetBytes(plainText);
+            byte[] encrypted = ProtectedData.Protect(plainBytes, null, DataProtectionScope.CurrentUser);
+            return Convert.ToBase64String(encrypted);
+        }
+
+        private static string UnprotectApiKey(string protectedText)
+        {
+            if (string.IsNullOrEmpty(protectedText)) return string.Empty;
+            try
+            {
+                byte[] encrypted = Convert.FromBase64String(protectedText);
+                byte[] plainBytes = ProtectedData.Unprotect(encrypted, null, DataProtectionScope.CurrentUser);
+                return Encoding.UTF8.GetString(plainBytes);
+            }
+            catch
+            {
+                // If decryption fails (e.g., migrated from another user), return empty.
+                return string.Empty;
+            }
+        }
+
+        private static List<AiModelProfileData>? SerializeAiModels(List<AiModelProfile> models)
+        {
+            if (models.Count == 0) return null;
+            var result = new List<AiModelProfileData>(models.Count);
+            foreach (var m in models)
+            {
+                result.Add(new AiModelProfileData
+                {
+                    Id = m.Id,
+                    DisplayName = m.DisplayName,
+                    Provider = AiModelProviderNames.Normalize(m.Provider),
+                    Endpoint = m.Endpoint,
+                    ProtectedApiKey = ProtectApiKey(m.ApiKey),
+                    ModelId = m.ModelId,
+                    ReasoningEffort = m.ReasoningEffort,
+                    GoogleGroundingEnabled = m.GoogleGroundingEnabled
+                });
+            }
+            return result;
+        }
+
+        private static List<AiModelProfile> DeserializeAiModels(List<AiModelProfileData>? data)
+        {
+            if (data == null || data.Count == 0) return new();
+            var result = new List<AiModelProfile>(data.Count);
+            foreach (var d in data)
+            {
+                string provider = AiModelProviderNames.Normalize(d.Provider);
+                result.Add(new AiModelProfile
+                {
+                    Id = d.Id ?? Guid.NewGuid().ToString(),
+                    DisplayName = d.DisplayName ?? string.Empty,
+                    Provider = provider,
+                    Endpoint = d.Endpoint ?? string.Empty,
+                    ApiKey = UnprotectApiKey(d.ProtectedApiKey ?? string.Empty),
+                    ModelId = d.ModelId ?? string.Empty,
+                    ReasoningEffort = d.ReasoningEffort,
+                    GoogleGroundingEnabled = d.GoogleGroundingEnabled
+                        ?? string.Equals(provider, nameof(AiModelProvider.GoogleAIStudio), StringComparison.Ordinal)
+                });
+            }
+            return result;
+        }
+
         private sealed class SettingsData
         {
+            public int SettingsVersion { get; set; }
             public string? BackdropType { get; set; }
             public double CenterX { get; set; }
             public double LastY { get; set; }
@@ -139,6 +227,21 @@ namespace wisland.Services
             public int? AnchorPhysicalY { get; set; }
             public double? RelativeCenterX { get; set; }
             public double? RelativeTopY { get; set; }
+            public List<AiModelProfileData>? AiModels { get; set; }
+            public string? ActiveAiModelId { get; set; }
+            public bool AiSongOverrideEnabled { get; set; }
+        }
+
+        private sealed class AiModelProfileData
+        {
+            public string? Id { get; set; }
+            public string? DisplayName { get; set; }
+            public string? Provider { get; set; }
+            public string? Endpoint { get; set; }
+            public string? ProtectedApiKey { get; set; }
+            public string? ModelId { get; set; }
+            public string? ReasoningEffort { get; set; }
+            public bool? GoogleGroundingEnabled { get; set; }
         }
     }
 }

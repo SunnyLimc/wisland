@@ -30,6 +30,8 @@ namespace wisland
         private readonly IslandController _controller = new();
         private readonly ForegroundWindowMonitor _foregroundWindowMonitor;
         private readonly UISettings _uiSettings = new();
+        private AiSongResolverService _aiSongResolver;
+        private SettingsWindow? _settingsWindow;
 
         private double _dpiScale = 1.0;
 
@@ -121,6 +123,7 @@ namespace wisland
 
                 // Load saved settings
                 _settings.Load();
+                _aiSongResolver = new AiSongResolverService(_settings);
 
                 InitializeDisplayAnchorFromSettings();
 
@@ -188,6 +191,23 @@ namespace wisland
                     && !displayedSession.Value.IsWaitingForReconnect
                     && !displayedSession.Value.MissingSinceUtc.HasValue
                     && !_isMediaProgressResetPending);
+        }
+
+        private void OpenSettingsWindow()
+        {
+            if (_settingsWindow != null)
+            {
+                _settingsWindow.Activate();
+                return;
+            }
+
+            _settingsWindow = new SettingsWindow(
+                _settings,
+                _aiSongResolver,
+                onBackdropChanged: type => SetBackdrop(type),
+                onAiSettingsChanged: () => OnAiSettingsChanged());
+            _settingsWindow.Closed += (_, _) => _settingsWindow = null;
+            _settingsWindow.Activate();
         }
     }
 }

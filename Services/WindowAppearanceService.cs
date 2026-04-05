@@ -53,7 +53,7 @@ namespace wisland.Services
             _lastHiddenLine = isHiddenLine;
         }
 
-        private void ApplyBackdrop(Window window, BackdropType type)
+        public void ApplyBackdrop(Window window, BackdropType type)
         {
             if (_lastBackdropType == type)
             {
