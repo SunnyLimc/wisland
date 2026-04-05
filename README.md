@@ -16,16 +16,25 @@ It supports:
 
 ## Tech Stack
 
-- .NET 8
-- WinUI 3 / Windows App SDK
+- .NET 10
+- WinUI 3 / Windows App SDK 1.8
 - WinUIEx
 - Windows GSMTC for media integration
 - Win32 / DWM interop for advanced window behavior
 
+The app and test project currently target `net10.0-windows10.0.19041.0`.
+
+## Build and Test
+
+```powershell
+dotnet restore wisland.slnx
+dotnet build wisland.slnx -c Debug -p:Platform=x64
+dotnet test wisland.Tests\wisland.Tests.csproj -c Debug
+```
+
 ## Run Locally
 
 ```powershell
-dotnet build wisland.csproj -c Debug -p:Platform=x64 -p:SelfContained=false -p:UseAppHost=false
 dotnet run --project wisland.csproj -c Debug -p:Platform=x64 -p:SelfContained=false -p:UseAppHost=false
 ```
 
