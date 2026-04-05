@@ -74,7 +74,6 @@ namespace wisland
             }
 
             CompactContent.Update(context.CompactText, directionHint);
-            CompactContent.SetSessionCountHint(context.SessionCountText, context.ShowSessionCount);
 
             if (!_controller.IsNotifying)
             {
@@ -133,8 +132,6 @@ namespace wisland
                     OrderedSessions: prioritySessions,
                     DisplayIndex: -1,
                     CompactText: "Wisland",
-                    SessionCountText: string.Empty,
-                    ShowSessionCount: false,
                     ShowTransportSwitchingHint: false);
             }
 
@@ -168,9 +165,6 @@ namespace wisland
                 displayIndex = FindSessionIndex(orderedSessions, displayedSession.SessionKey);
             }
 
-            string sessionCountText = orderedSessions.Count > 1
-                ? FormattableString.Invariant($"{displayIndex + 1}/{orderedSessions.Count}")
-                : string.Empty;
             bool showTransportSwitchingHint = ShouldShowTransportSwitchingHint(displayedSession);
 
             return new DisplayedMediaContext(
@@ -178,8 +172,6 @@ namespace wisland
                 OrderedSessions: orderedSessions,
                 DisplayIndex: displayIndex,
                 CompactText: displayedSession.Title,
-                SessionCountText: sessionCountText,
-                ShowSessionCount: orderedSessions.Count >= IslandConfig.CompactSessionCountVisibleThreshold,
                 ShowTransportSwitchingHint: showTransportSwitchingHint);
         }
 
@@ -671,8 +663,6 @@ namespace wisland
             IReadOnlyList<MediaSessionSnapshot> OrderedSessions,
             int DisplayIndex,
             string CompactText,
-            string SessionCountText,
-            bool ShowSessionCount,
             bool ShowTransportSwitchingHint);
     }
 }
