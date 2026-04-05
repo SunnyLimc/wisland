@@ -1,5 +1,6 @@
 using System;
 using Windows.Graphics;
+using wisland.Helpers;
 using wisland.Models;
 
 namespace wisland
@@ -34,6 +35,7 @@ namespace wisland
         {
             if (isForegroundMaximized != _controller.IsForegroundMaximized)
             {
+                Logger.Debug($"Foreground maximized changed: {isForegroundMaximized}");
                 _controller.IsForegroundMaximized = isForegroundMaximized;
                 UpdateState();
             }
@@ -221,6 +223,11 @@ namespace wisland
         {
             HoverMode previousMode = _hoverMode;
             _hoverMode = mode;
+
+            if (previousMode != mode)
+            {
+                Logger.Debug($"HoverMode: {previousMode} -> {mode}");
+            }
 
             if (mode != HoverMode.LinePending)
             {

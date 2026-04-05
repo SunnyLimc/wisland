@@ -65,6 +65,8 @@ namespace wisland.Services
                 GlobalSystemMediaTransportControlsSession? currentSession = manager.GetCurrentSession();
                 DateTimeOffset nowUtc = DateTimeOffset.UtcNow;
 
+                Logger.Trace($"Refreshing media sessions: system reports {sessions.Count} session(s)");
+
                 HashSet<GlobalSystemMediaTransportControlsSession> knownSessions;
                 lock (_gate)
                 {
@@ -126,6 +128,7 @@ namespace wisland.Services
                                 {
                                     tracked.MissingSinceUtc ??= nowUtc;
                                 }
+                                Logger.Debug($"Session rebound immediately: '{tracked.SessionKey}' ({tracked.SourceAppId}), provisional={provisionalReconnect}");
                             }
                             else
                             {
@@ -159,6 +162,7 @@ namespace wisland.Services
                             continue;
                         }
 
+                        Logger.Info($"Media session removed: '{tracked.SessionKey}' ({tracked.SourceAppId})");
                         shouldStartBurst |= string.Equals(tracked.SessionKey, _displayedSessionKey, StringComparison.Ordinal)
                             || tracked.IsSystemCurrent;
                         EnterWaitingState_NoLock(tracked, nowUtc);
@@ -244,6 +248,8 @@ namespace wisland.Services
             {
                 return;
             }
+
+            Logger.Debug("Starting refresh burst");
 
             CancellationTokenSource? previousCts;
             CancellationTokenSource nextCts = new();
@@ -428,6 +434,7 @@ namespace wisland.Services
                     hasChanges = ApplyMediaProperties_NoLock(tracked, nextTitle, nextArtist, nowUtc);
                     if (hasChanges)
                     {
+                        Logger.Debug($"Media properties updated for '{tracked.SessionKey}': Title='{nextTitle}', Artist='{nextArtist}'");
                         changeResult = PrepareStateChange_NoLock();
                     }
                 }
@@ -464,6 +471,7 @@ namespace wisland.Services
                     hasChanges = ApplyPlaybackState_NoLock(tracked, nextStatus, nowUtc);
                     if (hasChanges)
                     {
+                        Logger.Debug($"Playback state updated for '{tracked.SessionKey}': {nextStatus}");
                         changeResult = PrepareStateChange_NoLock();
                     }
                 }

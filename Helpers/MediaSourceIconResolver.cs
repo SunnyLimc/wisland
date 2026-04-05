@@ -55,6 +55,7 @@ namespace wisland.Helpers
             ImageSource? packagedIcon = await TryResolvePackagedIconAsync(sourceAppId);
             if (packagedIcon != null)
             {
+                Logger.Debug($"Icon resolved via packaged app for '{sourceAppId}'");
                 return packagedIcon;
             }
 
@@ -65,6 +66,7 @@ namespace wisland.Helpers
                 ImageSource? shortcutIcon = await TryResolveRegisteredShortcutIconAsync(registeredShortcut.Value);
                 if (shortcutIcon != null)
                 {
+                    Logger.Debug($"Icon resolved via shortcut for '{sourceAppId}'");
                     return shortcutIcon;
                 }
             }
@@ -74,9 +76,11 @@ namespace wisland.Helpers
                 ?? TryResolveExecutablePath(sourceAppId);
             if (string.IsNullOrWhiteSpace(executablePath))
             {
+                Logger.Debug($"No icon source found for '{sourceAppId}'");
                 return null;
             }
 
+            Logger.Debug($"Icon resolved via executable for '{sourceAppId}': {executablePath}");
             return await TryResolveExecutableIconAsync(executablePath);
         }
 

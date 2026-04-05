@@ -5,7 +5,6 @@ using System;
 using Windows.Graphics;
 using wisland.Helpers;
 using wisland.Models;
-
 namespace wisland
 {
     public sealed partial class MainWindow
@@ -37,6 +36,7 @@ namespace wisland
             RootGrid.CapturePointer(e.Pointer);
 
             GetCursorPos(out _dragStartScreenPos);
+            Logger.Debug($"Drag started at screen ({_dragStartScreenPos.X}, {_dragStartScreenPos.Y})");
 
             double physCenterX = _lastPhysX + (_lastPhysW / 2.0);
             double physTopY = _lastPhysY;
@@ -88,6 +88,7 @@ namespace wisland
             UpdateState();
             UpdateShadowState();
             SavePositionSettings();
+            Logger.Debug($"Drag ended at CenterX={_controller.Current.CenterX:F1}, Y={_controller.Current.Y:F1}");
         }
 
         private void RootGrid_PointerEntered(object sender, Microsoft.UI.Xaml.Input.PointerRoutedEventArgs e)

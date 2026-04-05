@@ -17,6 +17,7 @@ namespace wisland.Services
             string? registeredDisplayName = MediaSourceAppResolver.TryResolveDisplayName(rawSourceName);
             if (!string.IsNullOrWhiteSpace(registeredDisplayName))
             {
+                Logger.Debug($"Source name resolved via registered app: '{rawSourceName}' -> '{registeredDisplayName}'");
                 return registeredDisplayName;
             }
 

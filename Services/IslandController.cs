@@ -1,4 +1,5 @@
 using System;
+using wisland.Helpers;
 using wisland.Models;
 
 namespace wisland.Services
@@ -28,6 +29,9 @@ namespace wisland.Services
         public double TargetY => _targetY;
         private double _targetCompactOpacity = 1.0;
         private double _targetExpandedOpacity = 0.0;
+        private bool _lastLoggedDockState;
+        private double _lastLoggedTargetWidth;
+        private double _lastLoggedTargetHeight;
 
         public IslandController()
         {
@@ -43,6 +47,8 @@ namespace wisland.Services
             Current.Y = y;
             _targetY = y;
             IsDocked = isDocked;
+            _lastLoggedDockState = isDocked;
+            Logger.Debug($"Position initialized: CenterX={centerX:F1}, Y={y:F1}, IsDocked={isDocked}");
         }
 
         /// <summary>
@@ -63,6 +69,17 @@ namespace wisland.Services
             else
             {
                 SetCompactTargets();
+            }
+
+            if (Logger.IsEnabled(Helpers.LogLevel.Debug))
+            {
+                if (Math.Abs(_targetWidth - _lastLoggedTargetWidth) > 1.0
+                    || Math.Abs(_targetHeight - _lastLoggedTargetHeight) > 1.0)
+                {
+                    Logger.Debug($"Target state: W={_targetWidth:F0}x H={_targetHeight:F0}, Y={_targetY:F1}, CompactOp={_targetCompactOpacity:F2}, ExpandedOp={_targetExpandedOpacity:F2}");
+                    _lastLoggedTargetWidth = _targetWidth;
+                    _lastLoggedTargetHeight = _targetHeight;
+                }
             }
         }
 
@@ -136,23 +153,35 @@ namespace wisland.Services
             }
             else
             {
+                if (IsDocked)
+                {
+                    Logger.Debug($"Dock released during drag at Y={y:F1}");
+                }
                 // Real-time dock release to allow freedom of movement (Fixes "stuck at top" issue)
                 IsDocked = false;
             }
-            
+
             UpdateTargetState();
         }
 
         public void FinalizeDrag()
         {
+            bool wasDocked = IsDocked;
             IsDocked = Current.Y <= IslandConfig.DockThreshold;
-            
+
             // Set the final rest position as the new target
             if (!IsDocked)
             {
                 _targetY = Math.Max(IslandConfig.DefaultY, Current.Y);
             }
-            
+
+            if (wasDocked != IsDocked)
+            {
+                Logger.Debug($"Dock state changed: {wasDocked} -> {IsDocked} at Y={Current.Y:F1}");
+            }
+            _lastLoggedDockState = IsDocked;
+            Logger.Debug($"Drag finalized: CenterX={Current.CenterX:F1}, Y={Current.Y:F1}, IsDocked={IsDocked}");
+
             UpdateTargetState();
         }
 

@@ -7,6 +7,8 @@ using System.Text.Json;
 using wisland.Helpers;
 using wisland.Models;
 
+using LogLevel = wisland.Helpers.LogLevel;
+
 namespace wisland.Services
 {
     /// <summary>
@@ -54,6 +56,9 @@ namespace wisland.Services
         /// <summary>Whether AI song metadata override is enabled.</summary>
         public bool AiSongOverrideEnabled { get; set; }
 
+        /// <summary>User-configured log level. Null means use compile-time default.</summary>
+        public LogLevel? LogLevel { get; set; }
+
         /// <summary>
         /// Load settings from disk. Returns silently with defaults if file doesn't exist or is corrupted.
         /// </summary>
@@ -79,6 +84,7 @@ namespace wisland.Services
                     AiModels = DeserializeAiModels(data.AiModels);
                     ActiveAiModelId = data.ActiveAiModelId;
                     AiSongOverrideEnabled = data.AiSongOverrideEnabled;
+                    LogLevel = ParseLogLevel(data.LogLevel);
                 }
             }
             catch (Exception ex)
@@ -111,7 +117,8 @@ namespace wisland.Services
                     RelativeTopY = SanitizeRelativeTopY(RelativeTopY),
                     AiModels = SerializeAiModels(AiModels),
                     ActiveAiModelId = ActiveAiModelId,
-                    AiSongOverrideEnabled = AiSongOverrideEnabled
+                    AiSongOverrideEnabled = AiSongOverrideEnabled,
+                    LogLevel = LogLevel?.ToString()
                 };
 
                 var json = JsonSerializer.Serialize(data, JsonOptions);
@@ -147,6 +154,9 @@ namespace wisland.Services
 
         private static double? SanitizeRelativeTopY(double? value)
             => value.HasValue && double.IsFinite(value.Value) && value.Value >= 0 ? value : null;
+
+        private static LogLevel? ParseLogLevel(string? value)
+            => Enum.TryParse<LogLevel>(value, ignoreCase: true, out var level) ? level : null;
 
         private static string ProtectApiKey(string plainText)
         {
@@ -230,6 +240,7 @@ namespace wisland.Services
             public List<AiModelProfileData>? AiModels { get; set; }
             public string? ActiveAiModelId { get; set; }
             public bool AiSongOverrideEnabled { get; set; }
+            public string? LogLevel { get; set; }
         }
 
         private sealed class AiModelProfileData

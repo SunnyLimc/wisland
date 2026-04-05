@@ -107,6 +107,7 @@ namespace wisland.Services
                     _manager = manager;
                 }
 
+                Logger.Info("Media session manager initialized successfully");
                 await RefreshSessionsAndStatesAsync().ConfigureAwait(false);
             }
             catch (Exception ex)
@@ -198,6 +199,10 @@ namespace wisland.Services
         {
             lock (_gate)
             {
+                if (!string.Equals(_displayedSessionKey, sessionKey, StringComparison.Ordinal))
+                {
+                    Logger.Debug($"Displayed session key changed: '{_displayedSessionKey}' -> '{sessionKey}'");
+                }
                 _displayedSessionKey = sessionKey;
                 if (!string.IsNullOrWhiteSpace(sessionKey)
                     && _trackedSourcesByKey.TryGetValue(sessionKey, out TrackedSource? tracked))
@@ -211,6 +216,7 @@ namespace wisland.Services
         {
             try
             {
+                Logger.Debug($"PlayPause requested for session '{sessionKey}'");
                 GlobalSystemMediaTransportControlsSession? session = GetSession(sessionKey);
                 if (session != null)
                 {
@@ -227,6 +233,7 @@ namespace wisland.Services
         {
             try
             {
+                Logger.Debug($"SkipNext requested for session '{sessionKey}'");
                 ArmTransportContinuation(sessionKey);
                 GlobalSystemMediaTransportControlsSession? session = GetSession(sessionKey);
                 if (session != null)
@@ -248,6 +255,7 @@ namespace wisland.Services
         {
             try
             {
+                Logger.Debug($"SkipPrevious requested for session '{sessionKey}'");
                 ArmTransportContinuation(sessionKey);
                 GlobalSystemMediaTransportControlsSession? session = GetSession(sessionKey);
                 if (session != null)

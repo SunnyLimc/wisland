@@ -3,7 +3,6 @@ using Microsoft.UI.Xaml.Media;
 using Windows.Graphics;
 using wisland.Helpers;
 using wisland.Models;
-
 namespace wisland
 {
     public sealed partial class MainWindow
@@ -24,6 +23,7 @@ namespace wisland
             _settings.AnchorPhysicalX = _hasAnchorPhysicalPoint ? _anchorPhysicalX : null;
             _settings.AnchorPhysicalY = _hasAnchorPhysicalPoint ? _anchorPhysicalY : null;
             _settings.Save();
+            Logger.Debug($"Position saved: CenterX={_settings.CenterX:F1}, Y={_settings.LastY:F1}, Docked={_settings.IsDocked}");
         }
 
         private void OnWindowClosed(object sender, WindowEventArgs args)
@@ -33,6 +33,7 @@ namespace wisland
                 return;
             }
 
+            Logger.Info("MainWindow closing, beginning cleanup");
             _isClosed = true;
 
             _notificationCts?.Cancel();
@@ -76,6 +77,8 @@ namespace wisland
             {
                 return;
             }
+
+            Logger.Info("Application exit requested");
 
             try { _settingsWindow?.Close(); } catch { }
             _settingsWindow = null;
@@ -139,6 +142,7 @@ namespace wisland
             }
 
             _startupBoundsReconcileAttempts++;
+            Logger.Debug($"Startup bounds reconciliation pass {_startupBoundsReconcileAttempts}: expected={expectedWidth:F1}x{expectedHeight:F1}, actual={RootGrid.ActualWidth:F1}x{RootGrid.ActualHeight:F1}");
             RectInt32 bounds = ResolveIslandWindowBounds(state, displayWorkArea, _dpiScale);
             ApplyWindowBounds(bounds, force: true);
             UpdateAnchorPhysicalPoint(displayWorkArea, state, physWidth, physHeight);

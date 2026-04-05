@@ -1,7 +1,6 @@
 using Microsoft.UI.Xaml;
 using System;
 using wisland.Helpers;
-
 namespace wisland.Services
 {
     public sealed class ForegroundWindowMonitor : IDisposable
@@ -68,6 +67,7 @@ namespace wisland.Services
                 return;
             }
 
+            Logger.Debug($"Foreground maximized state: {IsForegroundMaximized} -> {isForegroundMaximized}");
             IsForegroundMaximized = isForegroundMaximized;
             ForegroundMaximizedChanged?.Invoke(isForegroundMaximized);
         }

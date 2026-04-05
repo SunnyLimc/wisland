@@ -25,6 +25,7 @@ namespace wisland
         private AppearancePage? _appearancePage;
         private AiModelsPage? _aiModelsPage;
         private AiSongOverridePage? _aiSongOverridePage;
+        private DiagnosticsPage? _diagnosticsPage;
 
         public SettingsWindow(
             SettingsService settings,
@@ -80,6 +81,12 @@ namespace wisland
                 Tag = "aisongoverride",
                 Icon = new FontIcon { Glyph = "\uE8D6" }
             });
+            _navView.MenuItems.Add(new NavigationViewItem
+            {
+                Content = "Diagnostics",
+                Tag = "diagnostics",
+                Icon = new FontIcon { Glyph = "\uE9D9" }
+            });
 
             _navView.SelectionChanged += NavView_SelectionChanged;
             _navView.Loaded += NavView_Loaded;
@@ -123,6 +130,10 @@ namespace wisland
                     _aiSongOverridePage ??= new AiSongOverridePage(_settings, _aiResolver, OnAiSettingsChanged);
                     _aiSongOverridePage.RefreshUI();
                     _contentFrame.Content = _aiSongOverridePage;
+                    break;
+                case "diagnostics":
+                    _diagnosticsPage ??= new DiagnosticsPage(_settings);
+                    _contentFrame.Content = _diagnosticsPage;
                     break;
             }
         }

@@ -123,6 +123,10 @@ namespace wisland
 
                 // Load saved settings
                 _settings.Load();
+                if (_settings.LogLevel.HasValue)
+                {
+                    Logger.SetMinimumLevel(_settings.LogLevel.Value);
+                }
                 _aiSongResolver = new AiSongResolverService(_settings);
 
                 InitializeDisplayAnchorFromSettings();

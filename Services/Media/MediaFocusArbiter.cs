@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using wisland.Helpers;
 using wisland.Models;
 using Windows.Media.Control;
 
@@ -82,6 +83,7 @@ namespace wisland.Services
             DateTimeOffset? pendingSwitchDueUtc = GetPendingAutoSwitchDueUtc();
             if (pendingSwitchDueUtc.HasValue && pendingSwitchDueUtc.Value <= nowUtc)
             {
+                Logger.Debug($"Auto-switch debounce expired, switching to '{autoWinner.Value.SessionKey}' ({autoWinner.Value.SourceName})");
                 ClearPendingAutoWinner();
                 return new MediaFocusDecision(
                     autoWinner.Value,
@@ -132,6 +134,7 @@ namespace wisland.Services
                 return;
             }
 
+            Logger.Debug($"Auto-switch debounce started for '{winnerKey}'");
             _pendingAutoWinnerKey = winnerKey;
             _pendingAutoWinnerSinceUtc = nowUtc;
         }

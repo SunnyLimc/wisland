@@ -1,6 +1,7 @@
 using Microsoft.UI.Xaml;
 using Windows.UI;
 using Windows.UI.ViewManagement;
+using wisland.Helpers;
 using wisland.Models;
 
 namespace wisland
@@ -13,6 +14,7 @@ namespace wisland
         public void SetBackdrop(BackdropType type, bool persist = true)
         {
             _currentBackdropType = type;
+            Logger.Info($"Backdrop type changed to {type}");
             RefreshAppearance();
 
             if (persist && _settings.BackdropType != type)
@@ -40,6 +42,8 @@ namespace wisland
                 GetThemeKind(),
                 _uiSettings.GetColorValue(UIColorType.Accent));
 
+            Logger.Debug($"Appearance refreshed: theme={GetThemeKind()}, accent=#{_uiSettings.GetColorValue(UIColorType.Accent):X8}, backdrop={_currentBackdropType}");
+
             _currentVisualTokens = tokens;
             ApplySessionPickerAppearance(tokens);
             _shellVisibilityService.ApplyAppearance(tokens.LinePalette, IslandConfig.NativeLinePhysicalHeight);
@@ -54,6 +58,8 @@ namespace wisland
             {
                 return;
             }
+
+            Logger.Debug("System color values changed, refreshing appearance");
 
             DispatcherQueue.TryEnqueue(() =>
             {

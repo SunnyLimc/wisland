@@ -33,10 +33,15 @@ namespace wisland.Services
 
         public void ShowDockedLine(int physicalX, int monitorTopPhysical, int physicalWidth, double progress)
         {
+            bool firstShow = _lineWindow == null;
             NativeLineWindow lineWindow = _lineWindow ??= new NativeLineWindow();
             lineWindow.ApplyPalette(_linePalette);
             lineWindow.SetProgress(progress);
             lineWindow.Show(physicalX, monitorTopPhysical, physicalWidth, _lineHeightPhysical);
+            if (firstShow)
+            {
+                Logger.Debug($"Docked line window created and shown: X={physicalX}, W={physicalWidth}");
+            }
         }
 
         public void HideDockedLine()
@@ -46,6 +51,7 @@ namespace wisland.Services
                 return;
             }
 
+            Logger.Debug("Docked line window hidden");
             _lineWindow.Hide();
         }
 

@@ -89,7 +89,13 @@ namespace wisland.Services
             string key = BuildCacheKey(sourceAppId, rawTitle, rawArtist);
             lock (_gate)
             {
-                return _cache.TryGetValue(key, out var result) ? result : null;
+                if (_cache.TryGetValue(key, out var result))
+                {
+                    Logger.Debug($"AI cache hit: '{rawTitle}' by '{rawArtist}' -> '{result.Title}' by '{result.Artist}'");
+                    return result;
+                }
+                Logger.Debug($"AI cache miss: '{rawTitle}' by '{rawArtist}'");
+                return null;
             }
         }
 
@@ -106,9 +112,12 @@ namespace wisland.Services
             if (profile == null)
                 return null;
 
+            Logger.Info($"AI song resolution requested: '{rawTitle}' by '{rawArtist}' from '{sourceAppId}'");
+
             try
             {
                 ChatClient client = CreateChatClient(profile);
+                Logger.Debug($"AI request: provider={AiModelProviderNames.Normalize(profile.Provider)}, model={profile.ModelId}, endpoint={profile.Endpoint}");
 
                 var messages = new List<ChatMessage>
                 {
@@ -150,6 +159,8 @@ namespace wisland.Services
                     Artist = resolvedArtist,
                     ResolvedAtUtc = DateTimeOffset.UtcNow
                 };
+
+                Logger.Info($"AI song resolved: '{rawTitle}' by '{rawArtist}' -> '{resolvedTitle}' by '{resolvedArtist}'");
 
                 lock (_gate)
                 {

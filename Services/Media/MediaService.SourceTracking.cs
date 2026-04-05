@@ -36,6 +36,7 @@ namespace wisland.Services
                     string.Equals(candidate.SessionKey, transportTarget.SessionKey, StringComparison.Ordinal));
                 if (isReservedWaitingCandidate)
                 {
+                    Logger.Debug($"Waiting source matched via transport continuation target: '{transportTarget.SessionKey}'");
                     provisionalReconnect = true;
                     return transportTarget;
                 }
@@ -48,6 +49,7 @@ namespace wisland.Services
                     && string.Equals(source.Artist, prefetchedState.Artist, StringComparison.Ordinal));
                 if (exactMatch != null)
                 {
+                    Logger.Debug($"Waiting source matched by exact metadata: '{exactMatch.SessionKey}' Title='{prefetchedState.Title}'");
                     return exactMatch;
                 }
             }
@@ -286,6 +288,7 @@ namespace wisland.Services
                 nowUtc);
 
             _trackedSourcesByKey.Add(tracked.SessionKey, tracked);
+            Logger.Info($"New media session created: '{tracked.SessionKey}' for app '{tracked.SourceName}' ({tracked.SourceAppId})");
             return tracked;
         }
 
@@ -436,6 +439,8 @@ namespace wisland.Services
                 return false;
             }
 
+            Logger.Debug($"Pending reconnect finalized for '{tracked.SessionKey}': Title='{tracked.PendingTitle}', Status={tracked.PendingPlaybackStatus}");
+
             bool hasChanges = false;
             if (tracked.Presence != MediaSessionPresence.Active)
             {
@@ -509,6 +514,7 @@ namespace wisland.Services
             foreach (string sessionKey in expiredKeys)
             {
                 _trackedSourcesByKey.Remove(sessionKey);
+                Logger.Debug($"Expired waiting source cleaned up: '{sessionKey}'");
                 if (string.Equals(_systemCurrentSessionKey, sessionKey, StringComparison.Ordinal))
                 {
                     _systemCurrentSessionKey = null;
@@ -575,6 +581,7 @@ namespace wisland.Services
             }
 
             MergeTransportCandidateIntoTarget_NoLock(target, candidate, nowUtc);
+            Logger.Debug($"Transport continuation candidate absorbed: '{candidate.SessionKey}' -> '{target.SessionKey}'");
             hasChanges = true;
         }
 
@@ -707,6 +714,7 @@ namespace wisland.Services
                     tracked.SourceAppId,
                     nowUtc,
                     nowUtc + _missingSourceGrace);
+                Logger.Debug($"Transport continuation armed for '{tracked.SessionKey}' ({tracked.SourceAppId})");
             }
         }
 

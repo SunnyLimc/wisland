@@ -12,7 +12,10 @@ namespace wisland
         /// Show an expanded notification for the specified duration.
         /// </summary>
         public void ShowNotification(string title, string message, int durationMs = IslandConfig.DefaultNotificationDurationMs, string header = "Notification")
-            => _ = ShowNotificationAsync(title, message, header, durationMs);
+        {
+            Logger.Info($"Notification shown: '{title}' ({durationMs}ms)");
+            _ = ShowNotificationAsync(title, message, header, durationMs);
+        }
 
         private async Task ShowNotificationAsync(string title, string message, string header, int durationMs)
         {
@@ -46,6 +49,7 @@ namespace wisland
             }
             catch (OperationCanceledException)
             {
+                Logger.Debug($"Notification cancelled or replaced: '{title}'");
                 // A newer notification replaced this one or the window is closing.
             }
             catch (Exception ex)

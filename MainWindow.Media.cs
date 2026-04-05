@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
+using wisland.Helpers;
 using wisland.Models;
 using wisland.Services;
 
@@ -114,6 +115,7 @@ namespace wisland
             if (cached == null)
                 return context;
 
+            Logger.Debug($"AI override applied: '{session.Title}' → '{cached.Title}'");
             var overridden = session with { Title = cached.Title, Artist = cached.Artist };
             return context with
             {
@@ -322,9 +324,13 @@ namespace wisland
             RestartSelectionLockTimer();
             SyncAutoFocusTimer(null);
 
-            if (displayedSessionChanged && direction != ContentTransitionDirection.None)
+            if (displayedSessionChanged)
             {
-                RegisterPendingMediaTransitionDirection(direction);
+                Logger.Debug($"Session selected: key={sessionKey}, direction={direction}");
+                if (direction != ContentTransitionDirection.None)
+                {
+                    RegisterPendingMediaTransitionDirection(direction);
+                }
             }
 
             SyncMediaUI();
@@ -614,6 +620,7 @@ namespace wisland
             };
             _transportWaitingStartedUtc = nowUtc;
             _transportWaitingUntilUtc = nowUtc.AddMilliseconds(IslandConfig.MediaMissingGraceMs);
+            Logger.Debug($"Transport waiting fallback armed for session={displayedSession.Value.SessionKey}, grace={IslandConfig.MediaMissingGraceMs}ms");
         }
 
         private MediaSessionSnapshot? GetTransportWaitingFallbackSnapshot(IReadOnlyList<MediaSessionSnapshot> sessions)

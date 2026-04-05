@@ -23,6 +23,7 @@ namespace wisland
         {
             try
             {
+                Logger.Info("Wisland application starting");
                 _window = new MainWindow();
                 _window.Activate();
             }

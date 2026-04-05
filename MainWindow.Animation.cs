@@ -7,11 +7,14 @@ using System.Numerics;
 using Windows.Graphics;
 using wisland.Helpers;
 using wisland.Models;
-
 namespace wisland
 {
     public sealed partial class MainWindow
     {
+        private bool _lastLoggedOffscreenState;
+        private double _lastLoggedDpiScale;
+        private int _lastLoggedWorkAreaX, _lastLoggedWorkAreaY, _lastLoggedWorkAreaW, _lastLoggedWorkAreaH;
+
         private void OnCompositionTargetRendering(object? sender, object e)
         {
             if (e is RenderingEventArgs args)
@@ -42,6 +45,25 @@ namespace wisland
             RectInt32 displayWorkArea = GetCurrentDisplayWorkArea();
             int monitorTopPhys = displayWorkArea.Y;
             _dpiScale = GetDisplayDpiScale(displayWorkArea);
+
+            if (Logger.IsEnabled(Helpers.LogLevel.Debug))
+            {
+                if (Math.Abs(_dpiScale - _lastLoggedDpiScale) > 0.01)
+                {
+                    Logger.Debug($"DPI scale changed: {_lastLoggedDpiScale:F2} -> {_dpiScale:F2}");
+                    _lastLoggedDpiScale = _dpiScale;
+                }
+                if (displayWorkArea.X != _lastLoggedWorkAreaX || displayWorkArea.Y != _lastLoggedWorkAreaY
+                    || displayWorkArea.Width != _lastLoggedWorkAreaW || displayWorkArea.Height != _lastLoggedWorkAreaH)
+                {
+                    Logger.Debug($"Display work area changed: X={displayWorkArea.X}, Y={displayWorkArea.Y}, W={displayWorkArea.Width}, H={displayWorkArea.Height}");
+                    _lastLoggedWorkAreaX = displayWorkArea.X;
+                    _lastLoggedWorkAreaY = displayWorkArea.Y;
+                    _lastLoggedWorkAreaW = displayWorkArea.Width;
+                    _lastLoggedWorkAreaH = displayWorkArea.Height;
+                }
+            }
+
             _mediaService.Tick(dt);
 
             double t = 1.0 - Math.Exp(-IslandConfig.AnimationSpeed * dt);
@@ -211,6 +233,17 @@ namespace wisland
                 ShowLineWindow(physX, monitorTopPhys, physWidth);
                 UpdateShadowState();
                 bounds = new RectInt32(physX, physY, physWidth, physHeight);
+
+                if (!_lastLoggedOffscreenState)
+                {
+                    Logger.Debug($"Island moved offscreen, line mode active (offscreen={_controller.IsOffscreen()}, dockedLine={shouldDisplayDockedLineNow})");
+                    _lastLoggedOffscreenState = true;
+                }
+            }
+            else if (_lastLoggedOffscreenState)
+            {
+                Logger.Debug("Island returned on-screen from line mode");
+                _lastLoggedOffscreenState = false;
             }
 
             ApplyWindowBounds(bounds);
@@ -322,6 +355,7 @@ namespace wisland
             _lastRenderTime = TimeSpan.Zero;
             CompositionTarget.Rendering += OnCompositionTargetRendering;
             _isRenderLoopActive = true;
+            Logger.Debug("Render loop started");
         }
 
         private void StopRenderLoop()
@@ -334,6 +368,7 @@ namespace wisland
             CompositionTarget.Rendering -= OnCompositionTargetRendering;
             _isRenderLoopActive = false;
             _lastRenderTime = TimeSpan.Zero;
+            Logger.Debug("Render loop stopped");
         }
 
         private void UpdateRenderLoopState()

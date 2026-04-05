@@ -54,6 +54,7 @@ namespace wisland.Services
                     shouldNotifyTrack = true;
                     trackTitle = tracked.Title;
                     trackArtist = tracked.Artist;
+                    Logger.Info($"Track changed for system current '{tracked.SessionKey}': '{trackTitle}' by '{trackArtist}'");
                 }
 
                 _lastSystemCurrentTrackSignature = signature;
@@ -96,6 +97,7 @@ namespace wisland.Services
         {
             if (changeResult.ShouldNotifySessions)
             {
+                Logger.Debug($"Dispatching session change: {_sessions.Count} session(s)");
                 SessionsChanged?.Invoke();
                 MediaChanged?.Invoke();
             }

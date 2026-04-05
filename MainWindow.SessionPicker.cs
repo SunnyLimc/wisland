@@ -154,6 +154,7 @@ namespace wisland
                 return;
             }
 
+            Logger.Debug($"Session picker overlay opening with {rows.Count} row(s)");
             _isSessionPickerOpen = true;
             _controller.IsTransientSurfaceOpen = true;
             ExpandedContent.SetSessionPickerExpanded(
@@ -173,6 +174,7 @@ namespace wisland
                 return;
             }
 
+            Logger.Debug($"Session picker overlay closing (dismiss={dismissKind})");
             SessionPickerOverlayDismissMotion dismissMotion = SessionPickerOverlayDismissMotion.FromKind(dismissKind);
 
             ExpandedContent.SetSessionPickerExpanded(

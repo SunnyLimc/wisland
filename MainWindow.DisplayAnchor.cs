@@ -15,6 +15,7 @@ namespace wisland
                 _controller.InitializePosition(savedCenterX, _settings.IsDocked ? 0 : savedTopY, _settings.IsDocked);
                 ClampControllerPositionToDisplay(savedWorkArea, _controller.Current.Width, _controller.Current.Height, _dpiScale);
                 UpdateAnchorPhysicalPoint(savedWorkArea, _controller.Current, GetPhysicalPixels(_controller.Current.Width, _dpiScale), GetPhysicalPixels(_controller.Current.Height, _dpiScale));
+                Logger.Info($"Display anchor restored from settings: CenterX={savedCenterX:F1}, TopY={savedTopY:F1}, Docked={_settings.IsDocked}, WorkArea={savedWorkArea.Width}x{savedWorkArea.Height}");
                 return;
             }
 
@@ -26,6 +27,7 @@ namespace wisland
             _controller.InitializePosition(defaultCenterX, _settings.IsDocked ? 0 : defaultTopY, _settings.IsDocked);
             ClampControllerPositionToDisplay(primaryWorkArea, _controller.Current.Width, _controller.Current.Height, _dpiScale);
             UpdateAnchorPhysicalPoint(primaryWorkArea, _controller.Current, GetPhysicalPixels(_controller.Current.Width, _dpiScale), GetPhysicalPixels(_controller.Current.Height, _dpiScale));
+            Logger.Info($"Display anchor initialized to primary display center: CenterX={defaultCenterX:F1}, TopY={defaultTopY:F1}, WorkArea={primaryWorkArea.Width}x{primaryWorkArea.Height}");
         }
 
         private bool TryGetSavedDisplayState(out RectInt32 workArea, out double relativeCenterX, out double relativeTopY)
