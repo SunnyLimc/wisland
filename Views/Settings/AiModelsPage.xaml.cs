@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.Collections.ObjectModel;
 using System.Linq;
+using System.Threading;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
 using wisland.Helpers;
@@ -67,6 +68,7 @@ namespace wisland.Views.Settings
                 DisplayNameBox.Text = model.DisplayName;
                 EndpointBox.Text = model.Endpoint;
                 ApiKeyBox.Password = model.ApiKey;
+                ApiKeyBoxGoogle.Password = model.ApiKey;
                 ModelIdBox.Text = model.ModelId;
                 SetReasoningEffortCombo(model.ReasoningEffort);
                 GroundingToggle.IsOn = model.GoogleGroundingEnabled;
@@ -94,28 +96,37 @@ namespace wisland.Views.Settings
         {
             string displayName = DisplayNameBox.Text.Trim();
             string endpoint = EndpointBox.Text.Trim();
-            string apiKey = ApiKeyBox.Password;
             string modelId = ModelIdBox.Text.Trim();
             string provider = AiModelProviderNames.Normalize(GetSelectedProviderTag());
+            bool isGoogle = provider == nameof(AiModelProvider.GoogleAIStudio);
+            string apiKey = isGoogle ? ApiKeyBoxGoogle.Password : ApiKeyBox.Password;
 
-            if (string.IsNullOrEmpty(displayName) || string.IsNullOrEmpty(endpoint)
-                || string.IsNullOrEmpty(apiKey) || string.IsNullOrEmpty(modelId))
+            if (string.IsNullOrEmpty(displayName) || string.IsNullOrEmpty(apiKey) || string.IsNullOrEmpty(modelId))
             {
                 FormError.Message = Loc.GetString("AiModels/ValidationAllRequired");
                 FormError.IsOpen = true;
                 return;
             }
 
-            if (!Uri.TryCreate(endpoint, UriKind.Absolute, out _))
+            if (!isGoogle)
             {
-                FormError.Message = Loc.GetString("AiModels/ValidationInvalidUrl");
-                FormError.IsOpen = true;
-                return;
+                if (string.IsNullOrEmpty(endpoint))
+                {
+                    FormError.Message = Loc.GetString("AiModels/ValidationAllRequired");
+                    FormError.IsOpen = true;
+                    return;
+                }
+                if (!Uri.TryCreate(endpoint, UriKind.Absolute, out _))
+                {
+                    FormError.Message = Loc.GetString("AiModels/ValidationInvalidUrl");
+                    FormError.IsOpen = true;
+                    return;
+                }
             }
 
             string? reasoningEffort = null;
             bool googleGroundingEnabled = false;
-            if (provider == nameof(AiModelProvider.GoogleAIStudio))
+            if (isGoogle)
             {
                 reasoningEffort = GetSelectedReasoningEffort();
                 if (string.IsNullOrEmpty(reasoningEffort)) reasoningEffort = null;
@@ -162,6 +173,70 @@ namespace wisland.Views.Settings
         {
             FormPanel.Visibility = Visibility.Collapsed;
             FormError.IsOpen = false;
+            TestResultBar.IsOpen = false;
+        }
+
+        private CancellationTokenSource? _testCts;
+
+        private async void TestConnection_Click(object sender, RoutedEventArgs e)
+        {
+            string provider = AiModelProviderNames.Normalize(GetSelectedProviderTag());
+            bool isGoogle = provider == nameof(AiModelProvider.GoogleAIStudio);
+            string apiKey = isGoogle ? ApiKeyBoxGoogle.Password : ApiKeyBox.Password;
+            string modelId = ModelIdBox.Text.Trim();
+
+            if (string.IsNullOrEmpty(apiKey) || string.IsNullOrEmpty(modelId))
+            {
+                TestResultBar.Severity = InfoBarSeverity.Warning;
+                TestResultBar.Message = Loc.GetString("AiModels/TestMissingFields");
+                TestResultBar.IsOpen = true;
+                return;
+            }
+
+            _testCts?.Cancel();
+            _testCts = new CancellationTokenSource(TimeSpan.FromSeconds(30));
+            TestConnectionButton.IsEnabled = false;
+            TestResultBar.Severity = InfoBarSeverity.Informational;
+            TestResultBar.Message = Loc.GetString("AiModels/TestRunning");
+            TestResultBar.IsOpen = true;
+
+            try
+            {
+                var profile = new AiModelProfile
+                {
+                    Provider = provider,
+                    Endpoint = EndpointBox.Text.Trim(),
+                    ApiKey = apiKey,
+                    ModelId = modelId,
+                    ReasoningEffort = GetSelectedReasoningEffort(),
+                    GoogleGroundingEnabled = isGoogle && GroundingToggle.IsOn
+                };
+
+                var result = await AiSongResolverService.TestModelAsync(
+                    profile,
+                    Loc.GetString("AiModels/TestSongTitle"),
+                    Loc.GetString("AiModels/TestSongArtist"),
+                    _testCts.Token);
+
+                TestResultBar.Severity = InfoBarSeverity.Success;
+                TestResultBar.Message = string.Format(
+                    Loc.GetString("AiModels/TestSuccess"),
+                    result?.Title ?? "?", result?.Artist ?? "?");
+            }
+            catch (OperationCanceledException)
+            {
+                TestResultBar.Severity = InfoBarSeverity.Warning;
+                TestResultBar.Message = Loc.GetString("AiModels/TestTimeout");
+            }
+            catch (Exception ex)
+            {
+                TestResultBar.Severity = InfoBarSeverity.Error;
+                TestResultBar.Message = string.Format(Loc.GetString("AiModels/TestFailed"), ex.Message);
+            }
+            finally
+            {
+                TestConnectionButton.IsEnabled = true;
+            }
         }
 
         private void ProviderCombo_SelectionChanged(object sender, SelectionChangedEventArgs e)
@@ -177,10 +252,13 @@ namespace wisland.Views.Settings
         {
             if (ReasoningEffortCombo == null || GroundingToggle == null || GroundingHintText == null) return;
 
-            bool isGoogleAiStudio = AiModelProviderNames.Normalize(GetSelectedProviderTag()) == nameof(AiModelProvider.GoogleAIStudio);
-            ReasoningEffortCombo.Visibility = isGoogleAiStudio ? Visibility.Visible : Visibility.Collapsed;
-            GroundingToggle.Visibility = isGoogleAiStudio ? Visibility.Visible : Visibility.Collapsed;
-            GroundingHintText.Visibility = isGoogleAiStudio ? Visibility.Visible : Visibility.Collapsed;
+            bool isGoogle = AiModelProviderNames.Normalize(GetSelectedProviderTag()) == nameof(AiModelProvider.GoogleAIStudio);
+            EndpointBox.Visibility = isGoogle ? Visibility.Collapsed : Visibility.Visible;
+            ApiKeyBox.Visibility = isGoogle ? Visibility.Collapsed : Visibility.Visible;
+            ApiKeyBoxGoogle.Visibility = isGoogle ? Visibility.Visible : Visibility.Collapsed;
+            ReasoningEffortCombo.Visibility = isGoogle ? Visibility.Visible : Visibility.Collapsed;
+            GroundingToggle.Visibility = isGoogle ? Visibility.Visible : Visibility.Collapsed;
+            GroundingHintText.Visibility = isGoogle ? Visibility.Visible : Visibility.Collapsed;
         }
 
         private string GetSelectedProviderTag()
@@ -231,16 +309,17 @@ namespace wisland.Views.Settings
             DisplayNameBox.Text = string.Empty;
             EndpointBox.Text = string.Empty;
             ApiKeyBox.Password = string.Empty;
+            ApiKeyBoxGoogle.Password = string.Empty;
             ModelIdBox.Text = string.Empty;
             ReasoningEffortCombo.SelectedIndex = 0;
             GroundingToggle.IsOn = true;
             FormError.IsOpen = false;
+            TestResultBar.IsOpen = false;
         }
 
         private static string GetDefaultEndpoint(string provider) => provider switch
         {
             nameof(AiModelProvider.OpenAICompatible) => "https://api.openai.com/v1",
-            nameof(AiModelProvider.GoogleAIStudio) => "https://generativelanguage.googleapis.com/v1beta/openai/",
             _ => string.Empty
         };
 

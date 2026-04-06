@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using System.Threading;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
 using wisland.Helpers;
@@ -227,6 +228,78 @@ namespace wisland.Views.Settings
         private void OnCacheChanged()
         {
             DispatcherQueue?.TryEnqueue(RefreshCacheCount);
+        }
+
+        private CancellationTokenSource? _testCts;
+
+        private async void TestRun_Click(object sender, RoutedEventArgs e)
+        {
+            string testTitle = TestSongTitleBox.Text?.Trim() ?? "";
+            string testArtist = TestSongArtistBox.Text?.Trim() ?? "";
+
+            if (string.IsNullOrEmpty(testTitle))
+            {
+                TestResultInfoBar.Severity = InfoBarSeverity.Warning;
+                TestResultInfoBar.Message = Loc.GetString("AiSong/TestMissingTitle");
+                TestResultInfoBar.IsOpen = true;
+                return;
+            }
+
+            string? activeId = _settings.ActiveAiModelId;
+            var profile = string.IsNullOrEmpty(activeId)
+                ? null
+                : _settings.AiModels.FirstOrDefault(m => string.Equals(m.Id, activeId, StringComparison.Ordinal));
+
+            if (profile == null)
+            {
+                TestResultInfoBar.Severity = InfoBarSeverity.Warning;
+                TestResultInfoBar.Message = Loc.GetString("AiSong/TestNoModel");
+                TestResultInfoBar.IsOpen = true;
+                return;
+            }
+
+            _testCts?.Cancel();
+            _testCts = new CancellationTokenSource(TimeSpan.FromSeconds(30));
+            TestRunButton.IsEnabled = false;
+            TestResultInfoBar.Severity = InfoBarSeverity.Informational;
+            TestResultInfoBar.Message = Loc.GetString("AiSong/TestRunning");
+            TestResultInfoBar.IsOpen = true;
+
+            try
+            {
+                string sourceName = TestSourceNameBox.Text?.Trim() ?? "Test";
+                double duration = double.IsNaN(TestDurationBox.Value) ? 0 : TestDurationBox.Value;
+
+                string systemPrompt = AiSongPromptBuilder.BuildSystemPrompt();
+                string userMessage = AiSongPromptBuilder.BuildUserMessage(
+                    testTitle, testArtist, duration,
+                    string.IsNullOrEmpty(sourceName) ? "Test" : sourceName,
+                    _settings.AiPreferredLanguage,
+                    _settings.AiTargetMarket,
+                    _settings.AiPreferNativePrompt);
+
+                var result = await AiSongResolverService.TestModelAsync(
+                    profile, testTitle, testArtist, _testCts.Token);
+
+                TestResultInfoBar.Severity = InfoBarSeverity.Success;
+                TestResultInfoBar.Message = string.Format(
+                    Loc.GetString("AiSong/TestSuccess"),
+                    result?.Title ?? "?", result?.Artist ?? "?");
+            }
+            catch (OperationCanceledException)
+            {
+                TestResultInfoBar.Severity = InfoBarSeverity.Warning;
+                TestResultInfoBar.Message = Loc.GetString("AiSong/TestTimeout");
+            }
+            catch (Exception ex)
+            {
+                TestResultInfoBar.Severity = InfoBarSeverity.Error;
+                TestResultInfoBar.Message = string.Format(Loc.GetString("AiSong/TestFailed"), ex.Message);
+            }
+            finally
+            {
+                TestRunButton.IsEnabled = true;
+            }
         }
     }
 }

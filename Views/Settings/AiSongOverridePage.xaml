@@ -75,6 +75,34 @@
                 <Button x:Uid="AiSongClearAll" x:Name="ClearAllButton"
                         Click="ClearAll_Click"/>
             </StackPanel>
+
+            <!-- Test section -->
+            <TextBlock x:Uid="AiSongTestTitle" x:Name="AiSongTestTitleText"
+                    Style="{StaticResource SubtitleTextBlockStyle}"
+                    Margin="0,16,0,0"/>
+            <TextBlock x:Uid="AiSongTestDescription" x:Name="AiSongTestDescriptionText"
+                       Style="{StaticResource BodyTextBlockStyle}"
+                       Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                       TextWrapping="WrapWholeWords"/>
+
+            <TextBox x:Uid="AiSongTestSongTitle" x:Name="TestSongTitleBox"
+                     Width="320" HorizontalAlignment="Left"/>
+            <TextBox x:Uid="AiSongTestSongArtist" x:Name="TestSongArtistBox"
+                     Width="320" HorizontalAlignment="Left"/>
+            <TextBox x:Uid="AiSongTestSourceName" x:Name="TestSourceNameBox"
+                     Width="320" HorizontalAlignment="Left"/>
+            <NumberBox x:Uid="AiSongTestDuration" x:Name="TestDurationBox"
+                       Width="160" HorizontalAlignment="Left"
+                       Minimum="0" SpinButtonPlacementMode="Compact"
+                       SmallChange="1" LargeChange="30"/>
+
+            <Button x:Uid="AiSongTestRun" x:Name="TestRunButton"
+                    Click="TestRun_Click"
+                    Style="{StaticResource AccentButtonStyle}"/>
+
+            <InfoBar x:Name="TestResultInfoBar"
+                     IsOpen="False"
+                     IsClosable="True"/>
                         </StackPanel>
                 </ScrollViewer>
         </Grid>

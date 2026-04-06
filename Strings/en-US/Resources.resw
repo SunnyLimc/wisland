@@ -352,6 +352,88 @@
     <value>A native-language prompt is not yet available for this language. The generic English prompt will be used with language and market substitution.</value>
   </data>
 
+  <!-- AI Song Override — Test section -->
+  <data name="AiSongTestTitle.Text" xml:space="preserve">
+    <value>Test</value>
+  </data>
+  <data name="AiSongTestDescription.Text" xml:space="preserve">
+    <value>Enter sample metadata to test whether the selected AI model is working correctly with your current settings.</value>
+  </data>
+  <data name="AiSongTestSongTitle.Header" xml:space="preserve">
+    <value>Song Title</value>
+  </data>
+  <data name="AiSongTestSongTitle.PlaceholderText" xml:space="preserve">
+    <value>e.g. NIGHT DANCER (Official Video)</value>
+  </data>
+  <data name="AiSongTestSongArtist.Header" xml:space="preserve">
+    <value>Artist</value>
+  </data>
+  <data name="AiSongTestSongArtist.PlaceholderText" xml:space="preserve">
+    <value>e.g. imase</value>
+  </data>
+  <data name="AiSongTestSourceName.Header" xml:space="preserve">
+    <value>Source App</value>
+  </data>
+  <data name="AiSongTestSourceName.PlaceholderText" xml:space="preserve">
+    <value>e.g. YouTube Music</value>
+  </data>
+  <data name="AiSongTestDuration.Header" xml:space="preserve">
+    <value>Duration (seconds)</value>
+  </data>
+  <data name="AiSongTestRun.Content" xml:space="preserve">
+    <value>Run Test</value>
+  </data>
+  <data name="AiSong/TestMissingTitle" xml:space="preserve">
+    <value>Enter at least a song title to test.</value>
+  </data>
+  <data name="AiSong/TestNoModel" xml:space="preserve">
+    <value>No AI model is selected. Choose one in the model selector above.</value>
+  </data>
+  <data name="AiSong/TestRunning" xml:space="preserve">
+    <value>Sending test request to AI model…</value>
+  </data>
+  <data name="AiSong/TestSuccess" xml:space="preserve">
+    <value>✓ Resolved: {0} — {1}</value>
+  </data>
+  <data name="AiSong/TestTimeout" xml:space="preserve">
+    <value>Request timed out after 30 seconds.</value>
+  </data>
+  <data name="AiSong/TestFailed" xml:space="preserve">
+    <value>Test failed: {0}</value>
+  </data>
+
+  <!-- AI Models page — Test connection -->
+  <data name="AiModelsTestConnection.Content" xml:space="preserve">
+    <value>Test</value>
+  </data>
+  <data name="AiModels/TestMissingFields" xml:space="preserve">
+    <value>Enter at least an API key and model ID to test.</value>
+  </data>
+  <data name="AiModels/TestRunning" xml:space="preserve">
+    <value>Testing connection…</value>
+  </data>
+  <data name="AiModels/TestSongTitle" xml:space="preserve">
+    <value>NIGHT DANCER (Official Video)</value>
+  </data>
+  <data name="AiModels/TestSongArtist" xml:space="preserve">
+    <value>imase</value>
+  </data>
+  <data name="AiModels/TestSuccess" xml:space="preserve">
+    <value>✓ Model responded: {0} — {1}</value>
+  </data>
+  <data name="AiModels/TestTimeout" xml:space="preserve">
+    <value>Connection timed out after 30 seconds.</value>
+  </data>
+  <data name="AiModels/TestFailed" xml:space="preserve">
+    <value>Connection failed: {0}</value>
+  </data>
+  <data name="AiModelsApiKeyHeaderGoogle.Header" xml:space="preserve">
+    <value>API Key</value>
+  </data>
+  <data name="AiModelsApiKeyHeaderGoogle.PlaceholderText" xml:space="preserve">
+    <value>AIza...</value>
+  </data>
+
   <!-- Diagnostics page (code-behind) -->
   <data name="DiagnosticsTitle.Text" xml:space="preserve">
     <value>Diagnostics</value>

@@ -6,6 +6,8 @@ using System.Linq;
 using System.Text.Json;
 using System.Threading;
 using System.Threading.Tasks;
+using Google.GenAI;
+using GTypes = Google.GenAI.Types;
 using OpenAI;
 using OpenAI.Chat;
 using wisland.Helpers;
@@ -17,20 +19,8 @@ namespace wisland.Services
     {
         private static readonly JsonSerializerOptions CacheJsonOptions = new() { WriteIndented = true };
         private static readonly string CachePath = Path.Combine(
-            Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
+            System.Environment.GetFolderPath(System.Environment.SpecialFolder.LocalApplicationData),
             "Wisland", "ai-song-cache.json");
-        private static readonly BinaryData GoogleGroundingExtraBody = BinaryData.FromBytes(
-            """
-            {
-                "google": {
-                    "tools": [
-                        {
-                            "google_search": {}
-                        }
-                    ]
-                }
-            }
-            """u8.ToArray());
 
         private static readonly BinaryData StructuredOutputSchema = BinaryData.FromBytes(
             """
@@ -102,50 +92,35 @@ namespace wisland.Services
 
             Logger.Info($"AI song resolution requested: '{rawTitle}' by '{rawArtist}' from '{sourceName}' ({sourceAppId})");
 
+            string systemPrompt = AiSongPromptBuilder.BuildSystemPrompt();
+            string userMessage = AiSongPromptBuilder.BuildUserMessage(
+                rawTitle, rawArtist, durationSeconds, sourceName,
+                _settings.AiPreferredLanguage,
+                _settings.AiTargetMarket,
+                _settings.AiPreferNativePrompt);
+
+            Logger.Debug($"AI system prompt:\n{systemPrompt}");
+            Logger.Debug($"AI user message:\n{userMessage}");
+
             try
             {
-                ChatClient client = CreateChatClient(profile);
-                Logger.Debug($"AI request: provider={AiModelProviderNames.Normalize(profile.Provider)}, model={profile.ModelId}, endpoint={profile.Endpoint}");
+                string provider = AiModelProviderNames.Normalize(profile.Provider);
+                bool isGoogle = string.Equals(provider, nameof(AiModelProvider.GoogleAIStudio), StringComparison.Ordinal);
+                Logger.Debug(isGoogle
+                    ? $"AI request: provider={provider}, model={profile.ModelId}"
+                    : $"AI request: provider={provider}, model={profile.ModelId}, endpoint={profile.Endpoint}");
 
-                string systemPrompt = AiSongPromptBuilder.BuildSystemPrompt();
-                string userMessage = AiSongPromptBuilder.BuildUserMessage(
-                    rawTitle, rawArtist, durationSeconds, sourceName,
-                    _settings.AiPreferredLanguage,
-                    _settings.AiTargetMarket,
-                    _settings.AiPreferNativePrompt);
+                string? responseJson;
 
-                Logger.Debug($"AI system prompt:\n{systemPrompt}");
-                Logger.Debug($"AI user message:\n{userMessage}");
+                if (isGoogle)
+                    responseJson = await CallGoogleGenAiAsync(profile, systemPrompt, userMessage, ct);
+                else
+                    responseJson = await CallOpenAiCompatibleAsync(profile, systemPrompt, userMessage, ct);
 
-                var messages = new List<ChatMessage>
-                {
-                    new SystemChatMessage(systemPrompt),
-                    new UserChatMessage(userMessage)
-                };
-
-                bool useGoogleGrounding = ShouldUseGoogleGrounding(profile);
-                ChatCompletion completion;
-
-                try
-                {
-                    completion = await client.CompleteChatAsync(
-                        messages,
-                        CreateChatCompletionOptions(profile, useGoogleGrounding),
-                        ct);
-                }
-                catch (ClientResultException ex) when (useGoogleGrounding)
-                {
-                    Logger.Warn($"Google AI Studio grounding request failed, retrying without grounding: {ex.Message}");
-                    completion = await client.CompleteChatAsync(
-                        messages,
-                        CreateChatCompletionOptions(profile, enableGoogleGrounding: false),
-                        ct);
-                }
-
-                if (completion.Content.Count == 0 || string.IsNullOrWhiteSpace(completion.Content[0].Text))
+                if (string.IsNullOrWhiteSpace(responseJson))
                     return null;
 
-                using var doc = JsonDocument.Parse(completion.Content[0].Text);
+                using var doc = JsonDocument.Parse(responseJson);
                 var root = doc.RootElement;
 
                 string resolvedTitle = root.TryGetProperty("title", out var t) ? t.GetString() ?? rawTitle : rawTitle;
@@ -182,6 +157,38 @@ namespace wisland.Services
             }
         }
 
+        /// <summary>
+        /// Tests a model profile by sending a simple song resolution request.
+        /// Returns the parsed result or throws on failure.
+        /// </summary>
+        public static async Task<AiSongResult?> TestModelAsync(
+            AiModelProfile profile, string testTitle, string testArtist, CancellationToken ct)
+        {
+            string systemPrompt = AiSongPromptBuilder.BuildSystemPrompt();
+            string userMessage = AiSongPromptBuilder.BuildUserMessage(
+                testTitle, testArtist, 0, "Test", null, null, false);
+
+            string provider = AiModelProviderNames.Normalize(profile.Provider);
+            string? responseJson;
+
+            if (string.Equals(provider, nameof(AiModelProvider.GoogleAIStudio), StringComparison.Ordinal))
+                responseJson = await CallGoogleGenAiAsync(profile, systemPrompt, userMessage, ct);
+            else
+                responseJson = await CallOpenAiCompatibleAsync(profile, systemPrompt, userMessage, ct);
+
+            if (string.IsNullOrWhiteSpace(responseJson))
+                return null;
+
+            using var doc = JsonDocument.Parse(responseJson);
+            var root = doc.RootElement;
+            return new AiSongResult
+            {
+                Title = root.TryGetProperty("title", out var t) ? t.GetString() ?? testTitle : testTitle,
+                Artist = root.TryGetProperty("artist", out var a) ? a.GetString() ?? testArtist : testArtist,
+                ResolvedAtUtc = DateTimeOffset.UtcNow
+            };
+        }
+
         public void ClearCache()
         {
             lock (_gate)
@@ -215,7 +222,109 @@ namespace wisland.Services
             return _settings.AiModels.FirstOrDefault(m => string.Equals(m.Id, activeId, StringComparison.Ordinal));
         }
 
-        private static ChatClient CreateChatClient(AiModelProfile profile)
+        // ---- Google GenAI native path ----
+
+        private static async Task<string?> CallGoogleGenAiAsync(
+            AiModelProfile profile, string systemPrompt, string userMessage, CancellationToken ct)
+        {
+            var client = new Google.GenAI.Client(apiKey: profile.ApiKey);
+
+            var config = new GTypes.GenerateContentConfig
+            {
+                SystemInstruction = new GTypes.Content
+                {
+                    Parts = [new GTypes.Part { Text = systemPrompt }]
+                },
+                ResponseMimeType = "application/json",
+                ResponseSchema = new GTypes.Schema
+                {
+                    Type = GTypes.Type.Object,
+                    Properties = new Dictionary<string, GTypes.Schema>
+                    {
+                        ["title"] = new GTypes.Schema
+                        {
+                            Type = GTypes.Type.String,
+                            Description = "The clean, official song title without any tags, annotations, or platform artifacts"
+                        },
+                        ["artist"] = new GTypes.Schema
+                        {
+                            Type = GTypes.Type.String,
+                            Description = "The clean artist name, including featured artists if applicable"
+                        }
+                    },
+                    Required = ["title", "artist"]
+                },
+                Temperature = 0.2
+            };
+
+            if (ShouldUseGoogleGrounding(profile))
+            {
+                config.Tools = [new GTypes.Tool { GoogleSearch = new GTypes.GoogleSearch() }];
+            }
+
+            if (TryNormalizeThinkingBudget(profile, out int budget))
+            {
+                config.ThinkingConfig = new GTypes.ThinkingConfig { ThinkingBudget = budget };
+            }
+
+            GTypes.GenerateContentResponse response;
+            try
+            {
+                response = await client.Models.GenerateContentAsync(
+                    model: profile.ModelId,
+                    contents: userMessage,
+                    config: config,
+                    cancellationToken: ct);
+            }
+            catch (Exception ex) when (config.Tools?.Count > 0 && !ct.IsCancellationRequested)
+            {
+                Logger.Warn($"Google GenAI grounding request failed, retrying without grounding: {ex.Message}");
+                config.Tools = null;
+                response = await client.Models.GenerateContentAsync(
+                    model: profile.ModelId,
+                    contents: userMessage,
+                    config: config,
+                    cancellationToken: ct);
+            }
+
+            var text = response.Candidates?.FirstOrDefault()?.Content?.Parts?.FirstOrDefault()?.Text;
+
+            var usage = response.UsageMetadata;
+            if (usage != null)
+            {
+                Logger.Debug($"Google GenAI usage: prompt={usage.PromptTokenCount}, candidates={usage.CandidatesTokenCount}, total={usage.TotalTokenCount}");
+            }
+
+            return text;
+        }
+
+        // ---- OpenAI-compatible path ----
+
+        private static async Task<string?> CallOpenAiCompatibleAsync(
+            AiModelProfile profile, string systemPrompt, string userMessage, CancellationToken ct)
+        {
+            ChatClient client = CreateOpenAiChatClient(profile);
+            var messages = new List<ChatMessage>
+            {
+                new SystemChatMessage(systemPrompt),
+                new UserChatMessage(userMessage)
+            };
+
+            var options = new ChatCompletionOptions
+            {
+                ResponseFormat = ChatResponseFormat.CreateJsonSchemaFormat(
+                    jsonSchemaFormatName: "song_metadata",
+                    jsonSchema: StructuredOutputSchema,
+                    jsonSchemaIsStrict: true)
+            };
+
+            ChatCompletion completion = await client.CompleteChatAsync(messages, options, ct);
+            if (completion.Content.Count == 0 || string.IsNullOrWhiteSpace(completion.Content[0].Text))
+                return null;
+            return completion.Content[0].Text;
+        }
+
+        private static ChatClient CreateOpenAiChatClient(AiModelProfile profile)
         {
             var credential = new System.ClientModel.ApiKeyCredential(profile.ApiKey);
             var options = new OpenAIClientOptions
@@ -228,44 +337,9 @@ namespace wisland.Services
         private static string BuildCacheKey(string sourceAppId, string rawTitle, string rawArtist)
             => $"{sourceAppId}\x1f{rawTitle}\x1f{rawArtist}";
 
-        private static ChatCompletionOptions CreateChatCompletionOptions(AiModelProfile profile, bool enableGoogleGrounding)
-        {
-            var options = new ChatCompletionOptions
-            {
-                ResponseFormat = ChatResponseFormat.CreateJsonSchemaFormat(
-                    jsonSchemaFormatName: "song_metadata",
-                    jsonSchema: StructuredOutputSchema,
-                    jsonSchemaIsStrict: true)
-            };
-
-            if (TryNormalizeReasoningEffort(profile, out string reasoningEffort))
-            {
-#pragma warning disable SCME0001
-                options.Patch.Set("$.reasoning_effort"u8, reasoningEffort);
-#pragma warning restore SCME0001
-            }
-
-            if (enableGoogleGrounding)
-            {
-#pragma warning disable OPENAI001
-                options.WebSearchOptions = new ChatWebSearchOptions();
-#pragma warning restore OPENAI001
-#pragma warning disable SCME0001
-                options.Patch.Set("$.extra_body"u8, GoogleGroundingExtraBody);
-#pragma warning restore SCME0001
-            }
-
-            return options;
-        }
-
         private static bool ShouldUseGoogleGrounding(AiModelProfile profile)
         {
-            return string.Equals(
-                       AiModelProviderNames.Normalize(profile.Provider),
-                       nameof(AiModelProvider.GoogleAIStudio),
-                       StringComparison.Ordinal)
-                   && profile.GoogleGroundingEnabled
-                   && SupportsGoogleGrounding(profile.ModelId);
+            return profile.GoogleGroundingEnabled && SupportsGoogleGrounding(profile.ModelId);
         }
 
         private static bool SupportsGoogleGrounding(string modelId)
@@ -275,29 +349,17 @@ namespace wisland.Services
                 || modelId.StartsWith("gemini-5", StringComparison.OrdinalIgnoreCase);
         }
 
-        private static bool TryNormalizeReasoningEffort(AiModelProfile profile, out string reasoningEffort)
+        private static bool TryNormalizeThinkingBudget(AiModelProfile profile, out int budget)
         {
-            reasoningEffort = string.Empty;
-
-            if (!string.Equals(
-                AiModelProviderNames.Normalize(profile.Provider),
-                nameof(AiModelProvider.GoogleAIStudio),
-                StringComparison.Ordinal))
-            {
-                return false;
-            }
+            budget = 0;
 
             switch (profile.ReasoningEffort?.Trim().ToLowerInvariant())
             {
-                case "none":
-                case "minimal":
-                case "low":
-                case "medium":
-                case "high":
-                    reasoningEffort = profile.ReasoningEffort.Trim().ToLowerInvariant();
-                    return true;
-                default:
-                    return false;
+                case "none": budget = 0; return true;
+                case "low": budget = 1024; return true;
+                case "medium": budget = 8192; return true;
+                case "high": budget = 24576; return true;
+                default: return false;
             }
         }
 
@@ -305,9 +367,9 @@ namespace wisland.Services
         {
             try
             {
-                if (!File.Exists(CachePath))
+                if (!System.IO.File.Exists(CachePath))
                     return;
-                string json = File.ReadAllText(CachePath);
+                string json = System.IO.File.ReadAllText(CachePath);
                 var entries = JsonSerializer.Deserialize<List<CacheEntry>>(json);
                 if (entries == null) return;
                 lock (_gate)
@@ -362,8 +424,8 @@ namespace wisland.Services
                 }
 
                 string json = JsonSerializer.Serialize(entries, CacheJsonOptions);
-                File.WriteAllText(tempPath, json);
-                File.Move(tempPath, CachePath, true);
+                System.IO.File.WriteAllText(tempPath, json);
+                System.IO.File.Move(tempPath, CachePath, true);
             }
             catch (Exception ex)
             {

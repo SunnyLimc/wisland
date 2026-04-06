@@ -85,6 +85,8 @@
                     <TextBox x:Uid="AiModelsDisplayNameHeader" x:Name="DisplayNameBox"/>
                     <TextBox x:Uid="AiModelsEndpointHeader" x:Name="EndpointBox"/>
                     <PasswordBox x:Uid="AiModelsApiKeyHeader" x:Name="ApiKeyBox"/>
+                    <PasswordBox x:Uid="AiModelsApiKeyHeaderGoogle" x:Name="ApiKeyBoxGoogle"
+                                 Visibility="Collapsed"/>
                     <TextBox x:Uid="AiModelsModelIdHeader" x:Name="ModelIdBox"/>
 
                     <ComboBox x:Uid="AiModelsReasoningHeader" x:Name="ReasoningEffortCombo"
@@ -119,9 +121,15 @@
                         <Button x:Uid="AiModelsSave" x:Name="SaveButton"
                                 Click="SaveModel_Click"
                                 Style="{StaticResource AccentButtonStyle}"/>
+                        <Button x:Uid="AiModelsTestConnection" x:Name="TestConnectionButton"
+                                Click="TestConnection_Click"/>
                         <Button x:Uid="AiModelsCancel" x:Name="CancelButton"
                                 Click="CancelForm_Click"/>
                     </StackPanel>
+
+                    <InfoBar x:Name="TestResultBar"
+                             IsOpen="False"
+                             IsClosable="True"/>
 
                     <InfoBar x:Name="FormError"
                             Severity="Error"
