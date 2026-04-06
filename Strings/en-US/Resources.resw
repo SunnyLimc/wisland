@@ -214,6 +214,9 @@
   <data name="AiModelsModelIdHeader.PlaceholderText" xml:space="preserve">
     <value>e.g. gemini-2.5-flash or gpt-4o-mini</value>
   </data>
+  <data name="AiModelsTemperatureHeader.Text" xml:space="preserve">
+    <value>Temperature</value>
+  </data>
   <data name="AiModelsReasoningHeader.Header" xml:space="preserve">
     <value>Thinking depth</value>
   </data>

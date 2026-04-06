@@ -19,5 +19,10 @@ namespace wisland.Models
         /// Google AI Studio only: whether Google grounding search is enabled.
         /// </summary>
         public bool GoogleGroundingEnabled { get; set; } = true;
+
+        /// <summary>
+        /// Temperature for model response randomness (0.0–2.0). Default 1.0.
+        /// </summary>
+        public double Temperature { get; set; } = 1.0;
     }
 }

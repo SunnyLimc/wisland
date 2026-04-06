@@ -24,7 +24,14 @@ namespace wisland.Views.Settings
             _onAiSettingsChanged = onAiSettingsChanged;
             this.InitializeComponent();
             ModelList.ItemsSource = _rows;
+            TemperatureSlider.ValueChanged += (_, _) => UpdateTemperatureText();
+            UpdateTemperatureText();
             Loaded += OnLoaded;
+        }
+
+        private void UpdateTemperatureText()
+        {
+            TemperatureValueText.Text = TemperatureSlider.Value.ToString("F1");
         }
 
         private void OnLoaded(object sender, RoutedEventArgs e) => RefreshList();
@@ -72,6 +79,7 @@ namespace wisland.Views.Settings
                 ModelIdBox.Text = model.ModelId;
                 SetReasoningEffortCombo(model.ReasoningEffort);
                 GroundingToggle.IsOn = model.GoogleGroundingEnabled;
+                TemperatureSlider.Value = model.Temperature;
                 SyncReasoningEffortVisibility();
                 FormPanel.Visibility = Visibility.Visible;
             }
@@ -133,6 +141,8 @@ namespace wisland.Views.Settings
                 googleGroundingEnabled = GroundingToggle.IsOn;
             }
 
+            double temperature = TemperatureSlider.Value;
+
             if (_editingModelId != null)
             {
                 var existing = _settings.AiModels.FirstOrDefault(m => m.Id == _editingModelId);
@@ -145,6 +155,7 @@ namespace wisland.Views.Settings
                     existing.ModelId = modelId;
                     existing.ReasoningEffort = reasoningEffort;
                     existing.GoogleGroundingEnabled = googleGroundingEnabled;
+                    existing.Temperature = temperature;
                 }
             }
             else
@@ -158,7 +169,8 @@ namespace wisland.Views.Settings
                     ApiKey = apiKey,
                     ModelId = modelId,
                     ReasoningEffort = reasoningEffort,
-                    GoogleGroundingEnabled = googleGroundingEnabled
+                    GoogleGroundingEnabled = googleGroundingEnabled,
+                    Temperature = temperature
                 });
             }
 
@@ -209,7 +221,8 @@ namespace wisland.Views.Settings
                     ApiKey = apiKey,
                     ModelId = modelId,
                     ReasoningEffort = GetSelectedReasoningEffort(),
-                    GoogleGroundingEnabled = isGoogle && GroundingToggle.IsOn
+                    GoogleGroundingEnabled = isGoogle && GroundingToggle.IsOn,
+                    Temperature = TemperatureSlider.Value
                 };
 
                 var result = await AiSongResolverService.TestModelAsync(
@@ -218,10 +231,20 @@ namespace wisland.Views.Settings
                     Loc.GetString("AiModels/TestSongArtist"),
                     _testCts.Token);
 
-                TestResultBar.Severity = InfoBarSeverity.Success;
-                TestResultBar.Message = string.Format(
+                string groundingTag = result?.GroundingUsed switch
+                {
+                    true => " [Grounding: ✓]",
+                    false => " [Grounding: ✗]",
+                    _ => ""
+                };
+
+                string main = string.Format(
                     Loc.GetString("AiModels/TestSuccess"),
-                    result?.Title ?? "?", result?.Artist ?? "?");
+                    result?.Title ?? "?", result?.Artist ?? "?") + groundingTag;
+                string alts = FormatAlternatives(result);
+
+                TestResultBar.Severity = InfoBarSeverity.Success;
+                TestResultBar.Message = string.IsNullOrEmpty(alts) ? main : main + "\n" + alts;
             }
             catch (OperationCanceledException)
             {
@@ -274,6 +297,17 @@ namespace wisland.Views.Settings
                 ? tag : null;
         }
 
+        private static string FormatAlternatives(AiSongResolverService.TestModelResult? r)
+        {
+            if (r == null) return "";
+            var parts = new List<string>();
+            if (!string.IsNullOrEmpty(r.TitleAlt)) parts.Add($"title-alt: {r.TitleAlt}");
+            if (!string.IsNullOrEmpty(r.TitleAlt2)) parts.Add($"title-alt2: {r.TitleAlt2}");
+            if (!string.IsNullOrEmpty(r.ArtistAlt)) parts.Add($"artist-alt: {r.ArtistAlt}");
+            if (!string.IsNullOrEmpty(r.ArtistAlt2)) parts.Add($"artist-alt2: {r.ArtistAlt2}");
+            return string.Join(" | ", parts);
+        }
+
         private void SetProviderComboByTag(string provider)
         {
             string normalizedProvider = AiModelProviderNames.Normalize(provider);
@@ -313,6 +347,7 @@ namespace wisland.Views.Settings
             ModelIdBox.Text = string.Empty;
             ReasoningEffortCombo.SelectedIndex = 0;
             GroundingToggle.IsOn = true;
+            TemperatureSlider.Value = 1.0;
             FormError.IsOpen = false;
             TestResultBar.IsOpen = false;
         }

@@ -7,13 +7,21 @@
     xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
     mc:Ignorable="d">
 
-        <Grid Background="Transparent">
-                <ScrollViewer Background="Transparent"
-                                          Padding="32,24,32,24">
+        <Grid Background="Transparent" Padding="0,48,0,0">
+                <Grid.RowDefinitions>
+                    <RowDefinition Height="Auto"/>
+                    <RowDefinition Height="*"/>
+                </Grid.RowDefinitions>
+
+                <TextBlock x:Uid="DiagnosticsTitle"
+                    Style="{StaticResource TitleTextBlockStyle}"
+                    Margin="32,12,32,0"/>
+
+                <ScrollViewer Grid.Row="1" Background="Transparent">
                         <StackPanel Spacing="16"
-                MaxWidth="600">
-                                <TextBlock x:Uid="DiagnosticsTitle"
-                    Style="{StaticResource TitleTextBlockStyle}"/>
+                Margin="32,8,32,32"
+                MaxWidth="600"
+                HorizontalAlignment="Left">
                                 <TextBlock x:Uid="DiagnosticsDescription"
                        Style="{StaticResource BodyTextBlockStyle}"
                        Foreground="{ThemeResource TextFillColorSecondaryBrush}"/>

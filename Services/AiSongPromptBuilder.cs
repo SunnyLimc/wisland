@@ -7,25 +7,11 @@ using wisland.Models;
 namespace wisland.Services
 {
     /// <summary>
-    /// Builds the system prompt and user message for AI song resolution
+    /// Builds the user message for AI song resolution
     /// based on preferred language, target market, and native prompt settings.
     /// </summary>
     internal static class AiSongPromptBuilder
     {
-        private const string GenericSystemTemplate =
-            """
-            You are a music metadata resolver. Given raw media session information from a media player, determine the correct, clean song title and artist name.
-
-            Rules:
-            - Remove quality/platform tags like "(Official Video)", "(Official Audio)", "(Lyrics)", "(HD)", "(MV)", "[Official MV]", "(Audio)", "(Visualizer)", "(Live)", "【MV】", "| Official Music Video", etc.
-            - Remove platform-specific prefixes or suffixes appended by the media source application.
-            - For songs with featured artists, keep them in the artist field using standard notation, e.g. "Artist feat. Guest".
-            - If the raw title contains both the song name and artist (common in browser tab titles like "Artist - Song"), separate them correctly into the respective fields.
-            - Return the most commonly recognized official release name for the song and artist.
-            - If you cannot confidently determine the correct metadata, return the raw input unchanged.
-            - Do not invent or guess information that is not present in the input.
-            """;
-
         private const string GenericUserTemplate =
             """
             Identify the song's official release title and official artist name(s).
@@ -89,9 +75,7 @@ namespace wisland.Services
                 """,
         };
 
-        public static string BuildSystemPrompt() => GenericSystemTemplate;
-
-        public static string BuildUserMessage(
+        public static (string Message, string TemplateName) BuildUserMessage(
             string rawTitle,
             string rawArtist,
             double durationSeconds,
@@ -105,14 +89,15 @@ namespace wisland.Services
             // If no preferred language is set, use the old minimal format
             if (string.IsNullOrEmpty(preferredLanguageCode))
             {
-                return $"Song: `{rawTitle}`\nArtist: `{rawArtist}`\nDuration: `{duration}`\nSource: `{sourceName}`";
+                return ($"Song: `{rawTitle}`\nArtist: `{rawArtist}`\nDuration: `{duration}`\nSource: `{sourceName}`", "minimal");
             }
 
             // Try native prompt if user prefers it
             if (preferNativePrompt
                 && NativeUserPrompts.TryGetValue(preferredLanguageCode!, out string? nativeTemplate))
             {
-                return string.Format(nativeTemplate, rawTitle, rawArtist, duration, sourceName);
+                return (string.Format(nativeTemplate, rawTitle, rawArtist, duration, sourceName),
+                    $"native:{preferredLanguageCode}");
             }
 
             // Generic English template with language & market substitution
@@ -124,7 +109,8 @@ namespace wisland.Services
                 ? targetMarket!
                 : lang?.DefaultMarket ?? "the target region";
 
-            return string.Format(GenericUserTemplate, languageName, market, rawTitle, rawArtist, duration, sourceName);
+            return (string.Format(GenericUserTemplate, languageName, market, rawTitle, rawArtist, duration, sourceName),
+                $"generic:{preferredLanguageCode}");
         }
 
         private static string FormatDuration(double totalSeconds)

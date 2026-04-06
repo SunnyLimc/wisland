@@ -217,7 +217,8 @@ namespace wisland.Services
                     ProtectedApiKey = ProtectApiKey(m.ApiKey),
                     ModelId = m.ModelId,
                     ReasoningEffort = m.ReasoningEffort,
-                    GoogleGroundingEnabled = m.GoogleGroundingEnabled
+                    GoogleGroundingEnabled = m.GoogleGroundingEnabled,
+                    Temperature = m.Temperature
                 });
             }
             return result;
@@ -240,7 +241,8 @@ namespace wisland.Services
                     ModelId = d.ModelId ?? string.Empty,
                     ReasoningEffort = d.ReasoningEffort,
                     GoogleGroundingEnabled = d.GoogleGroundingEnabled
-                        ?? string.Equals(provider, nameof(AiModelProvider.GoogleAIStudio), StringComparison.Ordinal)
+                        ?? string.Equals(provider, nameof(AiModelProvider.GoogleAIStudio), StringComparison.Ordinal),
+                    Temperature = d.Temperature ?? 1.0
                 });
             }
             return result;
@@ -277,6 +279,7 @@ namespace wisland.Services
             public string? ModelId { get; set; }
             public string? ReasoningEffort { get; set; }
             public bool? GoogleGroundingEnabled { get; set; }
+            public double? Temperature { get; set; }
         }
     }
 }

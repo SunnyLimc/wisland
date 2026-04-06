@@ -7,13 +7,21 @@
     xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
     mc:Ignorable="d">
 
-        <Grid Background="Transparent">
-                <ScrollViewer Background="Transparent"
-                                          Padding="32,24,32,24">
+        <Grid Background="Transparent" Padding="0,48,0,0">
+                <Grid.RowDefinitions>
+                    <RowDefinition Height="Auto"/>
+                    <RowDefinition Height="*"/>
+                </Grid.RowDefinitions>
+
+                <TextBlock x:Uid="AiModelsTitle"
+                    Style="{StaticResource TitleTextBlockStyle}"
+                    Margin="32,12,32,0"/>
+
+                <ScrollViewer Grid.Row="1" Background="Transparent">
                         <StackPanel Spacing="16"
-                MaxWidth="600">
-                                <TextBlock x:Uid="AiModelsTitle"
-                    Style="{StaticResource TitleTextBlockStyle}"/>
+                Margin="32,8,32,32"
+                MaxWidth="600"
+                HorizontalAlignment="Left">
                                 <TextBlock x:Uid="AiModelsDescription"
                        Style="{StaticResource BodyTextBlockStyle}"
                        Foreground="{ThemeResource TextFillColorSecondaryBrush}"
@@ -88,6 +96,20 @@
                     <PasswordBox x:Uid="AiModelsApiKeyHeaderGoogle" x:Name="ApiKeyBoxGoogle"
                                  Visibility="Collapsed"/>
                     <TextBox x:Uid="AiModelsModelIdHeader" x:Name="ModelIdBox"/>
+
+                    <StackPanel Spacing="4">
+                        <TextBlock x:Uid="AiModelsTemperatureHeader"
+                                   Style="{StaticResource BodyStrongTextBlockStyle}"/>
+                        <Slider x:Name="TemperatureSlider"
+                                Minimum="0" Maximum="2" StepFrequency="0.1"
+                                Value="1"
+                                Width="280"
+                                HorizontalAlignment="Left"/>
+                        <TextBlock x:Name="TemperatureValueText"
+                                   Style="{StaticResource CaptionTextBlockStyle}"
+                                   Foreground="{ThemeResource TextFillColorTertiaryBrush}"
+                                   Margin="0,-4,0,0"/>
+                    </StackPanel>
 
                     <ComboBox x:Uid="AiModelsReasoningHeader" x:Name="ReasoningEffortCombo"
                               Visibility="Collapsed"

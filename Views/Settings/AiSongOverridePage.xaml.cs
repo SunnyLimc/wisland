@@ -275,21 +275,23 @@ namespace wisland.Views.Settings
                 string sourceName = TestSourceNameBox.Text?.Trim() ?? "Test";
                 double duration = double.IsNaN(TestDurationBox.Value) ? 0 : TestDurationBox.Value;
 
-                string systemPrompt = AiSongPromptBuilder.BuildSystemPrompt();
-                string userMessage = AiSongPromptBuilder.BuildUserMessage(
-                    testTitle, testArtist, duration,
-                    string.IsNullOrEmpty(sourceName) ? "Test" : sourceName,
-                    _settings.AiPreferredLanguage,
-                    _settings.AiTargetMarket,
-                    _settings.AiPreferNativePrompt);
-
                 var result = await AiSongResolverService.TestModelAsync(
                     profile, testTitle, testArtist, _testCts.Token);
 
-                TestResultInfoBar.Severity = InfoBarSeverity.Success;
-                TestResultInfoBar.Message = string.Format(
+                string groundingTag = result?.GroundingUsed switch
+                {
+                    true => " [Grounding: ✓]",
+                    false => " [Grounding: ✗]",
+                    _ => ""
+                };
+
+                string main = string.Format(
                     Loc.GetString("AiSong/TestSuccess"),
-                    result?.Title ?? "?", result?.Artist ?? "?");
+                    result?.Title ?? "?", result?.Artist ?? "?") + groundingTag;
+                string alts = FormatAlternatives(result);
+
+                TestResultInfoBar.Severity = InfoBarSeverity.Success;
+                TestResultInfoBar.Message = string.IsNullOrEmpty(alts) ? main : main + "\n" + alts;
             }
             catch (OperationCanceledException)
             {
@@ -305,6 +307,17 @@ namespace wisland.Views.Settings
             {
                 TestRunButton.IsEnabled = true;
             }
+        }
+
+        private static string FormatAlternatives(AiSongResolverService.TestModelResult? r)
+        {
+            if (r == null) return "";
+            var parts = new List<string>();
+            if (!string.IsNullOrEmpty(r.TitleAlt)) parts.Add($"title-alt: {r.TitleAlt}");
+            if (!string.IsNullOrEmpty(r.TitleAlt2)) parts.Add($"title-alt2: {r.TitleAlt2}");
+            if (!string.IsNullOrEmpty(r.ArtistAlt)) parts.Add($"artist-alt: {r.ArtistAlt}");
+            if (!string.IsNullOrEmpty(r.ArtistAlt2)) parts.Add($"artist-alt2: {r.ArtistAlt2}");
+            return string.Join(" | ", parts);
         }
     }
 }

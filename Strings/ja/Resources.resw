@@ -214,6 +214,9 @@
   <data name="AiModelsModelIdHeader.PlaceholderText" xml:space="preserve">
     <value>例: gemini-2.5-flash または gpt-4o-mini</value>
   </data>
+  <data name="AiModelsTemperatureHeader.Text" xml:space="preserve">
+    <value>温度</value>
+  </data>
   <data name="AiModelsReasoningHeader.Header" xml:space="preserve">
     <value>思考の深さ</value>
   </data>

@@ -3,6 +3,7 @@ using Microsoft.UI;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
 using Microsoft.UI.Xaml.Media;
+using Microsoft.UI.Windowing;
 using WinUIEx;
 using wisland.Helpers;
 using wisland.Models;
@@ -40,7 +41,28 @@ namespace wisland
             _onAiSettingsChanged = onAiSettingsChanged;
 
             Title = Loc.GetString("Settings/Title");
-            ExtendsContentIntoTitleBar = false;
+            ExtendsContentIntoTitleBar = true;
+
+            // Title bar: text sits to the right of the pane toggle button area
+            var titleBarDragRegion = new Grid
+            {
+                Height = 48,
+                VerticalAlignment = VerticalAlignment.Top,
+                HorizontalAlignment = HorizontalAlignment.Stretch,
+                Padding = new Thickness(48, 0, 0, 0), // leave room for pane toggle button
+                Children =
+                {
+                    new TextBlock
+                    {
+                        Text = Loc.GetString("Settings/Title"),
+                        Style = Application.Current.Resources["CaptionTextBlockStyle"] as Style,
+                        VerticalAlignment = VerticalAlignment.Center,
+                        Margin = new Thickness(4, 0, 0, 0),
+                        IsHitTestVisible = false
+                    }
+                }
+            };
+            SetTitleBar(titleBarDragRegion);
 
             var manager = WindowManager.Get(this);
             manager.MinWidth = 640;
@@ -59,6 +81,7 @@ namespace wisland
                 IsSettingsVisible = false,
                 PaneDisplayMode = NavigationViewPaneDisplayMode.Left,
                 OpenPaneLength = 200,
+                IsTitleBarAutoPaddingEnabled = false,
                 Background = new SolidColorBrush(Colors.Transparent),
                 Content = _contentFrame
             };
@@ -97,6 +120,7 @@ namespace wisland
                 Background = new SolidColorBrush(Colors.Transparent)
             };
             _rootGrid.Children.Add(_navView);
+            _rootGrid.Children.Add(titleBarDragRegion); // overlay on top for title bar drag
 
             Content = _rootGrid;
             ApplyBackdrop(_settings.BackdropType);
