@@ -333,6 +333,7 @@ namespace wisland.Services
 
         private void EnterWaitingState_NoLock(TrackedSource tracked, DateTimeOffset nowUtc)
         {
+            Logger.Trace($"Source entering waiting state: '{tracked.SessionKey}' ({tracked.SourceAppId})");
             tracked.Presence = MediaSessionPresence.WaitingForReconnect;
             tracked.MissingSinceUtc ??= nowUtc;
             tracked.IsSystemCurrent = false;

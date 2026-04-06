@@ -13,12 +13,14 @@ namespace wisland.Services
     {
         private void OnCurrentSessionChanged(GlobalSystemMediaTransportControlsSessionManager sender, CurrentSessionChangedEventArgs args)
         {
+            Logger.Trace("GSMTC event: CurrentSessionChanged");
             StartRefreshBurst();
             _ = RefreshSessionsAndStatesAsync();
         }
 
         private void OnSessionsChanged(GlobalSystemMediaTransportControlsSessionManager sender, SessionsChangedEventArgs args)
         {
+            Logger.Trace("GSMTC event: SessionsChanged");
             StartRefreshBurst();
             _ = RefreshSessionsAndStatesAsync();
         }
@@ -351,6 +353,8 @@ namespace wisland.Services
                     ? UnknownArtistName
                     : mediaProperties!.Artist;
 
+                Logger.Trace($"Prefetched session state: '{session.SourceAppUserModelId}' Title='{title}', Artist='{artist}', Status={playbackStatus}, pos={positionSeconds:F1}s, dur={durationSeconds:F1}s");
+
                 return new PrefetchedSessionState(
                     title,
                     artist,
@@ -373,6 +377,7 @@ namespace wisland.Services
                 session.MediaPropertiesChanged += OnMediaPropertiesChanged;
                 session.PlaybackInfoChanged += OnPlaybackInfoChanged;
                 session.TimelinePropertiesChanged += OnTimelinePropertiesChanged;
+                Logger.Trace($"Session event handlers attached: {session.SourceAppUserModelId}");
             }
             catch (Exception ex)
             {
@@ -399,13 +404,22 @@ namespace wisland.Services
         }
 
         private void OnMediaPropertiesChanged(GlobalSystemMediaTransportControlsSession sender, MediaPropertiesChangedEventArgs args)
-            => _ = UpdateMediaPropertiesAsync(sender);
+        {
+            Logger.Trace($"GSMTC event: MediaPropertiesChanged for session {sender.SourceAppUserModelId}");
+            _ = UpdateMediaPropertiesAsync(sender);
+        }
 
         private void OnPlaybackInfoChanged(GlobalSystemMediaTransportControlsSession sender, PlaybackInfoChangedEventArgs args)
-            => UpdatePlaybackState(sender);
+        {
+            Logger.Trace($"GSMTC event: PlaybackInfoChanged for session {sender.SourceAppUserModelId}");
+            UpdatePlaybackState(sender);
+        }
 
         private void OnTimelinePropertiesChanged(GlobalSystemMediaTransportControlsSession sender, TimelinePropertiesChangedEventArgs args)
-            => UpdateTimelineState(sender);
+        {
+            Logger.Trace($"GSMTC event: TimelinePropertiesChanged for session {sender.SourceAppUserModelId}");
+            UpdateTimelineState(sender);
+        }
 
         private async Task UpdateMediaPropertiesAsync(GlobalSystemMediaTransportControlsSession session)
         {
@@ -514,6 +528,7 @@ namespace wisland.Services
                         nowUtc);
                     if (hasChanges)
                     {
+                        Logger.Trace($"Timeline updated for '{tracked.SessionKey}': pos={nextPositionSeconds:F1}s, dur={nextDurationSeconds:F1}s");
                         changeResult = PrepareStateChange_NoLock();
                     }
                 }

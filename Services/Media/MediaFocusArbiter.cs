@@ -27,10 +27,13 @@ namespace wisland.Services
             bool hasManualLock,
             DateTimeOffset nowUtc)
         {
+            Logger.Trace($"Focus arbiter: resolving with {sessions.Count} session(s), displayed='{currentDisplayedKey}', manualLock={hasManualLock} ('{manualLockedKey}')");
+
             MediaSessionSnapshot? manualLockedSession = FindSession(sessions, manualLockedKey);
             if (hasManualLock && manualLockedSession.HasValue)
             {
                 ClearPendingAutoWinner();
+                Logger.Trace($"Focus arbiter: manual lock active, keeping '{manualLockedKey}'");
                 return new MediaFocusDecision(
                     manualLockedSession.Value,
                     PendingAutoWinnerKey: null,
@@ -98,7 +101,8 @@ namespace wisland.Services
         }
 
         private static MediaSessionSnapshot? SelectAutoWinner(IReadOnlyList<MediaSessionSnapshot> sessions)
-            => sessions
+        {
+            var winner = sessions
                 .Where(session => !session.IsWaitingForReconnect)
                 .OrderBy(session => GetPriorityRank(session))
                 .ThenByDescending(session => session.LastActivityUtc)
@@ -106,6 +110,9 @@ namespace wisland.Services
                 .ThenBy(session => session.SessionKey, StringComparer.Ordinal)
                 .Cast<MediaSessionSnapshot?>()
                 .FirstOrDefault();
+            Logger.Trace($"Focus arbiter: auto winner = '{winner?.SessionKey}' ({winner?.SourceName}), status={winner?.PlaybackStatus}");
+            return winner;
+        }
 
         private static int GetPriorityRank(MediaSessionSnapshot session)
             => session.PlaybackStatus switch
