@@ -14,6 +14,7 @@ It supports:
 - a thin hidden progress line when docked over maximized apps
 - tray actions, backdrop switching, saved settings, and local logging
 - multi-language UI (English, Japanese, Chinese Simplified) with runtime language switching
+- optional AI song metadata resolution via Google GenAI or OpenAI-compatible models, with configurable temperature, thinking depth, grounding, and alternative candidates
 
 ## Tech Stack
 
@@ -21,6 +22,8 @@ It supports:
 - WinUI 3 / Windows App SDK 1.8
 - WinUIEx
 - Windows GSMTC for media integration
+- Google.GenAI SDK for native Gemini model integration
+- OpenAI SDK for OpenAI-compatible endpoint support
 - Win32 / DWM interop for advanced window behavior
 
 The app and test project currently target `net10.0-windows10.0.19041.0`.
@@ -72,9 +75,10 @@ dotnet msbuild wisland.csproj /t:Compile /p:Configuration=Debug /p:Platform=x64 
 App.xaml(.cs)            Application startup
 MainWindow.xaml + MainWindow.*.cs
                          Shell composition and orchestration split by concern
+SettingsWindow.cs        Secondary settings window with fused title bar
 Models/                  Shared constants, typed config values, and render state
-Services/                Controller, media integration, settings, window monitoring, appearance
-Views/                   Compact and expanded content views
+Services/                Controller, media integration, AI resolution, settings, window monitoring, appearance
+Views/                   Compact and expanded content views, settings pages
 Controls/                Custom liquid progress bar and reusable content transitions
 Helpers/                 Logging, native window interop, and media source icon resolution
 ```

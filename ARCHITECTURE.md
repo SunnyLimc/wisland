@@ -16,6 +16,7 @@ Wisland is a Windows desktop recreation of the "Dynamic Island" interaction patt
 - It can track multiple GSMTC sessions at once while exposing a single focused session to the shell.
 - The expanded header uses a compact tab-strip metaphor with stacked source icons and a lightweight session picker overlay.
 - It supports a custom task-progress override, tray controls, backdrop switching, persisted settings, and local logging.
+- It can optionally resolve clean song metadata from AI models (Google GenAI or OpenAI-compatible) using structured output with alternative candidates.
 
 ## 2. Architectural Style
 
@@ -26,6 +27,7 @@ The current architecture is intentionally split like this:
 - `MainWindow` is the composition root and runtime orchestrator.
 - `IslandController` is the pure state and animation target engine.
 - `MediaService`, `SettingsService`, `ForegroundWindowMonitor`, `WindowAppearanceService`, and `ShellVisibilityService` are side-effect adapters.
+- `AiSongResolverService` and `AiSongPromptBuilder` handle optional AI metadata resolution.
 - `Views/` and `Controls/` are lightweight presentation units.
 - `Models/` now also contain semantic appearance tokens for theme-aware styling.
 - `Helpers/` isolate Win32 and operational concerns.
@@ -40,6 +42,7 @@ That split matters. If you are changing code, keep logic placement consistent:
 - Put backdrop and DWM appearance application in `WindowAppearanceService`.
 - Put docked line-overlay ownership in `ShellVisibilityService`.
 - Put persistence in `SettingsService`.
+- Put AI song resolution in `AiSongResolverService` and prompt construction in `AiSongPromptBuilder`.
 
 ## 3. System Map
 
@@ -77,6 +80,16 @@ MediaSourceIconResolver
 SettingsService
   -> persists backdrop + position + dock state
 
+AiSongResolverService
+  -> resolves clean song metadata via AI models (Google GenAI native or OpenAI-compatible)
+  -> dual-path architecture: Google GenAI SDK with structured output + grounding + thinking config, OpenAI-compatible with JSON schema
+  -> manages an in-memory + file-persisted result cache
+  -> logs prompt template, config (temperature, thinking, grounding), full prompts, raw responses, and alternatives
+
+AiSongPromptBuilder
+  -> constructs user messages from native language templates (zh-Hans, zh-Hant, ja) or a generic English template
+  -> returns both the composed message and the template name for logging
+
 ForegroundWindowMonitor
   -> polls the foreground window state when the island is docked
   -> raises maximized-state changes to the shell
@@ -94,6 +107,11 @@ ShellVisibilityService
 Views / Controls
   -> render compact content, expanded media content, liquid progress visuals,
   -> and reusable directional content transitions shared across island surfaces
+  -> Settings/ pages for appearance, AI models, AI song cleanup, and diagnostics
+
+SettingsWindow
+  -> secondary window with NavigationView and fused custom title bar
+  -> hosts settings pages in a Frame
 
 Helpers
   -> logging, localization, native line overlay window, Win32/DWM interop
@@ -109,6 +127,9 @@ wisland/
 │   Top-level shell split into partial files for state, animation, interaction,
 │   media, tray, appearance, and lifetime concerns.
 ├── Models/
+│   ├── AiModelProfile.cs
+│   ├── AiModelProvider.cs
+│   ├── AiSongResult.cs
 │   ├── BackdropType.cs
 │   ├── ContentTransitionDirection.cs
 │   ├── DirectionalTransitionProfile.cs
@@ -120,6 +141,7 @@ wisland/
 │   ├── IslandVisualTokens.cs
 │   └── ProgressBarPalette.cs
 ├── Services/
+│   ├── AiSongResolverService.cs
 │   ├── ForegroundWindowMonitor.cs
 │   ├── IslandController.cs
 │   ├── Media/
@@ -131,7 +153,12 @@ wisland/
 │   └── WindowAppearanceService.cs
 ├── Views/
 │   ├── CompactView.xaml(.cs)
-│   └── ExpandedMediaView.xaml(.cs)
+│   ├── ExpandedMediaView.xaml(.cs)
+│   └── Settings/
+│       ├── AiModelsPage.xaml(.cs)
+│       ├── AiSongOverridePage.xaml(.cs)
+│       ├── AppearancePage.xaml(.cs)
+│       └── DiagnosticsPage.xaml(.cs)
 ├── Controls/
 │   ├── DirectionalContentTransitionCoordinator.cs
 │   └── LiquidProgressBar.xaml(.cs)
@@ -231,10 +258,13 @@ This is one of the most sensitive parts of the app because it depends on:
 - Media playback controls
 - Media timeline progress
 - Custom task progress override
+- AI song metadata resolution (Google GenAI and OpenAI-compatible) with structured output and alternative candidates
+- Configurable AI model profiles with temperature, thinking depth, and grounding controls
 - Tray menu actions
 - Backdrop switching between `Mica`, `Acrylic`, and `None`
 - Persisted position and visual preference
 - File logging for diagnostics
+- Multi-language settings UI (English, Japanese, Chinese Simplified)
 
 ### Non-goals of the current implementation
 
@@ -313,8 +343,32 @@ Persists only stable user preferences and placement data:
 - horizontal center position
 - last Y position
 - docked flag
+- AI model profiles (provider, endpoint, API key via DPAPI, model ID, temperature, thinking depth, grounding toggle)
+- AI song override preferences (language, market, native prompt toggle)
+- display language override
+- log level
 
 It is not a general state snapshot system.
+
+### `AiSongResolverService`
+
+Resolves clean song metadata via AI models:
+
+- dual-path architecture: Google GenAI SDK (native) and OpenAI-compatible endpoints
+- Google path uses structured output schema (6 fields: title, title-alt, title-alt2, artist, artist-alt, artist-alt2) with `PropertyOrdering`, optional grounding search, and configurable thinking level
+- OpenAI path uses strict JSON schema with the same 6 fields
+- per-profile configuration: temperature (0–2), thinking depth (minimal/low/medium/high/off), Google grounding toggle
+- manages an in-memory LRU cache with file persistence
+- `TestModelAsync` allows testing a profile from the settings UI
+- logs at multiple levels: Info for key events, Debug for config/prompts/responses, Trace for full prompt text in API methods
+
+### `AiSongPromptBuilder`
+
+Constructs user messages for AI song resolution:
+
+- supports native language templates (zh-Hans, zh-Hant, ja) and a generic English template with language/market substitution
+- returns a `(Message, TemplateName)` tuple so callers can log which template was selected
+- template names: `"minimal"`, `"native:{code}"`, `"generic:{code}"`
 
 ### `ForegroundWindowMonitor`
 
@@ -565,6 +619,10 @@ Use this table before editing:
 | Change diagnostics | `Helpers/Logger.cs` | Logging is local-file based. |
 | Add/change a localized string | `Strings/*/Resources.resw`, XAML or code-behind caller | Add the key to **all three** `.resw` files. Use `x:Uid` in XAML or `Loc.GetString()` in code. See Section 8. |
 | Add a new display language | `Strings/{tag}/Resources.resw`, `Views/Settings/AppearancePage.xaml` | Copy an existing `.resw`, translate values, add a ComboBox entry. |
+| Change AI song resolution | `Services/AiSongResolverService.cs`, `Services/AiSongPromptBuilder.cs` | Resolver owns API calls and caching; builder owns prompt templates. |
+| Add an AI model setting | `Models/AiModelProfile.cs`, `Services/SettingsService.cs`, `Views/Settings/AiModelsPage.xaml(.cs)` | Add property, DTO field, serialization, and UI control. Wire into API calls in resolver. |
+| Change AI prompt templates | `Services/AiSongPromptBuilder.cs` | Native templates use `{0}`–`{3}` placeholders; generic uses `{0}`–`{5}`. |
+| Change settings UI | `SettingsWindow.cs`, `Views/Settings/*.xaml(.cs)` | Pages are hosted in a Frame via NavigationView. Title bar is a custom overlay. |
 
 ## 12. Best Practices For Vibe Coding In This Repo
 
