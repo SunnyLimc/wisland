@@ -15,8 +15,8 @@ namespace wisland.Services
     /// </summary>
     public sealed partial class MediaService : IDisposable
     {
-        private const string UnknownTrackTitle = "Unknown Track";
-        private const string UnknownArtistName = "Unknown Artist";
+        internal static string UnknownTrackTitle => Loc.GetString("Media/UnknownTrack");
+        internal static string UnknownArtistName => Loc.GetString("Media/UnknownArtist");
 
         private readonly object _gate = new();
         private readonly SemaphoreSlim _refreshSemaphore = new(1, 1);

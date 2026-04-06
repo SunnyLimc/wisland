@@ -12,22 +12,40 @@
                                           Padding="32,24,32,24">
                         <StackPanel Spacing="16"
                 MaxWidth="600">
-                                <TextBlock Text="Appearance"
+                                <TextBlock x:Uid="AppearanceTitle"
                     Style="{StaticResource TitleTextBlockStyle}"/>
-                                <TextBlock Text="Choose the backdrop style used by the island and settings window."
+                                <TextBlock x:Uid="AppearanceDescription"
                        Style="{StaticResource BodyTextBlockStyle}"
                        Foreground="{ThemeResource TextFillColorSecondaryBrush}"/>
 
-                                <RadioButtons x:Name="BackdropSelector"
-                    Header="Backdrop Style"
+                                <RadioButtons x:Uid="BackdropStyleHeader" x:Name="BackdropSelector"
                           SelectionChanged="BackdropSelector_SelectionChanged">
-                                        <RadioButton Content="Mica"
+                                        <RadioButton x:Uid="BackdropMica"
                         Tag="Mica"/>
-                                        <RadioButton Content="Acrylic"
+                                        <RadioButton x:Uid="BackdropAcrylic"
                         Tag="Acrylic"/>
-                                        <RadioButton Content="None"
+                                        <RadioButton x:Uid="BackdropNone"
                         Tag="None"/>
                                 </RadioButtons>
+
+                                <ComboBox x:Uid="LanguageHeader" x:Name="LanguageSelector"
+                    Width="280"
+                    SelectionChanged="LanguageSelector_SelectionChanged">
+                                    <ComboBoxItem x:Uid="LanguageSystemDefault" Tag=""/>
+                                    <ComboBoxItem Content="English" Tag="en-US"/>
+                                    <ComboBoxItem Content="日本語" Tag="ja"/>
+                                    <ComboBoxItem Content="简体中文" Tag="zh-Hans"/>
+                                </ComboBox>
+
+                                <InfoBar x:Name="UnpackagedLanguageHint"
+                    Severity="Informational"
+                    IsOpen="False"
+                    IsClosable="False"/>
+
+                                <InfoBar x:Uid="LanguageRestartHint" x:Name="RestartHint"
+                    Severity="Informational"
+                    IsOpen="False"
+                    IsClosable="True"/>
                         </StackPanel>
                 </ScrollViewer>
         </Grid>

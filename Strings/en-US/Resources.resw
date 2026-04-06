@@ -1,0 +1,342 @@
+﻿<?xml version="1.0" encoding="utf-8"?>
+<root>
+  <xsd:schema id="root" xmlns="" xmlns:xsd="http://www.w3.org/2001/XMLSchema" xmlns:msdata="urn:schemas-microsoft-com:xml-msdata">
+    <xsd:element name="root" msdata:IsDataSet="true">
+      <xsd:complexType>
+        <xsd:choice maxOccurs="unbounded">
+          <xsd:element name="data">
+            <xsd:complexType>
+              <xsd:sequence>
+                <xsd:element name="value" type="xsd:string" minOccurs="0" msdata:Ordinal="1" />
+                <xsd:element name="comment" type="xsd:string" minOccurs="0" msdata:Ordinal="2" />
+              </xsd:sequence>
+              <xsd:attribute name="name" type="xsd:string" use="required" />
+              <xsd:attribute name="type" type="xsd:string" />
+              <xsd:attribute name="mimetype" type="xsd:string" />
+            </xsd:complexType>
+          </xsd:element>
+          <xsd:element name="resheader">
+            <xsd:complexType>
+              <xsd:sequence>
+                <xsd:element name="value" type="xsd:string" minOccurs="0" msdata:Ordinal="1" />
+              </xsd:sequence>
+              <xsd:attribute name="name" type="xsd:string" use="required" />
+            </xsd:complexType>
+          </xsd:element>
+        </xsd:choice>
+      </xsd:complexType>
+    </xsd:element>
+  </xsd:schema>
+  <resheader name="resmimetype">
+    <value>text/microsoft-resx</value>
+  </resheader>
+  <resheader name="version">
+    <value>2.0</value>
+  </resheader>
+  <resheader name="reader">
+    <value>System.Resources.ResXResourceReader, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value>
+  </resheader>
+  <resheader name="writer">
+    <value>System.Resources.ResXResourceWriter, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value>
+  </resheader>
+
+  <!-- App name -->
+  <data name="AppName" xml:space="preserve">
+    <value>Wisland</value>
+  </data>
+
+  <!-- Tray menu -->
+  <data name="Tray/Show" xml:space="preserve">
+    <value>Show Wisland</value>
+  </data>
+  <data name="Tray/Settings" xml:space="preserve">
+    <value>Settings</value>
+  </data>
+  <data name="Tray/Exit" xml:space="preserve">
+    <value>Exit</value>
+  </data>
+
+  <!-- Context flyout (x:Uid) -->
+  <data name="ContextSettings.Text" xml:space="preserve">
+    <value>Settings</value>
+  </data>
+  <data name="ContextExit.Text" xml:space="preserve">
+    <value>Exit</value>
+  </data>
+
+  <!-- Media status labels (code-behind) -->
+  <data name="Media/NowPlaying" xml:space="preserve">
+    <value>Now Playing</value>
+  </data>
+  <data name="Media/Paused" xml:space="preserve">
+    <value>Paused</value>
+  </data>
+  <data name="Media/Idle" xml:space="preserve">
+    <value>Idle</value>
+  </data>
+  <data name="Media/Playing" xml:space="preserve">
+    <value>Playing</value>
+  </data>
+  <data name="Media/Switching" xml:space="preserve">
+    <value>Switching</value>
+  </data>
+  <data name="Media/SwitchingEllipsis" xml:space="preserve">
+    <value>Switching...</value>
+  </data>
+  <data name="Media/Waiting" xml:space="preserve">
+    <value>Waiting</value>
+  </data>
+  <data name="Media/WaitingEllipsis" xml:space="preserve">
+    <value>Waiting...</value>
+  </data>
+  <data name="Media/WaitingForReconnect" xml:space="preserve">
+    <value>Waiting for reconnect</value>
+  </data>
+  <data name="Media/NoMedia" xml:space="preserve">
+    <value>No Media</value>
+  </data>
+  <data name="Media/WaitingForMusic" xml:space="preserve">
+    <value>Waiting for music...</value>
+  </data>
+  <data name="Media/MediaFallback" xml:space="preserve">
+    <value>Media</value>
+  </data>
+  <data name="Media/NewTrack" xml:space="preserve">
+    <value>New Track</value>
+  </data>
+  <data name="Media/Notification" xml:space="preserve">
+    <value>Notification</value>
+  </data>
+  <data name="Media/UnknownTrack" xml:space="preserve">
+    <value>Unknown Track</value>
+  </data>
+  <data name="Media/UnknownArtist" xml:space="preserve">
+    <value>Unknown Artist</value>
+  </data>
+
+  <!-- Settings window -->
+  <data name="Settings/Title" xml:space="preserve">
+    <value>Wisland Settings</value>
+  </data>
+  <data name="Settings/Nav/Appearance" xml:space="preserve">
+    <value>Appearance</value>
+  </data>
+  <data name="Settings/Nav/AiModels" xml:space="preserve">
+    <value>AI Models</value>
+  </data>
+  <data name="Settings/Nav/AiSongOverride" xml:space="preserve">
+    <value>AI Song Override</value>
+  </data>
+  <data name="Settings/Nav/Diagnostics" xml:space="preserve">
+    <value>Diagnostics</value>
+  </data>
+
+  <!-- Appearance page (code-behind) -->
+  <data name="AppearanceTitle.Text" xml:space="preserve">
+    <value>Appearance</value>
+  </data>
+  <data name="AppearanceDescription.Text" xml:space="preserve">
+    <value>Choose the backdrop style used by the island and settings window.</value>
+  </data>
+  <data name="BackdropStyleHeader.Header" xml:space="preserve">
+    <value>Backdrop Style</value>
+  </data>
+  <data name="BackdropMica.Content" xml:space="preserve">
+    <value>Mica</value>
+  </data>
+  <data name="BackdropAcrylic.Content" xml:space="preserve">
+    <value>Acrylic</value>
+  </data>
+  <data name="BackdropNone.Content" xml:space="preserve">
+    <value>None</value>
+  </data>
+
+  <!-- Language section on Appearance page (code-behind) -->
+  <data name="LanguageHeader.Header" xml:space="preserve">
+    <value>Language</value>
+  </data>
+  <data name="LanguageSystemDefault.Content" xml:space="preserve">
+    <value>System Default</value>
+  </data>
+  <data name="LanguageRestartHint.Message" xml:space="preserve">
+    <value>Please restart Wisland for the language change to take effect.</value>
+  </data>
+  <data name="LanguageUnpackagedHint" xml:space="preserve">
+    <value>Language switching is not available in unpackaged mode. The app follows your Windows display language.</value>
+  </data>
+
+  <!-- AI Models page (code-behind) -->
+  <data name="AiModelsTitle.Text" xml:space="preserve">
+    <value>AI Models</value>
+  </data>
+  <data name="AiModelsDescription.Text" xml:space="preserve">
+    <value>Configure the models used for song metadata cleanup. OpenAI Compatible works with any OpenAI-style endpoint, and Google AI Studio can optionally use Google grounding search when the selected Gemini model supports it.</value>
+  </data>
+  <data name="AiModelsEdit.Content" xml:space="preserve">
+    <value>Edit</value>
+  </data>
+  <data name="AiModelsDelete.Content" xml:space="preserve">
+    <value>Delete</value>
+  </data>
+  <data name="AiModelsAdd.Content" xml:space="preserve">
+    <value>Add Model</value>
+  </data>
+  <data name="AiModelsProviderHeader.Header" xml:space="preserve">
+    <value>Provider</value>
+  </data>
+  <data name="ProviderOpenAI.Content" xml:space="preserve">
+    <value>OpenAI Compatible</value>
+  </data>
+  <data name="ProviderGoogle.Content" xml:space="preserve">
+    <value>Google AI Studio</value>
+  </data>
+  <data name="AiModelsDisplayNameHeader.Header" xml:space="preserve">
+    <value>Display Name</value>
+  </data>
+  <data name="AiModelsDisplayNameHeader.PlaceholderText" xml:space="preserve">
+    <value>e.g. Main metadata model</value>
+  </data>
+  <data name="AiModelsEndpointHeader.Header" xml:space="preserve">
+    <value>Endpoint URL</value>
+  </data>
+  <data name="AiModelsEndpointHeader.PlaceholderText" xml:space="preserve">
+    <value>https://api.openai.com/v1</value>
+  </data>
+  <data name="AiModelsApiKeyHeader.Header" xml:space="preserve">
+    <value>API Key</value>
+  </data>
+  <data name="AiModelsApiKeyHeader.PlaceholderText" xml:space="preserve">
+    <value>sk-...</value>
+  </data>
+  <data name="AiModelsModelIdHeader.Header" xml:space="preserve">
+    <value>Model ID</value>
+  </data>
+  <data name="AiModelsModelIdHeader.PlaceholderText" xml:space="preserve">
+    <value>e.g. gpt-4o-mini or gemini-3-flash-preview</value>
+  </data>
+  <data name="AiModelsReasoningHeader.Header" xml:space="preserve">
+    <value>Reasoning Effort (Google AI Studio only)</value>
+  </data>
+  <data name="ReasoningDefault.Content" xml:space="preserve">
+    <value>Default</value>
+  </data>
+  <data name="ReasoningMinimal.Content" xml:space="preserve">
+    <value>Minimal</value>
+  </data>
+  <data name="ReasoningLow.Content" xml:space="preserve">
+    <value>Low</value>
+  </data>
+  <data name="ReasoningMedium.Content" xml:space="preserve">
+    <value>Medium</value>
+  </data>
+  <data name="ReasoningHigh.Content" xml:space="preserve">
+    <value>High</value>
+  </data>
+  <data name="ReasoningNone.Content" xml:space="preserve">
+    <value>None (Gemini 2.5 only)</value>
+  </data>
+  <data name="AiModelsGroundingHeader.Header" xml:space="preserve">
+    <value>Enable Google grounding search</value>
+  </data>
+  <data name="AiModelsGroundingHeader.OnContent" xml:space="preserve">
+    <value>On</value>
+  </data>
+  <data name="AiModelsGroundingHeader.OffContent" xml:space="preserve">
+    <value>Off</value>
+  </data>
+  <data name="AiModelsGroundingHint.Text" xml:space="preserve">
+    <value>Only applies to Google AI Studio models. If enabled, Wisland will request Google grounding search for supported Gemini models and automatically fall back if the compatibility endpoint rejects it.</value>
+  </data>
+  <data name="AiModelsSave.Content" xml:space="preserve">
+    <value>Save</value>
+  </data>
+  <data name="AiModelsCancel.Content" xml:space="preserve">
+    <value>Cancel</value>
+  </data>
+
+  <!-- AI Models page (code-behind) -->
+  <data name="AiModels/AddModel" xml:space="preserve">
+    <value>Add Model</value>
+  </data>
+  <data name="AiModels/EditModel" xml:space="preserve">
+    <value>Edit Model</value>
+  </data>
+  <data name="AiModels/ValidationAllRequired" xml:space="preserve">
+    <value>All fields are required.</value>
+  </data>
+  <data name="AiModels/ValidationInvalidUrl" xml:space="preserve">
+    <value>Endpoint must be a valid URL.</value>
+  </data>
+  <data name="AiModels/ProviderOpenAI" xml:space="preserve">
+    <value>OpenAI Compatible</value>
+  </data>
+  <data name="AiModels/ProviderGoogle" xml:space="preserve">
+    <value>Google AI Studio</value>
+  </data>
+
+  <!-- AI Song Override page (code-behind) -->
+  <data name="AiSongTitle.Text" xml:space="preserve">
+    <value>AI Song Override</value>
+  </data>
+  <data name="AiSongDescription.Text" xml:space="preserve">
+    <value>When enabled, song titles and artist names from media sessions are sent to the configured AI model for cleanup. The AI removes tags like '(Official Video)', separates combined title and artist strings, and returns cleaner metadata. Google AI Studio profiles can also opt into Google grounding search when the selected Gemini model supports it.</value>
+  </data>
+  <data name="AiSongEnableToggle.Header" xml:space="preserve">
+    <value>Use AI to resolve song metadata</value>
+  </data>
+  <data name="AiSongModelSelector.Header" xml:space="preserve">
+    <value>AI Model</value>
+  </data>
+  <data name="AiSongModelSelector.PlaceholderText" xml:space="preserve">
+    <value>Select a model...</value>
+  </data>
+  <data name="AiSongNoModelsHint.Text" xml:space="preserve">
+    <value>No AI models configured. Add one in the AI Models page first.</value>
+  </data>
+  <data name="AiSongCacheTitle.Text" xml:space="preserve">
+    <value>Cache</value>
+  </data>
+  <data name="AiSongCacheDescription.Text" xml:space="preserve">
+    <value>Resolved song metadata is cached locally to avoid redundant AI calls. Clear the cache to force re-resolution.</value>
+  </data>
+  <data name="AiSongClearLast.Content" xml:space="preserve">
+    <value>Clear Last Entry</value>
+  </data>
+  <data name="AiSongClearAll.Content" xml:space="preserve">
+    <value>Clear All Cache</value>
+  </data>
+
+  <!-- AI Song Override page (code-behind) -->
+  <data name="AiSong/CachedEntries" xml:space="preserve">
+    <value>Cached entries: {0}</value>
+  </data>
+
+  <!-- Diagnostics page (code-behind) -->
+  <data name="DiagnosticsTitle.Text" xml:space="preserve">
+    <value>Diagnostics</value>
+  </data>
+  <data name="DiagnosticsDescription.Text" xml:space="preserve">
+    <value>Configure logging verbosity and access log files.</value>
+  </data>
+  <data name="LogLevelHeader.Header" xml:space="preserve">
+    <value>Log Level</value>
+  </data>
+  <data name="LogLevelTrace.Content" xml:space="preserve">
+    <value>Trace</value>
+  </data>
+  <data name="LogLevelDebug.Content" xml:space="preserve">
+    <value>Debug</value>
+  </data>
+  <data name="LogLevelInfo.Content" xml:space="preserve">
+    <value>Info</value>
+  </data>
+  <data name="LogLevelWarn.Content" xml:space="preserve">
+    <value>Warn</value>
+  </data>
+  <data name="LogLevelError.Content" xml:space="preserve">
+    <value>Error</value>
+  </data>
+  <data name="OpenLogsFolder.Content" xml:space="preserve">
+    <value>Open Logs Folder</value>
+  </data>
+</root>

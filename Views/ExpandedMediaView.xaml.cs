@@ -183,7 +183,7 @@ namespace wisland.Views
             AvatarStripSnapshot nextAvatarStripSnapshot = CreateMediaAvatarStripSnapshot(session, displayIndex, availableSessions);
             MetadataSnapshot nextMetadataSnapshot = session.HasValue
                 ? new MetadataSnapshot(session.Value.Title, GetMetadataSubtitle(session.Value, showBusyTransportState))
-                : new MetadataSnapshot("No Media", "Waiting for music...");
+                : new MetadataSnapshot(Loc.GetString("Media/NoMedia"), Loc.GetString("Media/WaitingForMusic"));
 
             bool headerTextChanged = ApplyHeaderTextSnapshot(nextHeaderTextSnapshot, nextAvatarStripSnapshot, direction);
             bool avatarStripChanged = ApplyAvatarStripSnapshot(nextAvatarStripSnapshot, direction);
@@ -1338,7 +1338,7 @@ namespace wisland.Views
         {
             if (!session.HasValue)
             {
-                return new HeaderTextSnapshot("Wisland", ShowExpandHint: false);
+                return new HeaderTextSnapshot(Loc.GetString("AppName"), ShowExpandHint: false);
             }
 
             return new HeaderTextSnapshot(
@@ -1621,21 +1621,21 @@ namespace wisland.Views
 
         private static string GetHeaderLabel(MediaSessionSnapshot session, bool showTransportSwitchingHint)
             => showTransportSwitchingHint
-                ? "Switching"
+                ? Loc.GetString("Media/Switching")
                 : session.IsWaitingForReconnect
-                ? "Waiting"
+                ? Loc.GetString("Media/Waiting")
                 : session.PlaybackStatus switch
                 {
-                    Windows.Media.Control.GlobalSystemMediaTransportControlsSessionPlaybackStatus.Playing => "Now Playing",
-                    Windows.Media.Control.GlobalSystemMediaTransportControlsSessionPlaybackStatus.Paused => "Paused",
-                    _ => "Media"
+                    Windows.Media.Control.GlobalSystemMediaTransportControlsSessionPlaybackStatus.Playing => Loc.GetString("Media/NowPlaying"),
+                    Windows.Media.Control.GlobalSystemMediaTransportControlsSessionPlaybackStatus.Paused => Loc.GetString("Media/Paused"),
+                    _ => Loc.GetString("Media/MediaFallback")
                 };
 
         private static string GetMetadataSubtitle(MediaSessionSnapshot session, bool showTransportSwitchingHint)
             => showTransportSwitchingHint
-                ? "Switching..."
+                ? Loc.GetString("Media/SwitchingEllipsis")
                 : session.IsWaitingForReconnect
-                    ? "Waiting..."
+                    ? Loc.GetString("Media/WaitingEllipsis")
                     : session.Artist;
 
         private static string GetSourceMonogram(string sourceName)
@@ -1653,12 +1653,12 @@ namespace wisland.Views
 
         private static string GetPlaybackStatusLabel(MediaSessionSnapshot session)
             => session.IsWaitingForReconnect
-                ? "Waiting..."
+                ? Loc.GetString("Media/WaitingEllipsis")
                 : session.PlaybackStatus switch
                 {
-                    Windows.Media.Control.GlobalSystemMediaTransportControlsSessionPlaybackStatus.Playing => "Playing",
-                    Windows.Media.Control.GlobalSystemMediaTransportControlsSessionPlaybackStatus.Paused => "Paused",
-                    _ => "Idle"
+                    Windows.Media.Control.GlobalSystemMediaTransportControlsSessionPlaybackStatus.Playing => Loc.GetString("Media/Playing"),
+                    Windows.Media.Control.GlobalSystemMediaTransportControlsSessionPlaybackStatus.Paused => Loc.GetString("Media/Paused"),
+                    _ => Loc.GetString("Media/Idle")
                 };
 
         private static Brush CreateOverflowFadeBrush(Color backgroundColor)

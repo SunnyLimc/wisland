@@ -91,10 +91,10 @@ namespace wisland.Services
             {
                 if (_cache.TryGetValue(key, out var result))
                 {
-                    Logger.Debug($"AI cache hit: '{rawTitle}' by '{rawArtist}' -> '{result.Title}' by '{result.Artist}'");
+                    Logger.Trace($"AI cache hit: '{rawTitle}' by '{rawArtist}' -> '{result.Title}' by '{result.Artist}'");
                     return result;
                 }
-                Logger.Debug($"AI cache miss: '{rawTitle}' by '{rawArtist}'");
+                Logger.Trace($"AI cache miss: '{rawTitle}' by '{rawArtist}'");
                 return null;
             }
         }

@@ -1,0 +1,340 @@
+﻿<?xml version="1.0" encoding="utf-8"?>
+<root>
+  <xsd:schema id="root" xmlns="" xmlns:xsd="http://www.w3.org/2001/XMLSchema" xmlns:msdata="urn:schemas-microsoft-com:xml-msdata">
+    <xsd:element name="root" msdata:IsDataSet="true">
+      <xsd:complexType>
+        <xsd:choice maxOccurs="unbounded">
+          <xsd:element name="data">
+            <xsd:complexType>
+              <xsd:sequence>
+                <xsd:element name="value" type="xsd:string" minOccurs="0" msdata:Ordinal="1" />
+                <xsd:element name="comment" type="xsd:string" minOccurs="0" msdata:Ordinal="2" />
+              </xsd:sequence>
+              <xsd:attribute name="name" type="xsd:string" use="required" />
+              <xsd:attribute name="type" type="xsd:string" />
+              <xsd:attribute name="mimetype" type="xsd:string" />
+            </xsd:complexType>
+          </xsd:element>
+          <xsd:element name="resheader">
+            <xsd:complexType>
+              <xsd:sequence>
+                <xsd:element name="value" type="xsd:string" minOccurs="0" msdata:Ordinal="1" />
+              </xsd:sequence>
+              <xsd:attribute name="name" type="xsd:string" use="required" />
+            </xsd:complexType>
+          </xsd:element>
+        </xsd:choice>
+      </xsd:complexType>
+    </xsd:element>
+  </xsd:schema>
+  <resheader name="resmimetype">
+    <value>text/microsoft-resx</value>
+  </resheader>
+  <resheader name="version">
+    <value>2.0</value>
+  </resheader>
+  <resheader name="reader">
+    <value>System.Resources.ResXResourceReader, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value>
+  </resheader>
+  <resheader name="writer">
+    <value>System.Resources.ResXResourceWriter, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value>
+  </resheader>
+
+  <!-- App name -->
+  <data name="AppName" xml:space="preserve">
+    <value>Wisland</value>
+  </data>
+
+  <!-- Tray menu -->
+  <data name="Tray/Show" xml:space="preserve">
+    <value>显示 Wisland</value>
+  </data>
+  <data name="Tray/Settings" xml:space="preserve">
+    <value>设置</value>
+  </data>
+  <data name="Tray/Exit" xml:space="preserve">
+    <value>退出</value>
+  </data>
+
+  <!-- Context flyout -->
+  <data name="ContextSettings.Text" xml:space="preserve">
+    <value>设置</value>
+  </data>
+  <data name="ContextExit.Text" xml:space="preserve">
+    <value>退出</value>
+  </data>
+
+  <!-- Media status labels -->
+  <data name="Media/NowPlaying" xml:space="preserve">
+    <value>正在播放</value>
+  </data>
+  <data name="Media/Paused" xml:space="preserve">
+    <value>已暂停</value>
+  </data>
+  <data name="Media/Idle" xml:space="preserve">
+    <value>空闲</value>
+  </data>
+  <data name="Media/Playing" xml:space="preserve">
+    <value>正在播放</value>
+  </data>
+  <data name="Media/Switching" xml:space="preserve">
+    <value>切换中</value>
+  </data>
+  <data name="Media/SwitchingEllipsis" xml:space="preserve">
+    <value>切换中...</value>
+  </data>
+  <data name="Media/Waiting" xml:space="preserve">
+    <value>等待中</value>
+  </data>
+  <data name="Media/WaitingEllipsis" xml:space="preserve">
+    <value>等待中...</value>
+  </data>
+  <data name="Media/WaitingForReconnect" xml:space="preserve">
+    <value>等待重新连接</value>
+  </data>
+  <data name="Media/NoMedia" xml:space="preserve">
+    <value>无媒体</value>
+  </data>
+  <data name="Media/WaitingForMusic" xml:space="preserve">
+    <value>等待音乐...</value>
+  </data>
+  <data name="Media/MediaFallback" xml:space="preserve">
+    <value>媒体</value>
+  </data>
+  <data name="Media/NewTrack" xml:space="preserve">
+    <value>新曲目</value>
+  </data>
+  <data name="Media/Notification" xml:space="preserve">
+    <value>通知</value>
+  </data>
+  <data name="Media/UnknownTrack" xml:space="preserve">
+    <value>未知曲目</value>
+  </data>
+  <data name="Media/UnknownArtist" xml:space="preserve">
+    <value>未知艺术家</value>
+  </data>
+
+  <!-- Settings window -->
+  <data name="Settings/Title" xml:space="preserve">
+    <value>Wisland 设置</value>
+  </data>
+  <data name="Settings/Nav/Appearance" xml:space="preserve">
+    <value>外观</value>
+  </data>
+  <data name="Settings/Nav/AiModels" xml:space="preserve">
+    <value>AI 模型</value>
+  </data>
+  <data name="Settings/Nav/AiSongOverride" xml:space="preserve">
+    <value>AI 歌曲修正</value>
+  </data>
+  <data name="Settings/Nav/Diagnostics" xml:space="preserve">
+    <value>诊断</value>
+  </data>
+
+  <!-- Appearance page -->
+  <data name="AppearanceTitle.Text" xml:space="preserve">
+    <value>外观</value>
+  </data>
+  <data name="AppearanceDescription.Text" xml:space="preserve">
+    <value>选择岛屿和设置窗口使用的背景样式。</value>
+  </data>
+  <data name="BackdropStyleHeader.Header" xml:space="preserve">
+    <value>背景样式</value>
+  </data>
+  <data name="BackdropMica.Content" xml:space="preserve">
+    <value>Mica</value>
+  </data>
+  <data name="BackdropAcrylic.Content" xml:space="preserve">
+    <value>Acrylic</value>
+  </data>
+  <data name="BackdropNone.Content" xml:space="preserve">
+    <value>无</value>
+  </data>
+
+  <!-- Language section -->
+  <data name="LanguageHeader.Header" xml:space="preserve">
+    <value>语言</value>
+  </data>
+  <data name="LanguageSystemDefault.Content" xml:space="preserve">
+    <value>系统默认</value>
+  </data>
+  <data name="LanguageRestartHint.Message" xml:space="preserve">
+    <value>请重新启动 Wisland 以使语言更改生效。</value>
+  </data>
+  <data name="LanguageUnpackagedHint" xml:space="preserve">
+    <value>非打包模式下无法切换语言，应用将跟随 Windows 显示语言。</value>
+  </data>
+
+  <!-- AI Models page -->
+  <data name="AiModelsTitle.Text" xml:space="preserve">
+    <value>AI 模型</value>
+  </data>
+  <data name="AiModelsDescription.Text" xml:space="preserve">
+    <value>配置用于歌曲元数据清理的模型。OpenAI 兼容适用于任何 OpenAI 风格端点，Google AI Studio 可以在所选 Gemini 模型支持时选择使用 Google 接地搜索。</value>
+  </data>
+  <data name="AiModelsEdit.Content" xml:space="preserve">
+    <value>编辑</value>
+  </data>
+  <data name="AiModelsDelete.Content" xml:space="preserve">
+    <value>删除</value>
+  </data>
+  <data name="AiModelsAdd.Content" xml:space="preserve">
+    <value>添加模型</value>
+  </data>
+  <data name="AiModelsProviderHeader.Header" xml:space="preserve">
+    <value>提供商</value>
+  </data>
+  <data name="ProviderOpenAI.Content" xml:space="preserve">
+    <value>OpenAI 兼容</value>
+  </data>
+  <data name="ProviderGoogle.Content" xml:space="preserve">
+    <value>Google AI Studio</value>
+  </data>
+  <data name="AiModelsDisplayNameHeader.Header" xml:space="preserve">
+    <value>显示名称</value>
+  </data>
+  <data name="AiModelsDisplayNameHeader.PlaceholderText" xml:space="preserve">
+    <value>例如：主元数据模型</value>
+  </data>
+  <data name="AiModelsEndpointHeader.Header" xml:space="preserve">
+    <value>端点 URL</value>
+  </data>
+  <data name="AiModelsEndpointHeader.PlaceholderText" xml:space="preserve">
+    <value>https://api.openai.com/v1</value>
+  </data>
+  <data name="AiModelsApiKeyHeader.Header" xml:space="preserve">
+    <value>API 密钥</value>
+  </data>
+  <data name="AiModelsApiKeyHeader.PlaceholderText" xml:space="preserve">
+    <value>sk-...</value>
+  </data>
+  <data name="AiModelsModelIdHeader.Header" xml:space="preserve">
+    <value>模型 ID</value>
+  </data>
+  <data name="AiModelsModelIdHeader.PlaceholderText" xml:space="preserve">
+    <value>例如：gpt-4o-mini 或 gemini-3-flash-preview</value>
+  </data>
+  <data name="AiModelsReasoningHeader.Header" xml:space="preserve">
+    <value>推理强度（仅 Google AI Studio）</value>
+  </data>
+  <data name="ReasoningDefault.Content" xml:space="preserve">
+    <value>默认</value>
+  </data>
+  <data name="ReasoningMinimal.Content" xml:space="preserve">
+    <value>最低</value>
+  </data>
+  <data name="ReasoningLow.Content" xml:space="preserve">
+    <value>低</value>
+  </data>
+  <data name="ReasoningMedium.Content" xml:space="preserve">
+    <value>中</value>
+  </data>
+  <data name="ReasoningHigh.Content" xml:space="preserve">
+    <value>高</value>
+  </data>
+  <data name="ReasoningNone.Content" xml:space="preserve">
+    <value>无（仅 Gemini 2.5）</value>
+  </data>
+  <data name="AiModelsGroundingHeader.Header" xml:space="preserve">
+    <value>启用 Google 接地搜索</value>
+  </data>
+  <data name="AiModelsGroundingHeader.OnContent" xml:space="preserve">
+    <value>开</value>
+  </data>
+  <data name="AiModelsGroundingHeader.OffContent" xml:space="preserve">
+    <value>关</value>
+  </data>
+  <data name="AiModelsGroundingHint.Text" xml:space="preserve">
+    <value>仅适用于 Google AI Studio 模型。启用后，Wisland 将为支持的 Gemini 模型请求 Google 接地搜索，如果兼容性端点拒绝则自动回退。</value>
+  </data>
+  <data name="AiModelsSave.Content" xml:space="preserve">
+    <value>保存</value>
+  </data>
+  <data name="AiModelsCancel.Content" xml:space="preserve">
+    <value>取消</value>
+  </data>
+
+  <!-- AI Models page (code-behind) -->
+  <data name="AiModels/AddModel" xml:space="preserve">
+    <value>添加模型</value>
+  </data>
+  <data name="AiModels/EditModel" xml:space="preserve">
+    <value>编辑模型</value>
+  </data>
+  <data name="AiModels/ValidationAllRequired" xml:space="preserve">
+    <value>所有字段均为必填项。</value>
+  </data>
+  <data name="AiModels/ValidationInvalidUrl" xml:space="preserve">
+    <value>端点必须是有效的 URL。</value>
+  </data>
+  <data name="AiModels/ProviderOpenAI" xml:space="preserve">
+    <value>OpenAI 兼容</value>
+  </data>
+  <data name="AiModels/ProviderGoogle" xml:space="preserve">
+    <value>Google AI Studio</value>
+  </data>
+
+  <!-- AI Song Override page -->
+  <data name="AiSongTitle.Text" xml:space="preserve">
+    <value>AI 歌曲修正</value>
+  </data>
+  <data name="AiSongDescription.Text" xml:space="preserve">
+    <value>启用后，媒体会话中的歌曲标题和艺术家名称将发送到配置的 AI 模型进行清理。AI 会删除"(Official Video)"等标签，分离组合的标题和艺术家字符串，并返回更干净的元数据。Google AI Studio 配置文件还可以在所选 Gemini 模型支持时选择使用 Google 接地搜索。</value>
+  </data>
+  <data name="AiSongEnableToggle.Header" xml:space="preserve">
+    <value>使用 AI 解析歌曲元数据</value>
+  </data>
+  <data name="AiSongModelSelector.Header" xml:space="preserve">
+    <value>AI 模型</value>
+  </data>
+  <data name="AiSongModelSelector.PlaceholderText" xml:space="preserve">
+    <value>选择模型...</value>
+  </data>
+  <data name="AiSongNoModelsHint.Text" xml:space="preserve">
+    <value>尚未配置 AI 模型。请先在"AI 模型"页面中添加。</value>
+  </data>
+  <data name="AiSongCacheTitle.Text" xml:space="preserve">
+    <value>缓存</value>
+  </data>
+  <data name="AiSongCacheDescription.Text" xml:space="preserve">
+    <value>已解析的歌曲元数据将缓存在本地以避免重复的 AI 调用。清除缓存将强制重新解析。</value>
+  </data>
+  <data name="AiSongClearLast.Content" xml:space="preserve">
+    <value>清除最后一条</value>
+  </data>
+  <data name="AiSongClearAll.Content" xml:space="preserve">
+    <value>清除所有缓存</value>
+  </data>
+  <data name="AiSong/CachedEntries" xml:space="preserve">
+    <value>缓存条目: {0}</value>
+  </data>
+
+  <!-- Diagnostics page -->
+  <data name="DiagnosticsTitle.Text" xml:space="preserve">
+    <value>诊断</value>
+  </data>
+  <data name="DiagnosticsDescription.Text" xml:space="preserve">
+    <value>配置日志详细程度并访问日志文件。</value>
+  </data>
+  <data name="LogLevelHeader.Header" xml:space="preserve">
+    <value>日志级别</value>
+  </data>
+  <data name="LogLevelTrace.Content" xml:space="preserve">
+    <value>Trace</value>
+  </data>
+  <data name="LogLevelDebug.Content" xml:space="preserve">
+    <value>Debug</value>
+  </data>
+  <data name="LogLevelInfo.Content" xml:space="preserve">
+    <value>Info</value>
+  </data>
+  <data name="LogLevelWarn.Content" xml:space="preserve">
+    <value>Warn</value>
+  </data>
+  <data name="LogLevelError.Content" xml:space="preserve">
+    <value>Error</value>
+  </data>
+  <data name="OpenLogsFolder.Content" xml:space="preserve">
+    <value>打开日志文件夹</value>
+  </data>
+</root>

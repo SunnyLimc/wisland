@@ -59,6 +59,9 @@ namespace wisland.Services
         /// <summary>User-configured log level. Null means use compile-time default.</summary>
         public LogLevel? LogLevel { get; set; }
 
+        /// <summary>BCP-47 language tag override (e.g. "ja", "zh-Hans"). Null means follow OS.</summary>
+        public string? Language { get; set; }
+
         /// <summary>
         /// Load settings from disk. Returns silently with defaults if file doesn't exist or is corrupted.
         /// </summary>
@@ -85,6 +88,7 @@ namespace wisland.Services
                     ActiveAiModelId = data.ActiveAiModelId;
                     AiSongOverrideEnabled = data.AiSongOverrideEnabled;
                     LogLevel = ParseLogLevel(data.LogLevel);
+                    Language = data.Language;
                 }
             }
             catch (Exception ex)
@@ -118,7 +122,8 @@ namespace wisland.Services
                     AiModels = SerializeAiModels(AiModels),
                     ActiveAiModelId = ActiveAiModelId,
                     AiSongOverrideEnabled = AiSongOverrideEnabled,
-                    LogLevel = LogLevel?.ToString()
+                    LogLevel = LogLevel?.ToString(),
+                    Language = Language
                 };
 
                 var json = JsonSerializer.Serialize(data, JsonOptions);
@@ -241,6 +246,7 @@ namespace wisland.Services
             public string? ActiveAiModelId { get; set; }
             public bool AiSongOverrideEnabled { get; set; }
             public string? LogLevel { get; set; }
+            public string? Language { get; set; }
         }
 
         private sealed class AiModelProfileData

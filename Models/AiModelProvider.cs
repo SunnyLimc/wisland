@@ -1,4 +1,5 @@
 using System;
+using wisland.Helpers;
 
 namespace wisland.Models
 {
@@ -23,8 +24,8 @@ namespace wisland.Models
         public static string GetDisplayName(string? provider)
             => Normalize(provider) switch
             {
-                nameof(AiModelProvider.GoogleAIStudio) => "Google AI Studio",
-                _ => "OpenAI Compatible",
+                nameof(AiModelProvider.GoogleAIStudio) => Loc.GetString("AiModels/ProviderGoogle"),
+                _ => Loc.GetString("AiModels/ProviderOpenAI"),
             };
     }
 }

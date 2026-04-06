@@ -1,6 +1,7 @@
 using Microsoft.UI.Xaml;
 using System;
 using wisland.Helpers;
+using wisland.Services;
 
 namespace wisland
 {
@@ -24,6 +25,11 @@ namespace wisland
             try
             {
                 Logger.Info("Wisland application starting");
+
+                var settings = new SettingsService();
+                settings.Load();
+                Loc.Initialize(settings.Language);
+
                 _window = new MainWindow();
                 _window.Activate();
             }

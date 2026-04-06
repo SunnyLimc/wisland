@@ -4,6 +4,7 @@ using System.Collections.ObjectModel;
 using System.Linq;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
+using wisland.Helpers;
 using wisland.Models;
 using wisland.Services;
 
@@ -44,7 +45,7 @@ namespace wisland.Views.Settings
         private void AddModel_Click(object sender, RoutedEventArgs e)
         {
             _editingModelId = null;
-            FormTitle.Text = "Add Model";
+            FormTitle.Text = Loc.GetString("AiModels/AddModel");
             ClearForm();
             ProviderCombo.SelectedIndex = 0;
             EndpointBox.Text = GetDefaultEndpoint(GetSelectedProviderTag());
@@ -61,7 +62,7 @@ namespace wisland.Views.Settings
                 if (model == null) return;
 
                 _editingModelId = id;
-                FormTitle.Text = "Edit Model";
+                FormTitle.Text = Loc.GetString("AiModels/EditModel");
                 SetProviderComboByTag(model.Provider);
                 DisplayNameBox.Text = model.DisplayName;
                 EndpointBox.Text = model.Endpoint;
@@ -100,14 +101,14 @@ namespace wisland.Views.Settings
             if (string.IsNullOrEmpty(displayName) || string.IsNullOrEmpty(endpoint)
                 || string.IsNullOrEmpty(apiKey) || string.IsNullOrEmpty(modelId))
             {
-                FormError.Message = "All fields are required.";
+                FormError.Message = Loc.GetString("AiModels/ValidationAllRequired");
                 FormError.IsOpen = true;
                 return;
             }
 
             if (!Uri.TryCreate(endpoint, UriKind.Absolute, out _))
             {
-                FormError.Message = "Endpoint must be a valid URL.";
+                FormError.Message = Loc.GetString("AiModels/ValidationInvalidUrl");
                 FormError.IsOpen = true;
                 return;
             }

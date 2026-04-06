@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using wisland.Helpers;
 using wisland.Models;
 
 namespace wisland.Services
@@ -55,19 +56,19 @@ namespace wisland.Services
 
         private static string ResolveSubtitle(MediaSessionSnapshot session)
             => session.IsWaitingForReconnect
-                ? "Waiting for reconnect"
+                ? Loc.GetString("Media/WaitingForReconnect")
                 : string.IsNullOrWhiteSpace(session.Artist)
                     ? string.Empty
                     : session.Artist;
 
         private static string ResolveStatusText(MediaSessionSnapshot session)
             => session.IsWaitingForReconnect
-                ? "Waiting"
+                ? Loc.GetString("Media/Waiting")
                 : session.PlaybackStatus switch
                 {
-                    Windows.Media.Control.GlobalSystemMediaTransportControlsSessionPlaybackStatus.Playing => "Playing",
-                    Windows.Media.Control.GlobalSystemMediaTransportControlsSessionPlaybackStatus.Paused => "Paused",
-                    _ => "Idle"
+                    Windows.Media.Control.GlobalSystemMediaTransportControlsSessionPlaybackStatus.Playing => Loc.GetString("Media/Playing"),
+                    Windows.Media.Control.GlobalSystemMediaTransportControlsSessionPlaybackStatus.Paused => Loc.GetString("Media/Paused"),
+                    _ => Loc.GetString("Media/Idle")
                 };
     }
 }

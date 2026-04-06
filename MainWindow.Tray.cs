@@ -1,6 +1,7 @@
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
 using WinUIEx;
+using wisland.Helpers;
 
 namespace wisland
 {
@@ -10,17 +11,17 @@ namespace wisland
         {
             var menu = new MenuFlyout();
 
-            var showItem = new MenuFlyoutItem { Text = "Show Wisland" };
+            var showItem = new MenuFlyoutItem { Text = Loc.GetString("Tray/Show") };
             showItem.Click += ShowIsland_Click;
             menu.Items.Add(showItem);
 
-            var settingsItem = new MenuFlyoutItem { Text = "Settings" };
+            var settingsItem = new MenuFlyoutItem { Text = Loc.GetString("Tray/Settings") };
             settingsItem.Click += Settings_Click;
             menu.Items.Add(settingsItem);
 
             menu.Items.Add(new MenuFlyoutSeparator());
 
-            var exitItem = new MenuFlyoutItem { Text = "Exit" };
+            var exitItem = new MenuFlyoutItem { Text = Loc.GetString("Tray/Exit") };
             exitItem.Click += Exit_Click;
             menu.Items.Add(exitItem);
 

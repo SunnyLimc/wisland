@@ -12,9 +12,9 @@
                                           Padding="32,24,32,24">
                         <StackPanel Spacing="16"
                 MaxWidth="600">
-                                <TextBlock Text="AI Models"
+                                <TextBlock x:Uid="AiModelsTitle"
                     Style="{StaticResource TitleTextBlockStyle}"/>
-                                <TextBlock Text="Configure the models used for song metadata cleanup. OpenAI Compatible works with any OpenAI-style endpoint, and Google AI Studio can optionally use Google grounding search when the selected Gemini model supports it."
+                                <TextBlock x:Uid="AiModelsDescription"
                        Style="{StaticResource BodyTextBlockStyle}"
                        Foreground="{ThemeResource TextFillColorSecondaryBrush}"
                        TextWrapping="WrapWholeWords"/>
@@ -42,12 +42,12 @@
                                         FontSize="12"/>
                             </StackPanel>
                             <Button Grid.Column="1"
-                                    Content="Edit"
+                                    x:Uid="AiModelsEdit"
                                     Tag="{Binding Id}"
                                     Click="EditModel_Click"
                                     Padding="8,4"/>
                             <Button Grid.Column="2"
-                                    Content="Delete"
+                                    x:Uid="AiModelsDelete"
                                     Tag="{Binding Id}"
                                     Click="DeleteModel_Click"
                                     Padding="8,4"/>
@@ -56,8 +56,7 @@
                 </ListView.ItemTemplate>
             </ListView>
 
-            <Button x:Name="AddModelButton"
-                    Content="Add Model"
+            <Button x:Uid="AiModelsAdd" x:Name="AddModelButton"
                     Click="AddModel_Click"
                     Style="{StaticResource AccentButtonStyle}"/>
 
@@ -71,59 +70,45 @@
                     Padding="20,16">
                 <StackPanel Spacing="12">
                     <TextBlock x:Name="FormTitle"
-                            Text="Add Model"
+                            Text=""
                             Style="{StaticResource SubtitleTextBlockStyle}"/>
 
-                    <ComboBox x:Name="ProviderCombo"
-                            Header="Provider"
+                    <ComboBox x:Uid="AiModelsProviderHeader" x:Name="ProviderCombo"
                             Width="280"
                               SelectionChanged="ProviderCombo_SelectionChanged">
-                                <ComboBoxItem Content="OpenAI Compatible"
+                                <ComboBoxItem x:Uid="ProviderOpenAI" x:Name="ProviderOpenAIItem"
                                         Tag="OpenAICompatible"/>
-                        <ComboBoxItem Content="Google AI Studio"
+                        <ComboBoxItem x:Uid="ProviderGoogle" x:Name="ProviderGoogleItem"
                                 Tag="GoogleAIStudio"/>
                     </ComboBox>
 
-                    <TextBox x:Name="DisplayNameBox"
-                            Header="Display Name"
-                                    PlaceholderText="e.g. Main metadata model"/>
-                    <TextBox x:Name="EndpointBox"
-                            Header="Endpoint URL"
-                                    PlaceholderText="https://api.openai.com/v1"/>
-                    <PasswordBox x:Name="ApiKeyBox"
-                            Header="API Key"
-                            PlaceholderText="sk-..."/>
-                    <TextBox x:Name="ModelIdBox"
-                            Header="Model ID"
-                                    PlaceholderText="e.g. gpt-4o-mini or gemini-3-flash-preview"/>
+                    <TextBox x:Uid="AiModelsDisplayNameHeader" x:Name="DisplayNameBox"/>
+                    <TextBox x:Uid="AiModelsEndpointHeader" x:Name="EndpointBox"/>
+                    <PasswordBox x:Uid="AiModelsApiKeyHeader" x:Name="ApiKeyBox"/>
+                    <TextBox x:Uid="AiModelsModelIdHeader" x:Name="ModelIdBox"/>
 
-                    <ComboBox x:Name="ReasoningEffortCombo"
-                            Header="Reasoning Effort (Google AI Studio only)"
+                    <ComboBox x:Uid="AiModelsReasoningHeader" x:Name="ReasoningEffortCombo"
                               Visibility="Collapsed"
                             Width="280">
-                        <ComboBoxItem Content="Default"
+                        <ComboBoxItem x:Uid="ReasoningDefault" x:Name="ReasoningDefaultItem"
                                 Tag=""/>
-                        <ComboBoxItem Content="Minimal"
+                        <ComboBoxItem x:Uid="ReasoningMinimal" x:Name="ReasoningMinimalItem"
                                 Tag="minimal"/>
-                        <ComboBoxItem Content="Low"
+                        <ComboBoxItem x:Uid="ReasoningLow" x:Name="ReasoningLowItem"
                                 Tag="low"/>
-                        <ComboBoxItem Content="Medium"
+                        <ComboBoxItem x:Uid="ReasoningMedium" x:Name="ReasoningMediumItem"
                                 Tag="medium"/>
-                        <ComboBoxItem Content="High"
+                        <ComboBoxItem x:Uid="ReasoningHigh" x:Name="ReasoningHighItem"
                                 Tag="high"/>
-                        <ComboBoxItem Content="None (Gemini 2.5 only)"
+                        <ComboBoxItem x:Uid="ReasoningNone" x:Name="ReasoningNoneItem"
                                 Tag="none"/>
                     </ComboBox>
 
-                    <ToggleSwitch x:Name="GroundingToggle"
-                            Header="Enable Google grounding search"
-                            OnContent="On"
-                            OffContent="Off"
+                    <ToggleSwitch x:Uid="AiModelsGroundingHeader" x:Name="GroundingToggle"
                             Visibility="Collapsed"
                             IsOn="True"/>
 
-                    <TextBlock x:Name="GroundingHintText"
-                            Text="Only applies to Google AI Studio models. If enabled, Wisland will request Google grounding search for supported Gemini models and automatically fall back if the compatibility endpoint rejects it."
+                    <TextBlock x:Uid="AiModelsGroundingHint" x:Name="GroundingHintText"
                             Style="{StaticResource BodyTextBlockStyle}"
                             Foreground="{ThemeResource TextFillColorSecondaryBrush}"
                             TextWrapping="WrapWholeWords"
@@ -131,11 +116,10 @@
 
                     <StackPanel Orientation="Horizontal"
                             Spacing="8">
-                        <Button x:Name="SaveButton"
-                                Content="Save"
+                        <Button x:Uid="AiModelsSave" x:Name="SaveButton"
                                 Click="SaveModel_Click"
                                 Style="{StaticResource AccentButtonStyle}"/>
-                        <Button Content="Cancel"
+                        <Button x:Uid="AiModelsCancel" x:Name="CancelButton"
                                 Click="CancelForm_Click"/>
                     </StackPanel>
 

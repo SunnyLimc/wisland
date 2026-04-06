@@ -1,0 +1,340 @@
+﻿<?xml version="1.0" encoding="utf-8"?>
+<root>
+  <xsd:schema id="root" xmlns="" xmlns:xsd="http://www.w3.org/2001/XMLSchema" xmlns:msdata="urn:schemas-microsoft-com:xml-msdata">
+    <xsd:element name="root" msdata:IsDataSet="true">
+      <xsd:complexType>
+        <xsd:choice maxOccurs="unbounded">
+          <xsd:element name="data">
+            <xsd:complexType>
+              <xsd:sequence>
+                <xsd:element name="value" type="xsd:string" minOccurs="0" msdata:Ordinal="1" />
+                <xsd:element name="comment" type="xsd:string" minOccurs="0" msdata:Ordinal="2" />
+              </xsd:sequence>
+              <xsd:attribute name="name" type="xsd:string" use="required" />
+              <xsd:attribute name="type" type="xsd:string" />
+              <xsd:attribute name="mimetype" type="xsd:string" />
+            </xsd:complexType>
+          </xsd:element>
+          <xsd:element name="resheader">
+            <xsd:complexType>
+              <xsd:sequence>
+                <xsd:element name="value" type="xsd:string" minOccurs="0" msdata:Ordinal="1" />
+              </xsd:sequence>
+              <xsd:attribute name="name" type="xsd:string" use="required" />
+            </xsd:complexType>
+          </xsd:element>
+        </xsd:choice>
+      </xsd:complexType>
+    </xsd:element>
+  </xsd:schema>
+  <resheader name="resmimetype">
+    <value>text/microsoft-resx</value>
+  </resheader>
+  <resheader name="version">
+    <value>2.0</value>
+  </resheader>
+  <resheader name="reader">
+    <value>System.Resources.ResXResourceReader, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value>
+  </resheader>
+  <resheader name="writer">
+    <value>System.Resources.ResXResourceWriter, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value>
+  </resheader>
+
+  <!-- App name -->
+  <data name="AppName" xml:space="preserve">
+    <value>Wisland</value>
+  </data>
+
+  <!-- Tray menu -->
+  <data name="Tray/Show" xml:space="preserve">
+    <value>Wisland を表示</value>
+  </data>
+  <data name="Tray/Settings" xml:space="preserve">
+    <value>設定</value>
+  </data>
+  <data name="Tray/Exit" xml:space="preserve">
+    <value>終了</value>
+  </data>
+
+  <!-- Context flyout -->
+  <data name="ContextSettings.Text" xml:space="preserve">
+    <value>設定</value>
+  </data>
+  <data name="ContextExit.Text" xml:space="preserve">
+    <value>終了</value>
+  </data>
+
+  <!-- Media status labels -->
+  <data name="Media/NowPlaying" xml:space="preserve">
+    <value>再生中</value>
+  </data>
+  <data name="Media/Paused" xml:space="preserve">
+    <value>一時停止</value>
+  </data>
+  <data name="Media/Idle" xml:space="preserve">
+    <value>待機中</value>
+  </data>
+  <data name="Media/Playing" xml:space="preserve">
+    <value>再生中</value>
+  </data>
+  <data name="Media/Switching" xml:space="preserve">
+    <value>切り替え中</value>
+  </data>
+  <data name="Media/SwitchingEllipsis" xml:space="preserve">
+    <value>切り替え中...</value>
+  </data>
+  <data name="Media/Waiting" xml:space="preserve">
+    <value>待機中</value>
+  </data>
+  <data name="Media/WaitingEllipsis" xml:space="preserve">
+    <value>待機中...</value>
+  </data>
+  <data name="Media/WaitingForReconnect" xml:space="preserve">
+    <value>再接続を待機中</value>
+  </data>
+  <data name="Media/NoMedia" xml:space="preserve">
+    <value>メディアなし</value>
+  </data>
+  <data name="Media/WaitingForMusic" xml:space="preserve">
+    <value>音楽を待機中...</value>
+  </data>
+  <data name="Media/MediaFallback" xml:space="preserve">
+    <value>メディア</value>
+  </data>
+  <data name="Media/NewTrack" xml:space="preserve">
+    <value>新しいトラック</value>
+  </data>
+  <data name="Media/Notification" xml:space="preserve">
+    <value>通知</value>
+  </data>
+  <data name="Media/UnknownTrack" xml:space="preserve">
+    <value>不明なトラック</value>
+  </data>
+  <data name="Media/UnknownArtist" xml:space="preserve">
+    <value>不明なアーティスト</value>
+  </data>
+
+  <!-- Settings window -->
+  <data name="Settings/Title" xml:space="preserve">
+    <value>Wisland 設定</value>
+  </data>
+  <data name="Settings/Nav/Appearance" xml:space="preserve">
+    <value>外観</value>
+  </data>
+  <data name="Settings/Nav/AiModels" xml:space="preserve">
+    <value>AI モデル</value>
+  </data>
+  <data name="Settings/Nav/AiSongOverride" xml:space="preserve">
+    <value>AI 楽曲補正</value>
+  </data>
+  <data name="Settings/Nav/Diagnostics" xml:space="preserve">
+    <value>診断</value>
+  </data>
+
+  <!-- Appearance page -->
+  <data name="AppearanceTitle.Text" xml:space="preserve">
+    <value>外観</value>
+  </data>
+  <data name="AppearanceDescription.Text" xml:space="preserve">
+    <value>アイランドと設定ウィンドウに使用する背景スタイルを選択します。</value>
+  </data>
+  <data name="BackdropStyleHeader.Header" xml:space="preserve">
+    <value>背景スタイル</value>
+  </data>
+  <data name="BackdropMica.Content" xml:space="preserve">
+    <value>Mica</value>
+  </data>
+  <data name="BackdropAcrylic.Content" xml:space="preserve">
+    <value>Acrylic</value>
+  </data>
+  <data name="BackdropNone.Content" xml:space="preserve">
+    <value>なし</value>
+  </data>
+
+  <!-- Language section -->
+  <data name="LanguageHeader.Header" xml:space="preserve">
+    <value>言語</value>
+  </data>
+  <data name="LanguageSystemDefault.Content" xml:space="preserve">
+    <value>システム既定</value>
+  </data>
+  <data name="LanguageRestartHint.Message" xml:space="preserve">
+    <value>言語の変更を反映するには Wisland を再起動してください。</value>
+  </data>
+  <data name="LanguageUnpackagedHint" xml:space="preserve">
+    <value>非パッケージ モードでは言語を切り替えられません。アプリは Windows の表示言語に従います。</value>
+  </data>
+
+  <!-- AI Models page -->
+  <data name="AiModelsTitle.Text" xml:space="preserve">
+    <value>AI モデル</value>
+  </data>
+  <data name="AiModelsDescription.Text" xml:space="preserve">
+    <value>楽曲メタデータ補正に使用するモデルを設定します。OpenAI 互換は任意の OpenAI 形式エンドポイントで動作し、Google AI Studio はサポートされている Gemini モデルで Google グラウンディング検索をオプションで使用できます。</value>
+  </data>
+  <data name="AiModelsEdit.Content" xml:space="preserve">
+    <value>編集</value>
+  </data>
+  <data name="AiModelsDelete.Content" xml:space="preserve">
+    <value>削除</value>
+  </data>
+  <data name="AiModelsAdd.Content" xml:space="preserve">
+    <value>モデルを追加</value>
+  </data>
+  <data name="AiModelsProviderHeader.Header" xml:space="preserve">
+    <value>プロバイダー</value>
+  </data>
+  <data name="ProviderOpenAI.Content" xml:space="preserve">
+    <value>OpenAI 互換</value>
+  </data>
+  <data name="ProviderGoogle.Content" xml:space="preserve">
+    <value>Google AI Studio</value>
+  </data>
+  <data name="AiModelsDisplayNameHeader.Header" xml:space="preserve">
+    <value>表示名</value>
+  </data>
+  <data name="AiModelsDisplayNameHeader.PlaceholderText" xml:space="preserve">
+    <value>例: メインメタデータモデル</value>
+  </data>
+  <data name="AiModelsEndpointHeader.Header" xml:space="preserve">
+    <value>エンドポイント URL</value>
+  </data>
+  <data name="AiModelsEndpointHeader.PlaceholderText" xml:space="preserve">
+    <value>https://api.openai.com/v1</value>
+  </data>
+  <data name="AiModelsApiKeyHeader.Header" xml:space="preserve">
+    <value>API キー</value>
+  </data>
+  <data name="AiModelsApiKeyHeader.PlaceholderText" xml:space="preserve">
+    <value>sk-...</value>
+  </data>
+  <data name="AiModelsModelIdHeader.Header" xml:space="preserve">
+    <value>モデル ID</value>
+  </data>
+  <data name="AiModelsModelIdHeader.PlaceholderText" xml:space="preserve">
+    <value>例: gpt-4o-mini または gemini-3-flash-preview</value>
+  </data>
+  <data name="AiModelsReasoningHeader.Header" xml:space="preserve">
+    <value>推論の強度 (Google AI Studio のみ)</value>
+  </data>
+  <data name="ReasoningDefault.Content" xml:space="preserve">
+    <value>既定</value>
+  </data>
+  <data name="ReasoningMinimal.Content" xml:space="preserve">
+    <value>最小</value>
+  </data>
+  <data name="ReasoningLow.Content" xml:space="preserve">
+    <value>低</value>
+  </data>
+  <data name="ReasoningMedium.Content" xml:space="preserve">
+    <value>中</value>
+  </data>
+  <data name="ReasoningHigh.Content" xml:space="preserve">
+    <value>高</value>
+  </data>
+  <data name="ReasoningNone.Content" xml:space="preserve">
+    <value>なし (Gemini 2.5 のみ)</value>
+  </data>
+  <data name="AiModelsGroundingHeader.Header" xml:space="preserve">
+    <value>Google グラウンディング検索を有効化</value>
+  </data>
+  <data name="AiModelsGroundingHeader.OnContent" xml:space="preserve">
+    <value>オン</value>
+  </data>
+  <data name="AiModelsGroundingHeader.OffContent" xml:space="preserve">
+    <value>オフ</value>
+  </data>
+  <data name="AiModelsGroundingHint.Text" xml:space="preserve">
+    <value>Google AI Studio モデルにのみ適用されます。有効にすると、サポートされている Gemini モデルで Google グラウンディング検索をリクエストし、互換性エンドポイントが拒否した場合は自動的にフォールバックします。</value>
+  </data>
+  <data name="AiModelsSave.Content" xml:space="preserve">
+    <value>保存</value>
+  </data>
+  <data name="AiModelsCancel.Content" xml:space="preserve">
+    <value>キャンセル</value>
+  </data>
+
+  <!-- AI Models page (code-behind) -->
+  <data name="AiModels/AddModel" xml:space="preserve">
+    <value>モデルを追加</value>
+  </data>
+  <data name="AiModels/EditModel" xml:space="preserve">
+    <value>モデルを編集</value>
+  </data>
+  <data name="AiModels/ValidationAllRequired" xml:space="preserve">
+    <value>すべてのフィールドは必須です。</value>
+  </data>
+  <data name="AiModels/ValidationInvalidUrl" xml:space="preserve">
+    <value>エンドポイントは有効な URL である必要があります。</value>
+  </data>
+  <data name="AiModels/ProviderOpenAI" xml:space="preserve">
+    <value>OpenAI 互換</value>
+  </data>
+  <data name="AiModels/ProviderGoogle" xml:space="preserve">
+    <value>Google AI Studio</value>
+  </data>
+
+  <!-- AI Song Override page -->
+  <data name="AiSongTitle.Text" xml:space="preserve">
+    <value>AI 楽曲補正</value>
+  </data>
+  <data name="AiSongDescription.Text" xml:space="preserve">
+    <value>有効にすると、メディアセッションの曲名とアーティスト名が設定された AI モデルに送信され、メタデータがクリーンアップされます。AI は「(Official Video)」などのタグを削除し、結合されたタイトルとアーティスト文字列を分離して、よりきれいなメタデータを返します。Google AI Studio プロファイルは、選択した Gemini モデルがサポートしている場合、Google グラウンディング検索も選択できます。</value>
+  </data>
+  <data name="AiSongEnableToggle.Header" xml:space="preserve">
+    <value>AI で楽曲メタデータを解決する</value>
+  </data>
+  <data name="AiSongModelSelector.Header" xml:space="preserve">
+    <value>AI モデル</value>
+  </data>
+  <data name="AiSongModelSelector.PlaceholderText" xml:space="preserve">
+    <value>モデルを選択...</value>
+  </data>
+  <data name="AiSongNoModelsHint.Text" xml:space="preserve">
+    <value>AI モデルが設定されていません。先に「AI モデル」ページで追加してください。</value>
+  </data>
+  <data name="AiSongCacheTitle.Text" xml:space="preserve">
+    <value>キャッシュ</value>
+  </data>
+  <data name="AiSongCacheDescription.Text" xml:space="preserve">
+    <value>解決された楽曲メタデータはローカルにキャッシュされ、冗長な AI 呼び出しを回避します。キャッシュをクリアすると再解決が強制されます。</value>
+  </data>
+  <data name="AiSongClearLast.Content" xml:space="preserve">
+    <value>最後のエントリをクリア</value>
+  </data>
+  <data name="AiSongClearAll.Content" xml:space="preserve">
+    <value>すべてのキャッシュをクリア</value>
+  </data>
+  <data name="AiSong/CachedEntries" xml:space="preserve">
+    <value>キャッシュ数: {0}</value>
+  </data>
+
+  <!-- Diagnostics page -->
+  <data name="DiagnosticsTitle.Text" xml:space="preserve">
+    <value>診断</value>
+  </data>
+  <data name="DiagnosticsDescription.Text" xml:space="preserve">
+    <value>ログの詳細度を設定し、ログファイルにアクセスします。</value>
+  </data>
+  <data name="LogLevelHeader.Header" xml:space="preserve">
+    <value>ログレベル</value>
+  </data>
+  <data name="LogLevelTrace.Content" xml:space="preserve">
+    <value>Trace</value>
+  </data>
+  <data name="LogLevelDebug.Content" xml:space="preserve">
+    <value>Debug</value>
+  </data>
+  <data name="LogLevelInfo.Content" xml:space="preserve">
+    <value>Info</value>
+  </data>
+  <data name="LogLevelWarn.Content" xml:space="preserve">
+    <value>Warn</value>
+  </data>
+  <data name="LogLevelError.Content" xml:space="preserve">
+    <value>Error</value>
+  </data>
+  <data name="OpenLogsFolder.Content" xml:space="preserve">
+    <value>ログフォルダーを開く</value>
+  </data>
+</root>

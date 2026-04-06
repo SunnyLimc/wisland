@@ -4,6 +4,7 @@ using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
 using Microsoft.UI.Xaml.Media;
 using WinUIEx;
+using wisland.Helpers;
 using wisland.Models;
 using wisland.Services;
 using wisland.Views.Settings;
@@ -38,7 +39,7 @@ namespace wisland
             _onBackdropChanged = onBackdropChanged;
             _onAiSettingsChanged = onAiSettingsChanged;
 
-            Title = "Wisland Settings";
+            Title = Loc.GetString("Settings/Title");
             ExtendsContentIntoTitleBar = false;
 
             var manager = WindowManager.Get(this);
@@ -65,25 +66,25 @@ namespace wisland
 
             _navView.MenuItems.Add(new NavigationViewItem
             {
-                Content = "Appearance",
+                Content = Loc.GetString("Settings/Nav/Appearance"),
                 Tag = "appearance",
                 Icon = new SymbolIcon(Symbol.Highlight)
             });
             _navView.MenuItems.Add(new NavigationViewItem
             {
-                Content = "AI Models",
+                Content = Loc.GetString("Settings/Nav/AiModels"),
                 Tag = "aimodels",
                 Icon = new FontIcon { Glyph = "\uE945" }
             });
             _navView.MenuItems.Add(new NavigationViewItem
             {
-                Content = "AI Song Override",
+                Content = Loc.GetString("Settings/Nav/AiSongOverride"),
                 Tag = "aisongoverride",
                 Icon = new FontIcon { Glyph = "\uE8D6" }
             });
             _navView.MenuItems.Add(new NavigationViewItem
             {
-                Content = "Diagnostics",
+                Content = Loc.GetString("Settings/Nav/Diagnostics"),
                 Tag = "diagnostics",
                 Icon = new FontIcon { Glyph = "\uE9D9" }
             });

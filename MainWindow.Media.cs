@@ -27,6 +27,8 @@ namespace wisland
         private readonly List<string> _sessionVisualOrderKeys = new();
         private CancellationTokenSource? _aiResolveCts;
         private string? _lastAiResolveContentIdentity;
+        private string? _lastAiOverrideLookupIdentity;
+        private AiSongResult? _lastAiOverrideLookupResult;
 
         private async Task InitializeMediaAsync()
         {
@@ -52,15 +54,15 @@ namespace wisland
             {
                 if (_controller.IsDocked && !_controller.IsHovered && !_controller.IsDragging)
                 {
-                    ShowNotification(title, artist, IslandConfig.TrackChangeNotificationDurationMs, "New Track");
+                    ShowNotification(title, artist, IslandConfig.TrackChangeNotificationDurationMs, Loc.GetString("Media/NewTrack"));
                 }
             });
         }
 
         private void SyncMediaUI()
         {
-            DisplayedMediaContext context = ResolveDisplayedMediaContext();
-            context = ApplyAiOverride(context);
+            DisplayedMediaContext rawContext = ResolveDisplayedMediaContext();
+            DisplayedMediaContext context = ApplyAiOverride(rawContext);
             string? nextContentIdentity = CreateContentIdentity(context.DisplayedSession, context.ShowTransportSwitchingHint);
             string? nextProgressIdentity = CreateProgressIdentity(context.DisplayedSession);
             bool contentChanged = !string.Equals(_lastDisplayedContentIdentity, nextContentIdentity, StringComparison.Ordinal);
@@ -101,17 +103,17 @@ namespace wisland
             {
                 _lastDisplayedContentIdentity = nextContentIdentity;
                 ClearPendingMediaTransitionDirection();
-                TryRequestAiResolveAsync(context);
+                TryRequestAiResolveAsync(rawContext);
             }
         }
 
         private DisplayedMediaContext ApplyAiOverride(DisplayedMediaContext context)
         {
-            if (!_settings.AiSongOverrideEnabled || _aiSongResolver == null || !context.DisplayedSession.HasValue)
+            if (!context.DisplayedSession.HasValue)
                 return context;
 
             var session = context.DisplayedSession.Value;
-            var cached = _aiSongResolver.TryGetCached(session.SourceAppId, session.Title, session.Artist);
+            var cached = GetCachedAiOverride(session);
             if (cached == null)
                 return context;
 
@@ -132,7 +134,7 @@ namespace wisland
             var session = context.DisplayedSession.Value;
 
             // Already resolved from cache — no need to call AI
-            var cached = _aiSongResolver.TryGetCached(session.SourceAppId, session.Title, session.Artist);
+            var cached = GetCachedAiOverride(session);
             if (cached != null)
                 return;
 
@@ -155,6 +157,7 @@ namespace wisland
                 // Only update UI if we're still displaying the same content
                 if (result != null && string.Equals(_lastAiResolveContentIdentity, contentIdentity, StringComparison.Ordinal))
                 {
+                    ResetAiOverrideLookupState();
                     SyncMediaUI();
                 }
             }
@@ -165,9 +168,35 @@ namespace wisland
         {
             DispatcherQueue?.TryEnqueue(() =>
             {
+                ResetAiOverrideLookupState();
+                _lastAiResolveContentIdentity = null;
                 _lastDisplayedContentIdentity = null;
                 SyncMediaUI();
             });
+        }
+
+        private AiSongResult? GetCachedAiOverride(MediaSessionSnapshot session)
+        {
+            if (!_settings.AiSongOverrideEnabled || _aiSongResolver == null)
+            {
+                ResetAiOverrideLookupState();
+                return null;
+            }
+
+            string lookupIdentity = CreateAiLookupIdentity(session);
+            if (!string.Equals(_lastAiOverrideLookupIdentity, lookupIdentity, StringComparison.Ordinal))
+            {
+                _lastAiOverrideLookupIdentity = lookupIdentity;
+                _lastAiOverrideLookupResult = _aiSongResolver.TryGetCached(session.SourceAppId, session.Title, session.Artist);
+            }
+
+            return _lastAiOverrideLookupResult;
+        }
+
+        private void ResetAiOverrideLookupState()
+        {
+            _lastAiOverrideLookupIdentity = null;
+            _lastAiOverrideLookupResult = null;
         }
 
         private MediaSessionSnapshot? GetDisplayedMediaSessionSnapshot()
@@ -202,7 +231,7 @@ namespace wisland
                     DisplayedSession: null,
                     OrderedSessions: prioritySessions,
                     DisplayIndex: -1,
-                    CompactText: "Wisland",
+                    CompactText: Loc.GetString("AppName"),
                     ShowTransportSwitchingHint: false);
             }
 
@@ -694,7 +723,7 @@ namespace wisland
 
         private static bool HasConcreteTransportMetadata(MediaSessionSnapshot session)
             => !string.IsNullOrWhiteSpace(session.Title)
-                && !string.Equals(session.Title, "Unknown Track", StringComparison.Ordinal);
+                && !string.Equals(session.Title, MediaService.UnknownTrackTitle, StringComparison.Ordinal);
 
         private bool ShouldShowTransportSwitchingHint(MediaSessionSnapshot session)
         {
@@ -725,6 +754,14 @@ namespace wisland
                     "\u001f",
                     showTransportSwitchingHint ? "switching" : "steady")
                 : null;
+
+        private static string CreateAiLookupIdentity(MediaSessionSnapshot session)
+            => string.Concat(
+                session.SourceAppId,
+                "\u001f",
+                session.Title,
+                "\u001f",
+                session.Artist);
 
         private static string? CreateProgressIdentity(MediaSessionSnapshot? session)
             => session.HasValue

@@ -12,24 +12,22 @@
                                           Padding="32,24,32,24">
                         <StackPanel Spacing="16"
                 MaxWidth="600">
-                                <TextBlock Text="Diagnostics"
+                                <TextBlock x:Uid="DiagnosticsTitle"
                     Style="{StaticResource TitleTextBlockStyle}"/>
-                                <TextBlock Text="Configure logging verbosity and access log files."
+                                <TextBlock x:Uid="DiagnosticsDescription"
                        Style="{StaticResource BodyTextBlockStyle}"
                        Foreground="{ThemeResource TextFillColorSecondaryBrush}"/>
 
-                                <ComboBox x:Name="LogLevelSelector"
-                    Header="Log Level"
+                                <ComboBox x:Uid="LogLevelHeader" x:Name="LogLevelSelector"
                           SelectionChanged="LogLevelSelector_SelectionChanged">
-                                        <ComboBoxItem Content="Trace" Tag="Trace"/>
-                                        <ComboBoxItem Content="Debug" Tag="Debug"/>
-                                        <ComboBoxItem Content="Info" Tag="Info"/>
-                                        <ComboBoxItem Content="Warn" Tag="Warn"/>
-                                        <ComboBoxItem Content="Error" Tag="Error"/>
+                                        <ComboBoxItem x:Uid="LogLevelTrace" Tag="Trace"/>
+                                        <ComboBoxItem x:Uid="LogLevelDebug" Tag="Debug"/>
+                                        <ComboBoxItem x:Uid="LogLevelInfo" Tag="Info"/>
+                                        <ComboBoxItem x:Uid="LogLevelWarn" Tag="Warn"/>
+                                        <ComboBoxItem x:Uid="LogLevelError" Tag="Error"/>
                                 </ComboBox>
 
-                                <Button x:Name="OpenLogsFolderButton"
-                    Content="Open Logs Folder"
+                                <Button x:Uid="OpenLogsFolder" x:Name="OpenLogsFolderButton"
                     Click="OpenLogsFolderButton_Click"/>
                         </StackPanel>
                 </ScrollViewer>

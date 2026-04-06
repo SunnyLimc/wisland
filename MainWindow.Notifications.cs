@@ -3,7 +3,6 @@ using System.Threading;
 using System.Threading.Tasks;
 using wisland.Helpers;
 using wisland.Models;
-
 namespace wisland
 {
     public sealed partial class MainWindow
@@ -11,9 +10,9 @@ namespace wisland
         /// <summary>
         /// Show an expanded notification for the specified duration.
         /// </summary>
-        public void ShowNotification(string title, string message, int durationMs = IslandConfig.DefaultNotificationDurationMs, string header = "Notification")
+        public void ShowNotification(string title, string message, int durationMs = IslandConfig.DefaultNotificationDurationMs, string? header = null)
         {
-            Logger.Info($"Notification shown: '{title}' ({durationMs}ms)");
+            header ??= Loc.GetString("Media/Notification");            Logger.Info($"Notification shown: '{title}' ({durationMs}ms)");
             _ = ShowNotificationAsync(title, message, header, durationMs);
         }
 

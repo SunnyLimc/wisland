@@ -13,6 +13,7 @@ It supports:
 - drag-to-reposition and top-edge docking
 - a thin hidden progress line when docked over maximized apps
 - tray actions, backdrop switching, saved settings, and local logging
+- multi-language UI (English, Japanese, Chinese Simplified) with runtime language switching
 
 ## Tech Stack
 
@@ -23,6 +24,16 @@ It supports:
 - Win32 / DWM interop for advanced window behavior
 
 The app and test project currently target `net10.0-windows10.0.19041.0`.
+
+## Supported Languages
+
+| Language | Tag |
+| --- | --- |
+| English | `en-US` (default) |
+| Japanese | `ja` |
+| Chinese Simplified | `zh-Hans` |
+
+The display language defaults to the OS setting and can be overridden in Settings → Appearance. A restart is required after changing the language. See `ARCHITECTURE.md` Section 8 for details on adding new languages or strings.
 
 ## Build and Test
 

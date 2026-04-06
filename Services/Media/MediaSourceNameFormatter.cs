@@ -5,13 +5,11 @@ namespace wisland.Services
 {
     internal static class MediaSourceNameFormatter
     {
-        private const string FallbackSourceName = "Media";
-
         public static string Resolve(string? rawSourceName)
         {
             if (string.IsNullOrWhiteSpace(rawSourceName))
             {
-                return FallbackSourceName;
+                return Loc.GetString("Media/MediaFallback");
             }
 
             string? registeredDisplayName = MediaSourceAppResolver.TryResolveDisplayName(rawSourceName);
@@ -45,7 +43,7 @@ namespace wisland.Services
             source = source.Replace('_', ' ').Replace('.', ' ').Trim();
             if (string.IsNullOrWhiteSpace(source))
             {
-                return FallbackSourceName;
+                return Loc.GetString("Media/MediaFallback");
             }
 
             TextInfo textInfo = CultureInfo.InvariantCulture.TextInfo;

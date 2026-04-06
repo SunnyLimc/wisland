@@ -96,7 +96,7 @@ Views / Controls
   -> and reusable directional content transitions shared across island surfaces
 
 Helpers
-  -> logging, native line overlay window, Win32/DWM interop
+  -> logging, localization, native line overlay window, Win32/DWM interop
 ```
 
 ## 4. Repository Layout
@@ -136,10 +136,15 @@ wisland/
 │   ├── DirectionalContentTransitionCoordinator.cs
 │   └── LiquidProgressBar.xaml(.cs)
 ├── Helpers/
+│   ├── Loc.cs
 │   ├── Logger.cs
 │   ├── MediaSourceIconResolver.cs
 │   ├── NativeLineWindow.cs
 │   └── WindowInterop.cs
+├── Strings/
+│   ├── en-US/Resources.resw
+│   ├── ja/Resources.resw
+│   └── zh-Hans/Resources.resw
 └── Assets/ + Properties/
     Packaging, publish profiles, and app assets.
 ```
@@ -428,7 +433,73 @@ Thin Win32/DWM interop wrapper used for:
 
 Writes daily log files under `%LocalAppData%/Wisland/logs/`. Logging must never crash the app.
 
-## 8. State Model
+### `Loc`
+
+Static localization helper wrapping MRT Core (`Microsoft.Windows.ApplicationModel.Resources.ResourceManager`).
+
+- `Initialize(string? languageOverride)` — creates the resource manager and, in packaged mode, applies a BCP-47 language override via `PrimaryLanguageOverride`. Must be called once at startup before any window is created.
+- `CanOverrideLanguage` — `true` when the app runs with package identity and `PrimaryLanguageOverride` is available. `false` in unpackaged mode.
+- `GetString(string key)` — returns the localized string for a resource key (e.g. `"Tray/Show"`). Falls back to the key itself when the resource is missing.
+- `GetFormatted(string key, params object[] args)` — format-string variant of `GetString`.
+
+In packaged mode (MSIX / Sparse Package), `PrimaryLanguageOverride` drives both x:Uid and `GetString()`. In unpackaged mode the app follows the Windows display language and the language selector is disabled.
+
+## 8. Internationalization (i18n)
+
+The app supports multiple display languages using MRT Core (Windows App SDK resource system).
+
+### Supported languages
+
+| Tag | Language |
+| --- | --- |
+| `en-US` | English (default) |
+| `ja` | Japanese |
+| `zh-Hans` | Chinese Simplified |
+
+### Resource files
+
+Localized strings live in `.resw` files under `Strings/{language-tag}/Resources.resw`. All three files must contain an identical set of keys; adding a key to one file requires adding it to the other two.
+
+### XAML strings
+
+XAML elements use `x:Uid` with a `{ElementName}.{Property}` naming convention:
+
+```xml
+<TextBlock x:Uid="DiagnosticsTitle"/>          <!-- resolves DiagnosticsTitle.Text -->
+<Button x:Uid="AiModelsAdd"/>                   <!-- resolves AiModelsAdd.Content -->
+<InfoBar x:Uid="LanguageRestartHint"/>          <!-- resolves LanguageRestartHint.Message -->
+```
+
+### Code-behind strings
+
+Code-behind uses `Loc.GetString("Category/Key")` or `Loc.GetFormatted("Category/Key", args)`:
+
+```csharp
+var title = Loc.GetString("Media/NoMedia");
+var cache = Loc.GetFormatted("AiSong/CacheCount", count);
+```
+
+### Language override
+
+Users can change the display language from Settings → Appearance. The selection is persisted via `SettingsService.Language` (a nullable BCP-47 tag) and applied at startup through `Loc.Initialize(settings.Language)`. A restart is required after changing the language.
+
+In unpackaged mode (`Loc.CanOverrideLanguage == false`), the language selector is locked to "System Default" and grayed out with an informational hint. The app follows the Windows display language.
+
+In packaged mode (MSIX or Sparse Package), `PrimaryLanguageOverride` is set at startup, which drives both `x:Uid` resolution and `Loc.GetString()` lookups.
+
+### Adding a new language
+
+1. Create `Strings/{tag}/Resources.resw` with the same keys as the existing files.
+2. Add the language to the `LanguageSelector` ComboBox in `Views/Settings/AppearancePage.xaml`.
+3. No code changes are required.
+
+### Constraints
+
+- `PrimaryLanguageOverride` requires package identity (MSIX or Sparse Package). Unpackaged apps cannot override language at runtime — the app follows the OS display language.
+- `Loc.Initialize()` catches exceptions from `new ResourceManager()` so that the unit-test host (which lacks WinRT activation) degrades to key-as-fallback behavior.
+- `.resw` keys use two formats: dotted (`ElementName.Property`) for `x:Uid`, slash (`Category/Key`) for code-behind `Loc.GetString()`. The dot is a property-path separator in MRT Core, so dotted keys cannot be looked up via `GetValue()`.
+
+## 9. State Model
 
 There are two levels of state:
 
@@ -462,7 +533,7 @@ This split is deliberate:
 - logical state decides where the island wants to go
 - render state decides what is currently on screen
 
-## 9. Invariants
+## 10. Invariants
 
 These are the rules that contributors should preserve:
 
@@ -476,7 +547,7 @@ These are the rules that contributors should preserve:
 8. Local development uses the standard `bin/` and `obj/` output trees; do not add repo-local alternate build-output directories to dodge file locks.
 9. Multi-session visual ordering should remain stable for the user; background priority changes may change focus, but should not constantly reshuffle the header strip.
 
-## 10. Fast Change Guide
+## 11. Fast Change Guide
 
 Use this table before editing:
 
@@ -492,8 +563,10 @@ Use this table before editing:
 | Add a persisted setting | `Services/SettingsService.cs`, `Models/BackdropType.cs`, `MainWindow.Lifetime.cs`, `MainWindow.Appearance.cs` | Keep persisted values typed at the shell boundary whenever possible. |
 | Change media behavior | `Services/Media/*.cs`, `MainWindow.Media.cs`, `MainWindow.Notifications.cs` | Service owns GSMTC session discovery; window decides focused-session policy and UI response. |
 | Change diagnostics | `Helpers/Logger.cs` | Logging is local-file based. |
+| Add/change a localized string | `Strings/*/Resources.resw`, XAML or code-behind caller | Add the key to **all three** `.resw` files. Use `x:Uid` in XAML or `Loc.GetString()` in code. See Section 8. |
+| Add a new display language | `Strings/{tag}/Resources.resw`, `Views/Settings/AppearancePage.xaml` | Copy an existing `.resw`, translate values, add a ComboBox entry. |
 
-## 11. Best Practices For Vibe Coding In This Repo
+## 12. Best Practices For Vibe Coding In This Repo
 
 If you are working quickly with an AI assistant, use this order:
 
@@ -513,14 +586,14 @@ The best "vibe coding" approach for this codebase is not "rewrite everything int
 - document real behavior instead of idealized architecture,
 - leave obvious extension seams for later.
 
-## 12. Recommended Next Refactors
+## 13. Recommended Next Refactors
 
 These are documentation-backed refactor seams, not mandatory changes:
 
 - Introduce a typed settings snapshot model if persisted preferences expand beyond a few fields.
 - Introduce manual smoke-test notes for docking, DPI, and line-mode behavior if UI changes become frequent.
 
-## 13. Documentation Contract
+## 14. Documentation Contract
 
 The project now uses a two-level documentation model:
 

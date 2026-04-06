@@ -1,6 +1,7 @@
 using System;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
+using wisland.Helpers;
 using wisland.Models;
 using wisland.Services;
 
@@ -31,6 +32,28 @@ namespace wisland.Views.Settings
                 _ => 0
             };
             BackdropSelector.SelectedIndex = index;
+
+            string? lang = _settings.Language;
+            int langIndex = 0;
+            for (int i = 0; i < LanguageSelector.Items.Count; i++)
+            {
+                if (LanguageSelector.Items[i] is ComboBoxItem item
+                    && string.Equals(item.Tag as string, lang ?? "", StringComparison.Ordinal))
+                {
+                    langIndex = i;
+                    break;
+                }
+            }
+            LanguageSelector.SelectedIndex = langIndex;
+
+            if (!Loc.CanOverrideLanguage)
+            {
+                LanguageSelector.SelectedIndex = 0;
+                LanguageSelector.IsEnabled = false;
+                UnpackagedLanguageHint.Message = Loc.GetString("LanguageUnpackagedHint");
+                UnpackagedLanguageHint.IsOpen = true;
+            }
+
             _suppressSelectionChanged = false;
         }
 
@@ -46,6 +69,17 @@ namespace wisland.Views.Settings
                     _ => BackdropType.Mica
                 };
                 _onBackdropChanged(type);
+            }
+        }
+
+        private void LanguageSelector_SelectionChanged(object sender, SelectionChangedEventArgs e)
+        {
+            if (_suppressSelectionChanged) return;
+            if (LanguageSelector.SelectedItem is ComboBoxItem item && item.Tag is string tag)
+            {
+                _settings.Language = string.IsNullOrEmpty(tag) ? null : tag;
+                _settings.Save();
+                RestartHint.IsOpen = true;
             }
         }
     }

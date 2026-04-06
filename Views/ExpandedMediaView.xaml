@@ -208,15 +208,15 @@
                   SizeChanged="MetadataViewport_SizeChanged">
                 <Grid x:Name="MetadataSlotPrimary">
                     <StackPanel VerticalAlignment="Center" HorizontalAlignment="Center">
-                        <TextBlock x:Name="MusicTitleTextPrimary" Text="No Media" Foreground="White" FontSize="16" FontWeight="Bold" HorizontalAlignment="Center" TextAlignment="Center" TextTrimming="CharacterEllipsis" MaxWidth="320"/>
-                        <TextBlock x:Name="ArtistNameTextPrimary" Text="Artist Name" Foreground="LightGray" FontSize="12" HorizontalAlignment="Center" TextAlignment="Center" TextTrimming="CharacterEllipsis" MaxWidth="320"/>
+                        <TextBlock x:Name="MusicTitleTextPrimary" Text="" Foreground="White" FontSize="16" FontWeight="Bold" HorizontalAlignment="Center" TextAlignment="Center" TextTrimming="CharacterEllipsis" MaxWidth="320"/>
+                        <TextBlock x:Name="ArtistNameTextPrimary" Text="" Foreground="LightGray" FontSize="12" HorizontalAlignment="Center" TextAlignment="Center" TextTrimming="CharacterEllipsis" MaxWidth="320"/>
                     </StackPanel>
                 </Grid>
 
                 <Grid x:Name="MetadataSlotSecondary" Visibility="Collapsed">
                     <StackPanel VerticalAlignment="Center" HorizontalAlignment="Center">
-                        <TextBlock x:Name="MusicTitleTextSecondary" Text="No Media" Foreground="White" FontSize="16" FontWeight="Bold" HorizontalAlignment="Center" TextAlignment="Center" TextTrimming="CharacterEllipsis" MaxWidth="320"/>
-                        <TextBlock x:Name="ArtistNameTextSecondary" Text="Artist Name" Foreground="LightGray" FontSize="12" HorizontalAlignment="Center" TextAlignment="Center" TextTrimming="CharacterEllipsis" MaxWidth="320"/>
+                        <TextBlock x:Name="MusicTitleTextSecondary" Text="" Foreground="White" FontSize="16" FontWeight="Bold" HorizontalAlignment="Center" TextAlignment="Center" TextTrimming="CharacterEllipsis" MaxWidth="320"/>
+                        <TextBlock x:Name="ArtistNameTextSecondary" Text="" Foreground="LightGray" FontSize="12" HorizontalAlignment="Center" TextAlignment="Center" TextTrimming="CharacterEllipsis" MaxWidth="320"/>
                     </StackPanel>
                 </Grid>
             </Grid>

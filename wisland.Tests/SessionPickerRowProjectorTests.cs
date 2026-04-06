@@ -1,5 +1,6 @@
 using System;
 using Windows.Media.Control;
+using wisland.Helpers;
 using wisland.Models;
 using wisland.Services;
 using Xunit;
@@ -8,6 +9,11 @@ namespace wisland.Tests
 {
     public sealed class SessionPickerRowProjectorTests
     {
+        public SessionPickerRowProjectorTests()
+        {
+            Loc.Initialize(null);
+        }
+
         [Fact]
         public void ProjectsStatusSubtitleAndSelection()
         {
@@ -28,20 +34,21 @@ namespace wisland.Tests
                 new[] { selected, waiting },
                 selected.SessionKey);
 
+            // In tests, Loc returns the resource key as fallback (no WinRT host).
             Assert.Collection(
                 rows,
                 row =>
                 {
                     Assert.Equal("selected", row.SessionKey);
-                    Assert.Equal("Playing", row.StatusText);
+                    Assert.Equal("Media/Playing", row.StatusText);
                     Assert.Equal("Artist One", row.Subtitle);
                     Assert.True(row.IsSelected);
                 },
                 row =>
                 {
                     Assert.Equal("waiting", row.SessionKey);
-                    Assert.Equal("Waiting", row.StatusText);
-                    Assert.Equal("Waiting for reconnect", row.Subtitle);
+                    Assert.Equal("Media/Waiting", row.StatusText);
+                    Assert.Equal("Media/WaitingForReconnect", row.Subtitle);
                     Assert.False(row.IsSelected);
                 });
         }

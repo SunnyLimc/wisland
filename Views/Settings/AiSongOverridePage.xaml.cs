@@ -2,6 +2,7 @@ using System;
 using System.Linq;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
+using wisland.Helpers;
 using wisland.Services;
 
 namespace wisland.Views.Settings
@@ -75,7 +76,7 @@ namespace wisland.Views.Settings
 
         private void RefreshCacheCount()
         {
-            CacheCountText.Text = $"Cached entries: {_aiResolver.CacheCount}";
+            CacheCountText.Text = Loc.GetFormatted("AiSong/CachedEntries", _aiResolver.CacheCount);
         }
 
         private void EnableToggle_Toggled(object sender, RoutedEventArgs e)
