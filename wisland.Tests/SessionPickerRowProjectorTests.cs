@@ -76,6 +76,7 @@ namespace wisland.Tests
                 PlaybackStatus: playbackStatus,
                 Progress: 0.5,
                 HasTimeline: true,
+                DurationSeconds: 180,
                 IsSystemCurrent: false,
                 LastActivityUtc: new DateTimeOffset(2026, 3, 28, 12, 0, 0, TimeSpan.Zero),
                 Presence: presence,

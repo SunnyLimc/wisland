@@ -136,6 +136,7 @@ namespace wisland.Services
                 tracked.PlaybackStatus,
                 tracked.Progress,
                 tracked.HasTimeline,
+                tracked.DurationSeconds,
                 tracked.IsSystemCurrent,
                 tracked.LastActivityUtc,
                 tracked.Presence,

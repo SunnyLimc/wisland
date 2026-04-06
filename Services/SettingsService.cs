@@ -62,6 +62,15 @@ namespace wisland.Services
         /// <summary>BCP-47 language tag override (e.g. "ja", "zh-Hans"). Null means follow OS.</summary>
         public string? Language { get; set; }
 
+        /// <summary>Preferred language code for AI song prompt (e.g. "zh-Hans", "ja"). Null means no language preference.</summary>
+        public string? AiPreferredLanguage { get; set; }
+
+        /// <summary>Target market name used in the AI prompt (e.g. "Mainland China"). Null means use default for the language.</summary>
+        public string? AiTargetMarket { get; set; }
+
+        /// <summary>Whether to use a native-language prompt template when available for the preferred language.</summary>
+        public bool AiPreferNativePrompt { get; set; }
+
         /// <summary>
         /// Load settings from disk. Returns silently with defaults if file doesn't exist or is corrupted.
         /// </summary>
@@ -89,6 +98,9 @@ namespace wisland.Services
                     AiSongOverrideEnabled = data.AiSongOverrideEnabled;
                     LogLevel = ParseLogLevel(data.LogLevel);
                     Language = data.Language;
+                    AiPreferredLanguage = data.AiPreferredLanguage;
+                    AiTargetMarket = data.AiTargetMarket;
+                    AiPreferNativePrompt = data.AiPreferNativePrompt;
                 }
             }
             catch (Exception ex)
@@ -123,7 +135,10 @@ namespace wisland.Services
                     ActiveAiModelId = ActiveAiModelId,
                     AiSongOverrideEnabled = AiSongOverrideEnabled,
                     LogLevel = LogLevel?.ToString(),
-                    Language = Language
+                    Language = Language,
+                    AiPreferredLanguage = AiPreferredLanguage,
+                    AiTargetMarket = AiTargetMarket,
+                    AiPreferNativePrompt = AiPreferNativePrompt
                 };
 
                 var json = JsonSerializer.Serialize(data, JsonOptions);
@@ -247,6 +262,9 @@ namespace wisland.Services
             public bool AiSongOverrideEnabled { get; set; }
             public string? LogLevel { get; set; }
             public string? Language { get; set; }
+            public string? AiPreferredLanguage { get; set; }
+            public string? AiTargetMarket { get; set; }
+            public bool AiPreferNativePrompt { get; set; }
         }
 
         private sealed class AiModelProfileData

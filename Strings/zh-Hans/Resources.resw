@@ -309,6 +309,47 @@
     <value>缓存条目: {0}</value>
   </data>
 
+  <!-- AI Song Override — Preferred Language section -->
+  <data name="AiSongLanguageTitle.Text" xml:space="preserve">
+    <value>首选语言</value>
+  </data>
+  <data name="AiSongLanguageDescription.Text" xml:space="preserve">
+    <value>选择 AI 歌曲元数据解析的首选语言。设置后，AI 将优先使用对应市场的官方名称。你也可以在下方指定自定义目标市场名称。</value>
+  </data>
+  <data name="AiSongPreferredLanguage.Header" xml:space="preserve">
+    <value>语言</value>
+  </data>
+  <data name="AiSongPreferredLanguage.PlaceholderText" xml:space="preserve">
+    <value>选择语言...</value>
+  </data>
+  <data name="AiSong/LanguageNone" xml:space="preserve">
+    <value>无 — 保留原始语言，不指定地区偏好</value>
+  </data>
+  <data name="AiSong/NativePromptAvailable" xml:space="preserve">
+    <value>原生提示词</value>
+  </data>
+  <data name="AiSongTargetMarket.Header" xml:space="preserve">
+    <value>目标市场</value>
+  </data>
+  <data name="AiSongTargetMarket.PlaceholderText" xml:space="preserve">
+    <value>例如：中国大陆、日本</value>
+  </data>
+  <data name="AiSong/TargetMarketPlaceholderDefault" xml:space="preserve">
+    <value>例如：中国大陆、日本</value>
+  </data>
+  <data name="AiSongPreferNativePrompt.Header" xml:space="preserve">
+    <value>使用原生语言提示词</value>
+  </data>
+  <data name="AiSongPreferNativePrompt.OnContent" xml:space="preserve">
+    <value>开</value>
+  </data>
+  <data name="AiSongPreferNativePrompt.OffContent" xml:space="preserve">
+    <value>关</value>
+  </data>
+  <data name="AiSong/NativePromptUnavailable" xml:space="preserve">
+    <value>此语言的原生提示词尚不可用。将使用通用英文提示词并替换语言和市场信息。</value>
+  </data>
+
   <!-- Diagnostics page -->
   <data name="DiagnosticsTitle.Text" xml:space="preserve">
     <value>诊断</value>

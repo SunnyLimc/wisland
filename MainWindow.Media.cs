@@ -148,8 +148,13 @@ namespace wisland
 
             try
             {
+                string sourceName = MediaSourceAppResolver.TryResolveDisplayName(session.SourceAppId)
+                    ?? session.SourceName;
+
                 var result = await _aiSongResolver.ResolveAsync(
-                    session.SourceAppId, session.Title, session.Artist, cts.Token);
+                    session.SourceAppId, session.Title, session.Artist,
+                    sourceName, session.DurationSeconds,
+                    cts.Token);
 
                 if (cts.Token.IsCancellationRequested)
                     return;

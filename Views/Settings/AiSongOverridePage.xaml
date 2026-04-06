@@ -31,6 +31,31 @@
                        Visibility="Collapsed"
                     TextWrapping="WrapWholeWords"/>
 
+            <!-- Preferred language section -->
+            <TextBlock x:Uid="AiSongLanguageTitle" x:Name="AiSongLanguageTitleText"
+                    Style="{StaticResource SubtitleTextBlockStyle}"
+                    Margin="0,16,0,0"/>
+            <TextBlock x:Uid="AiSongLanguageDescription" x:Name="AiSongLanguageDescriptionText"
+                       Style="{StaticResource BodyTextBlockStyle}"
+                       Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                       TextWrapping="WrapWholeWords"/>
+
+            <ComboBox x:Uid="AiSongPreferredLanguage" x:Name="PreferredLanguageSelector"
+                      Width="320"
+                      SelectionChanged="PreferredLanguageSelector_SelectionChanged"/>
+
+            <TextBox x:Uid="AiSongTargetMarket" x:Name="TargetMarketBox"
+                     Width="320"
+                     LostFocus="TargetMarketBox_LostFocus"/>
+
+            <ToggleSwitch x:Uid="AiSongPreferNativePrompt" x:Name="PreferNativePromptToggle"
+                          Toggled="PreferNativePromptToggle_Toggled"/>
+
+            <InfoBar x:Name="NativePromptUnavailableHint"
+                     Severity="Informational"
+                     IsOpen="False"
+                     IsClosable="True"/>
+
             <!-- Cache section -->
             <TextBlock x:Uid="AiSongCacheTitle" x:Name="AiSongCacheTitleText"
                     Style="{StaticResource SubtitleTextBlockStyle}"

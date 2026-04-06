@@ -311,6 +311,47 @@
     <value>Cached entries: {0}</value>
   </data>
 
+  <!-- AI Song Override — Preferred Language section -->
+  <data name="AiSongLanguageTitle.Text" xml:space="preserve">
+    <value>Preferred Language</value>
+  </data>
+  <data name="AiSongLanguageDescription.Text" xml:space="preserve">
+    <value>Choose a preferred language for AI song metadata resolution. When set, the AI will prefer official names used in the corresponding market. You can also provide a custom target market name below.</value>
+  </data>
+  <data name="AiSongPreferredLanguage.Header" xml:space="preserve">
+    <value>Language</value>
+  </data>
+  <data name="AiSongPreferredLanguage.PlaceholderText" xml:space="preserve">
+    <value>Select a language...</value>
+  </data>
+  <data name="AiSong/LanguageNone" xml:space="preserve">
+    <value>None — keep original language, no regional preference</value>
+  </data>
+  <data name="AiSong/NativePromptAvailable" xml:space="preserve">
+    <value>Native prompt</value>
+  </data>
+  <data name="AiSongTargetMarket.Header" xml:space="preserve">
+    <value>Target Market</value>
+  </data>
+  <data name="AiSongTargetMarket.PlaceholderText" xml:space="preserve">
+    <value>e.g. Mainland China, Japan</value>
+  </data>
+  <data name="AiSong/TargetMarketPlaceholderDefault" xml:space="preserve">
+    <value>e.g. Mainland China, Japan</value>
+  </data>
+  <data name="AiSongPreferNativePrompt.Header" xml:space="preserve">
+    <value>Use native language prompt</value>
+  </data>
+  <data name="AiSongPreferNativePrompt.OnContent" xml:space="preserve">
+    <value>On</value>
+  </data>
+  <data name="AiSongPreferNativePrompt.OffContent" xml:space="preserve">
+    <value>Off</value>
+  </data>
+  <data name="AiSong/NativePromptUnavailable" xml:space="preserve">
+    <value>A native-language prompt is not yet available for this language. The generic English prompt will be used with language and market substitution.</value>
+  </data>
+
   <!-- Diagnostics page (code-behind) -->
   <data name="DiagnosticsTitle.Text" xml:space="preserve">
     <value>Diagnostics</value>

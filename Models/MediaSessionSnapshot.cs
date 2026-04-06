@@ -15,6 +15,7 @@ namespace wisland.Models
         GlobalSystemMediaTransportControlsSessionPlaybackStatus PlaybackStatus,
         double Progress,
         bool HasTimeline,
+        double DurationSeconds,
         bool IsSystemCurrent,
         DateTimeOffset LastActivityUtc,
         MediaSessionPresence Presence,

@@ -32,21 +32,6 @@ namespace wisland.Services
             }
             """u8.ToArray());
 
-        private const string SystemPrompt =
-            """
-            You are a music metadata resolver. Given raw media session information from a media player, determine the correct, clean song title and artist name.
-
-            Rules:
-            - Remove quality/platform tags like "(Official Video)", "(Official Audio)", "(Lyrics)", "(HD)", "(MV)", "[Official MV]", "(Audio)", "(Visualizer)", "(Live)", "【MV】", "| Official Music Video", etc.
-            - Remove platform-specific prefixes or suffixes appended by the media source application.
-            - For songs with featured artists, keep them in the artist field using standard notation, e.g. "Artist feat. Guest".
-            - If the raw title contains both the song name and artist (common in browser tab titles like "Artist - Song"), separate them correctly into the respective fields.
-            - Use the original language of the song for both title and artist name. Do not translate. Japanese songs stay in Japanese, Korean in Korean, etc.
-            - Return the most commonly recognized official release name for the song and artist.
-            - If you cannot confidently determine the correct metadata, return the raw input unchanged.
-            - Do not invent or guess information that is not present in the input.
-            """;
-
         private static readonly BinaryData StructuredOutputSchema = BinaryData.FromBytes(
             """
             {
@@ -99,7 +84,10 @@ namespace wisland.Services
             }
         }
 
-        public async Task<AiSongResult?> ResolveAsync(string sourceAppId, string rawTitle, string rawArtist, CancellationToken ct)
+        public async Task<AiSongResult?> ResolveAsync(
+            string sourceAppId, string rawTitle, string rawArtist,
+            string sourceName, double durationSeconds,
+            CancellationToken ct)
         {
             string key = BuildCacheKey(sourceAppId, rawTitle, rawArtist);
             lock (_gate)
@@ -112,17 +100,27 @@ namespace wisland.Services
             if (profile == null)
                 return null;
 
-            Logger.Info($"AI song resolution requested: '{rawTitle}' by '{rawArtist}' from '{sourceAppId}'");
+            Logger.Info($"AI song resolution requested: '{rawTitle}' by '{rawArtist}' from '{sourceName}' ({sourceAppId})");
 
             try
             {
                 ChatClient client = CreateChatClient(profile);
                 Logger.Debug($"AI request: provider={AiModelProviderNames.Normalize(profile.Provider)}, model={profile.ModelId}, endpoint={profile.Endpoint}");
 
+                string systemPrompt = AiSongPromptBuilder.BuildSystemPrompt();
+                string userMessage = AiSongPromptBuilder.BuildUserMessage(
+                    rawTitle, rawArtist, durationSeconds, sourceName,
+                    _settings.AiPreferredLanguage,
+                    _settings.AiTargetMarket,
+                    _settings.AiPreferNativePrompt);
+
+                Logger.Debug($"AI system prompt:\n{systemPrompt}");
+                Logger.Debug($"AI user message:\n{userMessage}");
+
                 var messages = new List<ChatMessage>
                 {
-                    new SystemChatMessage(SystemPrompt),
-                    new UserChatMessage($"Source app: {sourceAppId}\nRaw title: {rawTitle}\nRaw artist: {rawArtist}")
+                    new SystemChatMessage(systemPrompt),
+                    new UserChatMessage(userMessage)
                 };
 
                 bool useGoogleGrounding = ShouldUseGoogleGrounding(profile);

@@ -147,7 +147,7 @@ namespace wisland
 
         private void OnAiSettingsChanged()
         {
-            _aiSongOverridePage?.RefreshUI();
+            DispatcherQueue.TryEnqueue(() => _aiSongOverridePage?.RefreshUI());
             _onAiSettingsChanged();
         }
 

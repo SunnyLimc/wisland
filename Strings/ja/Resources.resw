@@ -309,6 +309,47 @@
     <value>キャッシュ数: {0}</value>
   </data>
 
+  <!-- AI Song Override — Preferred Language section -->
+  <data name="AiSongLanguageTitle.Text" xml:space="preserve">
+    <value>優先言語</value>
+  </data>
+  <data name="AiSongLanguageDescription.Text" xml:space="preserve">
+    <value>AI 楽曲メタデータ解決の優先言語を選択します。設定すると、AI は対応する地域で使用されている公式名称を優先します。下のフィールドでカスタムのターゲット市場名を指定することもできます。</value>
+  </data>
+  <data name="AiSongPreferredLanguage.Header" xml:space="preserve">
+    <value>言語</value>
+  </data>
+  <data name="AiSongPreferredLanguage.PlaceholderText" xml:space="preserve">
+    <value>言語を選択...</value>
+  </data>
+  <data name="AiSong/LanguageNone" xml:space="preserve">
+    <value>なし — 原語のまま、地域指定なし</value>
+  </data>
+  <data name="AiSong/NativePromptAvailable" xml:space="preserve">
+    <value>ネイティブプロンプト</value>
+  </data>
+  <data name="AiSongTargetMarket.Header" xml:space="preserve">
+    <value>ターゲット市場</value>
+  </data>
+  <data name="AiSongTargetMarket.PlaceholderText" xml:space="preserve">
+    <value>例: 日本、中国大陸</value>
+  </data>
+  <data name="AiSong/TargetMarketPlaceholderDefault" xml:space="preserve">
+    <value>例: 日本、中国大陸</value>
+  </data>
+  <data name="AiSongPreferNativePrompt.Header" xml:space="preserve">
+    <value>ネイティブ言語プロンプトを使用</value>
+  </data>
+  <data name="AiSongPreferNativePrompt.OnContent" xml:space="preserve">
+    <value>オン</value>
+  </data>
+  <data name="AiSongPreferNativePrompt.OffContent" xml:space="preserve">
+    <value>オフ</value>
+  </data>
+  <data name="AiSong/NativePromptUnavailable" xml:space="preserve">
+    <value>この言語のネイティブプロンプトはまだ利用できません。言語と市場を置き換えた汎用英語プロンプトが使用されます。</value>
+  </data>
+
   <!-- Diagnostics page -->
   <data name="DiagnosticsTitle.Text" xml:space="preserve">
     <value>診断</value>
