@@ -356,6 +356,59 @@
     <value>例: 日本、中国大陸</value>
   </data>
 
+  <!-- AI Song Override page — Test section -->
+  <data name="AiSongTestTitle.Text" xml:space="preserve">
+    <value>テスト</value>
+  </data>
+  <data name="AiSongTestDescription.Text" xml:space="preserve">
+    <value>サンプルメタデータを入力して、選択した AI モデルが現在の設定で正しく動作するかテストします。</value>
+  </data>
+  <data name="AiSongTestSongTitle.Header" xml:space="preserve">
+    <value>楽曲名</value>
+  </data>
+  <data name="AiSongTestSongTitle.PlaceholderText" xml:space="preserve">
+    <value>例: NIGHT DANCER (Official Video)</value>
+  </data>
+  <data name="AiSongTestSongArtist.Header" xml:space="preserve">
+    <value>アーティスト</value>
+  </data>
+  <data name="AiSongTestSongArtist.PlaceholderText" xml:space="preserve">
+    <value>例: imase</value>
+  </data>
+  <data name="AiSongTestSourceName.Header" xml:space="preserve">
+    <value>ソースアプリ</value>
+  </data>
+  <data name="AiSongTestSourceName.PlaceholderText" xml:space="preserve">
+    <value>例: YouTube Music</value>
+  </data>
+  <data name="AiSongTestDuration.Header" xml:space="preserve">
+    <value>再生時間</value>
+  </data>
+  <data name="AiSongTestDuration.PlaceholderText" xml:space="preserve">
+    <value>例: 4:21</value>
+  </data>
+  <data name="AiSongTestRun.Content" xml:space="preserve">
+    <value>テスト実行</value>
+  </data>
+  <data name="AiSong/TestMissingTitle" xml:space="preserve">
+    <value>テストするには少なくとも楽曲名を入力してください。</value>
+  </data>
+  <data name="AiSong/TestNoModel" xml:space="preserve">
+    <value>AI モデルが選択されていません。上のモデルセレクターで選択してください。</value>
+  </data>
+  <data name="AiSong/TestRunning" xml:space="preserve">
+    <value>AI モデルにテストリクエストを送信中…</value>
+  </data>
+  <data name="AiSong/TestSuccess" xml:space="preserve">
+    <value>✓ 解決: {0} — {1}</value>
+  </data>
+  <data name="AiSong/TestTimeout" xml:space="preserve">
+    <value>リクエストが 30 秒後にタイムアウトしました。</value>
+  </data>
+  <data name="AiSong/TestFailed" xml:space="preserve">
+    <value>テスト失敗: {0}</value>
+  </data>
+
   <!-- Diagnostics page -->
   <data name="DiagnosticsTitle.Text" xml:space="preserve">
     <value>診断</value>

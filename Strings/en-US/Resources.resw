@@ -384,7 +384,10 @@
     <value>e.g. YouTube Music</value>
   </data>
   <data name="AiSongTestDuration.Header" xml:space="preserve">
-    <value>Duration (seconds)</value>
+    <value>Duration</value>
+  </data>
+  <data name="AiSongTestDuration.PlaceholderText" xml:space="preserve">
+    <value>e.g. 4:21</value>
   </data>
   <data name="AiSongTestRun.Content" xml:space="preserve">
     <value>Run Test</value>

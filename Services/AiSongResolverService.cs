@@ -178,18 +178,24 @@ namespace wisland.Services
             bool? GroundingUsed);
 
         public static async Task<TestModelResult?> TestModelAsync(
-            AiModelProfile profile, string testTitle, string testArtist, CancellationToken ct)
+            AiModelProfile profile, string testTitle, string testArtist,
+            double durationSeconds, string sourceName,
+            string? preferredLanguage, string? targetMarket, bool preferNativePrompt,
+            CancellationToken ct)
         {
             var (userMessage, templateName) = AiSongPromptBuilder.BuildUserMessage(
-                testTitle, testArtist, 0, "Test", null, null, false);
+                testTitle, testArtist, durationSeconds, sourceName,
+                preferredLanguage, targetMarket, preferNativePrompt);
 
             string provider = AiModelProviderNames.Normalize(profile.Provider);
             bool isGoogle = string.Equals(provider, nameof(AiModelProvider.GoogleAIStudio), StringComparison.Ordinal);
 
-            Logger.Info($"AI test: provider={provider}, model={profile.ModelId}, temperature={profile.Temperature:F1}"
-                + (isGoogle ? $", thinking={profile.ReasoningEffort ?? "default"}, grounding={profile.GoogleGroundingEnabled}" : ""));
-            Logger.Debug($"AI test prompt template: {templateName}");
-            Logger.Debug($"AI test prompt:\n{userMessage}");
+            Logger.Info($"AI test requested: '{testTitle}' by '{testArtist}' from '{sourceName}'");
+            Logger.Debug($"AI prompt template: {templateName}");
+            Logger.Debug($"AI user message:\n{userMessage}");
+            Logger.Debug(isGoogle
+                ? $"AI request: provider={provider}, model={profile.ModelId}, temperature={profile.Temperature:F1}, thinking={profile.ReasoningEffort ?? "default"}, grounding={profile.GoogleGroundingEnabled}"
+                : $"AI request: provider={provider}, model={profile.ModelId}, endpoint={profile.Endpoint}, temperature={profile.Temperature:F1}");
 
             string? responseJson;
             bool? groundingUsed = null;
@@ -207,11 +213,9 @@ namespace wisland.Services
 
             if (string.IsNullOrWhiteSpace(responseJson))
             {
-                Logger.Warn("AI test: empty response");
+                Logger.Warn("AI test: empty response from model");
                 return null;
             }
-
-            Logger.Debug($"AI test raw response:\n{responseJson}");
 
             using var doc = JsonDocument.Parse(responseJson);
             var root = doc.RootElement;
@@ -224,7 +228,7 @@ namespace wisland.Services
                 root.TryGetProperty("artist-alt2", out var aa2) ? aa2.GetString() : null,
                 groundingUsed);
 
-            Logger.Info($"AI test result: '{testResult.Title}' by '{testResult.Artist}'"
+            Logger.Info($"AI song resolved: '{testTitle}' by '{testArtist}' -> '{testResult.Title}' by '{testResult.Artist}'"
                 + (groundingUsed.HasValue ? $" [grounding: {(groundingUsed.Value ? "✓" : "✗")}]" : ""));
             LogAlternatives(root);
 

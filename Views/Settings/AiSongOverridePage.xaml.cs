@@ -273,10 +273,16 @@ namespace wisland.Views.Settings
             try
             {
                 string sourceName = TestSourceNameBox.Text?.Trim() ?? "Test";
-                double duration = double.IsNaN(TestDurationBox.Value) ? 0 : TestDurationBox.Value;
+                double duration = ParseDuration(TestDurationBox.Text);
 
                 var result = await AiSongResolverService.TestModelAsync(
-                    profile, testTitle, testArtist, _testCts.Token);
+                    profile, testTitle, testArtist,
+                    duration,
+                    string.IsNullOrEmpty(sourceName) ? "Test" : sourceName,
+                    _settings.AiPreferredLanguage,
+                    _settings.AiTargetMarket,
+                    _settings.AiPreferNativePrompt,
+                    _testCts.Token);
 
                 string groundingTag = result?.GroundingUsed switch
                 {
@@ -318,6 +324,22 @@ namespace wisland.Views.Settings
             if (!string.IsNullOrEmpty(r.ArtistAlt)) parts.Add($"artist-alt: {r.ArtistAlt}");
             if (!string.IsNullOrEmpty(r.ArtistAlt2)) parts.Add($"artist-alt2: {r.ArtistAlt2}");
             return string.Join(" | ", parts);
+        }
+
+        /// <summary>Parses "m:ss" or plain seconds into total seconds.</summary>
+        private static double ParseDuration(string? text)
+        {
+            if (string.IsNullOrWhiteSpace(text)) return 0;
+            text = text.Trim();
+            if (text.Contains(':'))
+            {
+                var parts = text.Split(':', 2);
+                if (int.TryParse(parts[0], out int m) && int.TryParse(parts[1], out int s))
+                    return m * 60 + s;
+            }
+            if (double.TryParse(text, out double sec))
+                return sec;
+            return 0;
         }
     }
 }

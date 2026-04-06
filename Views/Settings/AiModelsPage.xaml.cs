@@ -229,6 +229,7 @@ namespace wisland.Views.Settings
                     profile,
                     Loc.GetString("AiModels/TestSongTitle"),
                     Loc.GetString("AiModels/TestSongArtist"),
+                    0, "Test", null, null, false,
                     _testCts.Token);
 
                 string groundingTag = result?.GroundingUsed switch

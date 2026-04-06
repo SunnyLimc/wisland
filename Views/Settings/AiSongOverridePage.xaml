@@ -109,10 +109,8 @@
                      Width="320" HorizontalAlignment="Left"/>
             <TextBox x:Uid="AiSongTestSourceName" x:Name="TestSourceNameBox"
                      Width="320" HorizontalAlignment="Left"/>
-            <NumberBox x:Uid="AiSongTestDuration" x:Name="TestDurationBox"
-                       Width="160" HorizontalAlignment="Left"
-                       Minimum="0" SpinButtonPlacementMode="Compact"
-                       SmallChange="1" LargeChange="30"/>
+            <TextBox x:Uid="AiSongTestDuration" x:Name="TestDurationBox"
+                     Width="160" HorizontalAlignment="Left"/>
 
             <Button x:Uid="AiSongTestRun" x:Name="TestRunButton"
                     Click="TestRun_Click"

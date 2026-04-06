@@ -356,6 +356,59 @@
     <value>例如：中国大陆、日本</value>
   </data>
 
+  <!-- AI Song Override page — Test section -->
+  <data name="AiSongTestTitle.Text" xml:space="preserve">
+    <value>测试</value>
+  </data>
+  <data name="AiSongTestDescription.Text" xml:space="preserve">
+    <value>输入示例元数据，测试选定的 AI 模型在当前设置下是否正常工作。</value>
+  </data>
+  <data name="AiSongTestSongTitle.Header" xml:space="preserve">
+    <value>歌曲名称</value>
+  </data>
+  <data name="AiSongTestSongTitle.PlaceholderText" xml:space="preserve">
+    <value>例如：NIGHT DANCER (Official Video)</value>
+  </data>
+  <data name="AiSongTestSongArtist.Header" xml:space="preserve">
+    <value>艺人</value>
+  </data>
+  <data name="AiSongTestSongArtist.PlaceholderText" xml:space="preserve">
+    <value>例如：imase</value>
+  </data>
+  <data name="AiSongTestSourceName.Header" xml:space="preserve">
+    <value>来源应用</value>
+  </data>
+  <data name="AiSongTestSourceName.PlaceholderText" xml:space="preserve">
+    <value>例如：YouTube Music</value>
+  </data>
+  <data name="AiSongTestDuration.Header" xml:space="preserve">
+    <value>时长</value>
+  </data>
+  <data name="AiSongTestDuration.PlaceholderText" xml:space="preserve">
+    <value>例如：4:21</value>
+  </data>
+  <data name="AiSongTestRun.Content" xml:space="preserve">
+    <value>运行测试</value>
+  </data>
+  <data name="AiSong/TestMissingTitle" xml:space="preserve">
+    <value>请至少输入歌曲名称以进行测试。</value>
+  </data>
+  <data name="AiSong/TestNoModel" xml:space="preserve">
+    <value>未选择 AI 模型。请在上方的模型选择器中选择一个。</value>
+  </data>
+  <data name="AiSong/TestRunning" xml:space="preserve">
+    <value>正在向 AI 模型发送测试请求…</value>
+  </data>
+  <data name="AiSong/TestSuccess" xml:space="preserve">
+    <value>✓ 解析结果：{0} — {1}</value>
+  </data>
+  <data name="AiSong/TestTimeout" xml:space="preserve">
+    <value>请求在 30 秒后超时。</value>
+  </data>
+  <data name="AiSong/TestFailed" xml:space="preserve">
+    <value>测试失败：{0}</value>
+  </data>
+
   <!-- Diagnostics page -->
   <data name="DiagnosticsTitle.Text" xml:space="preserve">
     <value>诊断</value>
