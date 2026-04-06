@@ -125,7 +125,7 @@
     <value>AI Models</value>
   </data>
   <data name="Settings/Nav/AiSongOverride" xml:space="preserve">
-    <value>AI Song Override</value>
+    <value>AI Song Cleanup</value>
   </data>
   <data name="Settings/Nav/Diagnostics" xml:space="preserve">
     <value>Diagnostics</value>
@@ -170,7 +170,7 @@
     <value>AI Models</value>
   </data>
   <data name="AiModelsDescription.Text" xml:space="preserve">
-    <value>Configure the models used for song metadata cleanup. OpenAI Compatible works with any OpenAI-style endpoint, and Google AI Studio can optionally use Google grounding search when the selected Gemini model supports it.</value>
+    <value>Add and manage AI models used for song metadata cleanup.</value>
   </data>
   <data name="AiModelsEdit.Content" xml:space="preserve">
     <value>Edit</value>
@@ -194,7 +194,7 @@
     <value>Display Name</value>
   </data>
   <data name="AiModelsDisplayNameHeader.PlaceholderText" xml:space="preserve">
-    <value>e.g. Main metadata model</value>
+    <value>e.g. My Gemini model</value>
   </data>
   <data name="AiModelsEndpointHeader.Header" xml:space="preserve">
     <value>Endpoint URL</value>
@@ -212,10 +212,10 @@
     <value>Model ID</value>
   </data>
   <data name="AiModelsModelIdHeader.PlaceholderText" xml:space="preserve">
-    <value>e.g. gpt-4o-mini or gemini-3-flash-preview</value>
+    <value>e.g. gemini-2.5-flash or gpt-4o-mini</value>
   </data>
   <data name="AiModelsReasoningHeader.Header" xml:space="preserve">
-    <value>Reasoning Effort (Google AI Studio only)</value>
+    <value>Thinking depth</value>
   </data>
   <data name="ReasoningDefault.Content" xml:space="preserve">
     <value>Default</value>
@@ -233,10 +233,10 @@
     <value>High</value>
   </data>
   <data name="ReasoningNone.Content" xml:space="preserve">
-    <value>None (Gemini 2.5 only)</value>
+    <value>Off</value>
   </data>
   <data name="AiModelsGroundingHeader.Header" xml:space="preserve">
-    <value>Enable Google grounding search</value>
+    <value>Use web search for accuracy</value>
   </data>
   <data name="AiModelsGroundingHeader.OnContent" xml:space="preserve">
     <value>On</value>
@@ -245,7 +245,7 @@
     <value>Off</value>
   </data>
   <data name="AiModelsGroundingHint.Text" xml:space="preserve">
-    <value>Only applies to Google AI Studio models. If enabled, Wisland will request Google grounding search for supported Gemini models and automatically fall back if the compatibility endpoint rejects it.</value>
+    <value>Lets the AI verify song metadata against the web for more accurate results. Falls back gracefully if unsupported.</value>
   </data>
   <data name="AiModelsSave.Content" xml:space="preserve">
     <value>Save</value>
@@ -276,13 +276,13 @@
 
   <!-- AI Song Override page (code-behind) -->
   <data name="AiSongTitle.Text" xml:space="preserve">
-    <value>AI Song Override</value>
+    <value>AI Song Cleanup</value>
   </data>
   <data name="AiSongDescription.Text" xml:space="preserve">
-    <value>When enabled, song titles and artist names from media sessions are sent to the configured AI model for cleanup. The AI removes tags like '(Official Video)', separates combined title and artist strings, and returns cleaner metadata. Google AI Studio profiles can also opt into Google grounding search when the selected Gemini model supports it.</value>
+    <value>Automatically clean up messy song titles and artist names from media players using AI. Tags like "(Official Video)" are removed, and combined title/artist strings are separated into clean metadata.</value>
   </data>
   <data name="AiSongEnableToggle.Header" xml:space="preserve">
-    <value>Use AI to resolve song metadata</value>
+    <value>Clean up song metadata using AI</value>
   </data>
   <data name="AiSongModelSelector.Header" xml:space="preserve">
     <value>AI Model</value>
@@ -311,36 +311,27 @@
     <value>Cached entries: {0}</value>
   </data>
 
-  <!-- AI Song Override — Preferred Language section -->
-  <data name="AiSongLanguageTitle.Text" xml:space="preserve">
-    <value>Preferred Language</value>
+  <!-- AI Song Override — Localization section -->
+  <data name="AiSongLocalizationTitle.Text" xml:space="preserve">
+    <value>Localization</value>
   </data>
-  <data name="AiSongLanguageDescription.Text" xml:space="preserve">
-    <value>Choose a preferred language for AI song metadata resolution. When set, the AI will prefer official names used in the corresponding market. You can also provide a custom target market name below.</value>
+  <data name="AiSongLocalizationDescription.Text" xml:space="preserve">
+    <value>Choose which language and region the AI should prefer when returning song and artist names.</value>
   </data>
   <data name="AiSongPreferredLanguage.Header" xml:space="preserve">
-    <value>Language</value>
+    <value>Preferred output language</value>
   </data>
   <data name="AiSongPreferredLanguage.PlaceholderText" xml:space="preserve">
     <value>Select a language...</value>
   </data>
   <data name="AiSong/LanguageNone" xml:space="preserve">
-    <value>None — keep original language, no regional preference</value>
+    <value>Auto — no language preference</value>
   </data>
-  <data name="AiSong/NativePromptAvailable" xml:space="preserve">
-    <value>Native prompt</value>
-  </data>
-  <data name="AiSongTargetMarket.Header" xml:space="preserve">
-    <value>Target Market</value>
-  </data>
-  <data name="AiSongTargetMarket.PlaceholderText" xml:space="preserve">
-    <value>e.g. Mainland China, Japan</value>
-  </data>
-  <data name="AiSong/TargetMarketPlaceholderDefault" xml:space="preserve">
-    <value>e.g. Mainland China, Japan</value>
+  <data name="AiSong/NativePromptBadge" xml:space="preserve">
+    <value>Built-in</value>
   </data>
   <data name="AiSongPreferNativePrompt.Header" xml:space="preserve">
-    <value>Use native language prompt</value>
+    <value>Use built-in prompt for this language</value>
   </data>
   <data name="AiSongPreferNativePrompt.OnContent" xml:space="preserve">
     <value>On</value>
@@ -348,8 +339,20 @@
   <data name="AiSongPreferNativePrompt.OffContent" xml:space="preserve">
     <value>Off</value>
   </data>
-  <data name="AiSong/NativePromptUnavailable" xml:space="preserve">
-    <value>A native-language prompt is not yet available for this language. The generic English prompt will be used with language and market substitution.</value>
+  <data name="AiSongNativePromptHint.Text" xml:space="preserve">
+    <value>Uses a prompt written in the selected language for better accuracy. When off, a generic English prompt is used with language and region hints.</value>
+  </data>
+  <data name="AiSongRegionOverride.Header" xml:space="preserve">
+    <value>Region override</value>
+  </data>
+  <data name="AiSongRegionOverride.PlaceholderText" xml:space="preserve">
+    <value>e.g. Mainland China, Japan</value>
+  </data>
+  <data name="AiSongRegionOverrideHint.Text" xml:space="preserve">
+    <value>Override the default region for this language. The AI uses this to pick region-specific official names (e.g. simplified vs. traditional Chinese titles).</value>
+  </data>
+  <data name="AiSong/RegionPlaceholderDefault" xml:space="preserve">
+    <value>e.g. Mainland China, Japan</value>
   </data>
 
   <!-- AI Song Override — Test section -->

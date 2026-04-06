@@ -125,7 +125,7 @@
     <value>AI 模型</value>
   </data>
   <data name="Settings/Nav/AiSongOverride" xml:space="preserve">
-    <value>AI 歌曲修正</value>
+    <value>AI 歌曲清理</value>
   </data>
   <data name="Settings/Nav/Diagnostics" xml:space="preserve">
     <value>诊断</value>
@@ -170,7 +170,7 @@
     <value>AI 模型</value>
   </data>
   <data name="AiModelsDescription.Text" xml:space="preserve">
-    <value>配置用于歌曲元数据清理的模型。OpenAI 兼容适用于任何 OpenAI 风格端点，Google AI Studio 可以在所选 Gemini 模型支持时选择使用 Google 接地搜索。</value>
+    <value>添加和管理用于歌曲元数据清理的 AI 模型。</value>
   </data>
   <data name="AiModelsEdit.Content" xml:space="preserve">
     <value>编辑</value>
@@ -194,7 +194,7 @@
     <value>显示名称</value>
   </data>
   <data name="AiModelsDisplayNameHeader.PlaceholderText" xml:space="preserve">
-    <value>例如：主元数据模型</value>
+    <value>例如：我的 Gemini 模型</value>
   </data>
   <data name="AiModelsEndpointHeader.Header" xml:space="preserve">
     <value>端点 URL</value>
@@ -212,10 +212,10 @@
     <value>模型 ID</value>
   </data>
   <data name="AiModelsModelIdHeader.PlaceholderText" xml:space="preserve">
-    <value>例如：gpt-4o-mini 或 gemini-3-flash-preview</value>
+    <value>例如：gemini-2.5-flash 或 gpt-4o-mini</value>
   </data>
   <data name="AiModelsReasoningHeader.Header" xml:space="preserve">
-    <value>推理强度（仅 Google AI Studio）</value>
+    <value>思考深度</value>
   </data>
   <data name="ReasoningDefault.Content" xml:space="preserve">
     <value>默认</value>
@@ -233,10 +233,10 @@
     <value>高</value>
   </data>
   <data name="ReasoningNone.Content" xml:space="preserve">
-    <value>无（仅 Gemini 2.5）</value>
+    <value>关闭</value>
   </data>
   <data name="AiModelsGroundingHeader.Header" xml:space="preserve">
-    <value>启用 Google 接地搜索</value>
+    <value>使用网络搜索提升准确度</value>
   </data>
   <data name="AiModelsGroundingHeader.OnContent" xml:space="preserve">
     <value>开</value>
@@ -245,7 +245,7 @@
     <value>关</value>
   </data>
   <data name="AiModelsGroundingHint.Text" xml:space="preserve">
-    <value>仅适用于 Google AI Studio 模型。启用后，Wisland 将为支持的 Gemini 模型请求 Google 接地搜索，如果兼容性端点拒绝则自动回退。</value>
+    <value>让 AI 通过网络验证歌曲元数据，获得更准确的结果。不支持时会自动回退。</value>
   </data>
   <data name="AiModelsSave.Content" xml:space="preserve">
     <value>保存</value>
@@ -276,13 +276,13 @@
 
   <!-- AI Song Override page -->
   <data name="AiSongTitle.Text" xml:space="preserve">
-    <value>AI 歌曲修正</value>
+    <value>AI 歌曲清理</value>
   </data>
   <data name="AiSongDescription.Text" xml:space="preserve">
-    <value>启用后，媒体会话中的歌曲标题和艺术家名称将发送到配置的 AI 模型进行清理。AI 会删除"(Official Video)"等标签，分离组合的标题和艺术家字符串，并返回更干净的元数据。Google AI Studio 配置文件还可以在所选 Gemini 模型支持时选择使用 Google 接地搜索。</value>
+    <value>使用 AI 自动清理媒体播放器中的歌曲标题和艺术家名称。自动去除「(Official Video)」等标签，将混合的标题/艺术家字符串分离为干净的元数据。</value>
   </data>
   <data name="AiSongEnableToggle.Header" xml:space="preserve">
-    <value>使用 AI 解析歌曲元数据</value>
+    <value>使用 AI 清理歌曲元数据</value>
   </data>
   <data name="AiSongModelSelector.Header" xml:space="preserve">
     <value>AI 模型</value>
@@ -309,36 +309,27 @@
     <value>缓存条目: {0}</value>
   </data>
 
-  <!-- AI Song Override — Preferred Language section -->
-  <data name="AiSongLanguageTitle.Text" xml:space="preserve">
-    <value>首选语言</value>
+  <!-- AI Song Override — Localization section -->
+  <data name="AiSongLocalizationTitle.Text" xml:space="preserve">
+    <value>本地化</value>
   </data>
-  <data name="AiSongLanguageDescription.Text" xml:space="preserve">
-    <value>选择 AI 歌曲元数据解析的首选语言。设置后，AI 将优先使用对应市场的官方名称。你也可以在下方指定自定义目标市场名称。</value>
+  <data name="AiSongLocalizationDescription.Text" xml:space="preserve">
+    <value>设置 AI 返回歌曲名和艺术家名时优先使用的语言和地区。</value>
   </data>
   <data name="AiSongPreferredLanguage.Header" xml:space="preserve">
-    <value>语言</value>
+    <value>首选输出语言</value>
   </data>
   <data name="AiSongPreferredLanguage.PlaceholderText" xml:space="preserve">
     <value>选择语言...</value>
   </data>
   <data name="AiSong/LanguageNone" xml:space="preserve">
-    <value>无 — 保留原始语言，不指定地区偏好</value>
+    <value>自动 — 不指定语言偏好</value>
   </data>
-  <data name="AiSong/NativePromptAvailable" xml:space="preserve">
-    <value>原生提示词</value>
-  </data>
-  <data name="AiSongTargetMarket.Header" xml:space="preserve">
-    <value>目标市场</value>
-  </data>
-  <data name="AiSongTargetMarket.PlaceholderText" xml:space="preserve">
-    <value>例如：中国大陆、日本</value>
-  </data>
-  <data name="AiSong/TargetMarketPlaceholderDefault" xml:space="preserve">
-    <value>例如：中国大陆、日本</value>
+  <data name="AiSong/NativePromptBadge" xml:space="preserve">
+    <value>内置</value>
   </data>
   <data name="AiSongPreferNativePrompt.Header" xml:space="preserve">
-    <value>使用原生语言提示词</value>
+    <value>使用该语言的内置提示词</value>
   </data>
   <data name="AiSongPreferNativePrompt.OnContent" xml:space="preserve">
     <value>开</value>
@@ -346,8 +337,20 @@
   <data name="AiSongPreferNativePrompt.OffContent" xml:space="preserve">
     <value>关</value>
   </data>
-  <data name="AiSong/NativePromptUnavailable" xml:space="preserve">
-    <value>此语言的原生提示词尚不可用。将使用通用英文提示词并替换语言和市场信息。</value>
+  <data name="AiSongNativePromptHint.Text" xml:space="preserve">
+    <value>使用所选语言编写的提示词以获得更准确的结果。关闭后将使用通用英文提示词并附加语言和地区提示。</value>
+  </data>
+  <data name="AiSongRegionOverride.Header" xml:space="preserve">
+    <value>地区覆盖</value>
+  </data>
+  <data name="AiSongRegionOverride.PlaceholderText" xml:space="preserve">
+    <value>例如：中国大陆、日本</value>
+  </data>
+  <data name="AiSongRegionOverrideHint.Text" xml:space="preserve">
+    <value>覆盖该语言的默认地区。AI 会根据此信息选择特定地区的官方名称（例如简体 vs. 繁体中文标题）。</value>
+  </data>
+  <data name="AiSong/RegionPlaceholderDefault" xml:space="preserve">
+    <value>例如：中国大陆、日本</value>
   </data>
 
   <!-- Diagnostics page -->

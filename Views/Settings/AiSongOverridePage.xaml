@@ -31,11 +31,11 @@
                        Visibility="Collapsed"
                     TextWrapping="WrapWholeWords"/>
 
-            <!-- Preferred language section -->
-            <TextBlock x:Uid="AiSongLanguageTitle" x:Name="AiSongLanguageTitleText"
+            <!-- Localization section -->
+            <TextBlock x:Uid="AiSongLocalizationTitle" x:Name="AiSongLocalizationTitleText"
                     Style="{StaticResource SubtitleTextBlockStyle}"
                     Margin="0,16,0,0"/>
-            <TextBlock x:Uid="AiSongLanguageDescription" x:Name="AiSongLanguageDescriptionText"
+            <TextBlock x:Uid="AiSongLocalizationDescription" x:Name="AiSongLocalizationDescriptionText"
                        Style="{StaticResource BodyTextBlockStyle}"
                        Foreground="{ThemeResource TextFillColorSecondaryBrush}"
                        TextWrapping="WrapWholeWords"/>
@@ -44,17 +44,27 @@
                       Width="320"
                       SelectionChanged="PreferredLanguageSelector_SelectionChanged"/>
 
-            <TextBox x:Uid="AiSongTargetMarket" x:Name="TargetMarketBox"
-                     Width="320"
-                     LostFocus="TargetMarketBox_LostFocus"/>
+            <!-- Native prompt toggle — shown only when a language with native support is selected -->
+            <StackPanel x:Name="NativePromptPanel" Spacing="4" Visibility="Collapsed">
+                <ToggleSwitch x:Uid="AiSongPreferNativePrompt" x:Name="PreferNativePromptToggle"
+                              Toggled="PreferNativePromptToggle_Toggled"/>
+                <TextBlock x:Uid="AiSongNativePromptHint"
+                           Style="{StaticResource CaptionTextBlockStyle}"
+                           Foreground="{ThemeResource TextFillColorTertiaryBrush}"
+                           TextWrapping="WrapWholeWords"
+                           Margin="0,-4,0,0"/>
+            </StackPanel>
 
-            <ToggleSwitch x:Uid="AiSongPreferNativePrompt" x:Name="PreferNativePromptToggle"
-                          Toggled="PreferNativePromptToggle_Toggled"/>
-
-            <InfoBar x:Name="NativePromptUnavailableHint"
-                     Severity="Informational"
-                     IsOpen="False"
-                     IsClosable="True"/>
+            <!-- Region override — hidden when native prompt is ON -->
+            <StackPanel x:Name="RegionOverridePanel" Spacing="4">
+                <TextBox x:Uid="AiSongRegionOverride" x:Name="TargetMarketBox"
+                         Width="320" HorizontalAlignment="Left"
+                         LostFocus="TargetMarketBox_LostFocus"/>
+                <TextBlock x:Uid="AiSongRegionOverrideHint"
+                           Style="{StaticResource CaptionTextBlockStyle}"
+                           Foreground="{ThemeResource TextFillColorTertiaryBrush}"
+                           TextWrapping="WrapWholeWords"/>
+            </StackPanel>
 
             <!-- Cache section -->
             <TextBlock x:Uid="AiSongCacheTitle" x:Name="AiSongCacheTitleText"

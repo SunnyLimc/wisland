@@ -125,7 +125,7 @@
     <value>AI モデル</value>
   </data>
   <data name="Settings/Nav/AiSongOverride" xml:space="preserve">
-    <value>AI 楽曲補正</value>
+    <value>AI 楽曲クリーンアップ</value>
   </data>
   <data name="Settings/Nav/Diagnostics" xml:space="preserve">
     <value>診断</value>
@@ -170,7 +170,7 @@
     <value>AI モデル</value>
   </data>
   <data name="AiModelsDescription.Text" xml:space="preserve">
-    <value>楽曲メタデータ補正に使用するモデルを設定します。OpenAI 互換は任意の OpenAI 形式エンドポイントで動作し、Google AI Studio はサポートされている Gemini モデルで Google グラウンディング検索をオプションで使用できます。</value>
+    <value>楽曲メタデータクリーンアップに使用する AI モデルを追加・管理します。</value>
   </data>
   <data name="AiModelsEdit.Content" xml:space="preserve">
     <value>編集</value>
@@ -194,7 +194,7 @@
     <value>表示名</value>
   </data>
   <data name="AiModelsDisplayNameHeader.PlaceholderText" xml:space="preserve">
-    <value>例: メインメタデータモデル</value>
+    <value>例: 私の Gemini モデル</value>
   </data>
   <data name="AiModelsEndpointHeader.Header" xml:space="preserve">
     <value>エンドポイント URL</value>
@@ -212,10 +212,10 @@
     <value>モデル ID</value>
   </data>
   <data name="AiModelsModelIdHeader.PlaceholderText" xml:space="preserve">
-    <value>例: gpt-4o-mini または gemini-3-flash-preview</value>
+    <value>例: gemini-2.5-flash または gpt-4o-mini</value>
   </data>
   <data name="AiModelsReasoningHeader.Header" xml:space="preserve">
-    <value>推論の強度 (Google AI Studio のみ)</value>
+    <value>思考の深さ</value>
   </data>
   <data name="ReasoningDefault.Content" xml:space="preserve">
     <value>既定</value>
@@ -233,10 +233,10 @@
     <value>高</value>
   </data>
   <data name="ReasoningNone.Content" xml:space="preserve">
-    <value>なし (Gemini 2.5 のみ)</value>
+    <value>オフ</value>
   </data>
   <data name="AiModelsGroundingHeader.Header" xml:space="preserve">
-    <value>Google グラウンディング検索を有効化</value>
+    <value>Web 検索で精度を向上</value>
   </data>
   <data name="AiModelsGroundingHeader.OnContent" xml:space="preserve">
     <value>オン</value>
@@ -245,7 +245,7 @@
     <value>オフ</value>
   </data>
   <data name="AiModelsGroundingHint.Text" xml:space="preserve">
-    <value>Google AI Studio モデルにのみ適用されます。有効にすると、サポートされている Gemini モデルで Google グラウンディング検索をリクエストし、互換性エンドポイントが拒否した場合は自動的にフォールバックします。</value>
+    <value>AI が楽曲メタデータを Web で確認し、より正確な結果を返します。未対応の場合は自動でフォールバックします。</value>
   </data>
   <data name="AiModelsSave.Content" xml:space="preserve">
     <value>保存</value>
@@ -276,13 +276,13 @@
 
   <!-- AI Song Override page -->
   <data name="AiSongTitle.Text" xml:space="preserve">
-    <value>AI 楽曲補正</value>
+    <value>AI 楽曲クリーンアップ</value>
   </data>
   <data name="AiSongDescription.Text" xml:space="preserve">
-    <value>有効にすると、メディアセッションの曲名とアーティスト名が設定された AI モデルに送信され、メタデータがクリーンアップされます。AI は「(Official Video)」などのタグを削除し、結合されたタイトルとアーティスト文字列を分離して、よりきれいなメタデータを返します。Google AI Studio プロファイルは、選択した Gemini モデルがサポートしている場合、Google グラウンディング検索も選択できます。</value>
+    <value>メディアプレイヤーの曲名やアーティスト名を AI が自動で整理します。「(Official Video)」などのタグを除去し、結合された文字列をタイトルとアーティストに分離してきれいなメタデータを返します。</value>
   </data>
   <data name="AiSongEnableToggle.Header" xml:space="preserve">
-    <value>AI で楽曲メタデータを解決する</value>
+    <value>AI で楽曲メタデータをクリーンアップする</value>
   </data>
   <data name="AiSongModelSelector.Header" xml:space="preserve">
     <value>AI モデル</value>
@@ -309,36 +309,27 @@
     <value>キャッシュ数: {0}</value>
   </data>
 
-  <!-- AI Song Override — Preferred Language section -->
-  <data name="AiSongLanguageTitle.Text" xml:space="preserve">
-    <value>優先言語</value>
+  <!-- AI Song Override — Localization section -->
+  <data name="AiSongLocalizationTitle.Text" xml:space="preserve">
+    <value>ローカライズ</value>
   </data>
-  <data name="AiSongLanguageDescription.Text" xml:space="preserve">
-    <value>AI 楽曲メタデータ解決の優先言語を選択します。設定すると、AI は対応する地域で使用されている公式名称を優先します。下のフィールドでカスタムのターゲット市場名を指定することもできます。</value>
+  <data name="AiSongLocalizationDescription.Text" xml:space="preserve">
+    <value>AI が楽曲名やアーティスト名を返す際に優先する言語と地域を指定します。</value>
   </data>
   <data name="AiSongPreferredLanguage.Header" xml:space="preserve">
-    <value>言語</value>
+    <value>優先出力言語</value>
   </data>
   <data name="AiSongPreferredLanguage.PlaceholderText" xml:space="preserve">
     <value>言語を選択...</value>
   </data>
   <data name="AiSong/LanguageNone" xml:space="preserve">
-    <value>なし — 原語のまま、地域指定なし</value>
+    <value>自動 — 言語指定なし</value>
   </data>
-  <data name="AiSong/NativePromptAvailable" xml:space="preserve">
-    <value>ネイティブプロンプト</value>
-  </data>
-  <data name="AiSongTargetMarket.Header" xml:space="preserve">
-    <value>ターゲット市場</value>
-  </data>
-  <data name="AiSongTargetMarket.PlaceholderText" xml:space="preserve">
-    <value>例: 日本、中国大陸</value>
-  </data>
-  <data name="AiSong/TargetMarketPlaceholderDefault" xml:space="preserve">
-    <value>例: 日本、中国大陸</value>
+  <data name="AiSong/NativePromptBadge" xml:space="preserve">
+    <value>組み込み</value>
   </data>
   <data name="AiSongPreferNativePrompt.Header" xml:space="preserve">
-    <value>ネイティブ言語プロンプトを使用</value>
+    <value>この言語の組み込みプロンプトを使用</value>
   </data>
   <data name="AiSongPreferNativePrompt.OnContent" xml:space="preserve">
     <value>オン</value>
@@ -346,8 +337,20 @@
   <data name="AiSongPreferNativePrompt.OffContent" xml:space="preserve">
     <value>オフ</value>
   </data>
-  <data name="AiSong/NativePromptUnavailable" xml:space="preserve">
-    <value>この言語のネイティブプロンプトはまだ利用できません。言語と市場を置き換えた汎用英語プロンプトが使用されます。</value>
+  <data name="AiSongNativePromptHint.Text" xml:space="preserve">
+    <value>選択した言語で書かれたプロンプトを使用し、精度を向上させます。オフの場合、言語と地域のヒントを含む汎用英語プロンプトが使用されます。</value>
+  </data>
+  <data name="AiSongRegionOverride.Header" xml:space="preserve">
+    <value>地域の上書き</value>
+  </data>
+  <data name="AiSongRegionOverride.PlaceholderText" xml:space="preserve">
+    <value>例: 日本、中国大陸</value>
+  </data>
+  <data name="AiSongRegionOverrideHint.Text" xml:space="preserve">
+    <value>この言語のデフォルト地域を上書きします。AI はこの情報を使用して地域固有の正式名称を選択します。</value>
+  </data>
+  <data name="AiSong/RegionPlaceholderDefault" xml:space="preserve">
+    <value>例: 日本、中国大陸</value>
   </data>
 
   <!-- Diagnostics page -->

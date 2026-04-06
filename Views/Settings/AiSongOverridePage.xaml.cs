@@ -100,7 +100,7 @@ namespace wisland.Views.Settings
             {
                 var lang = languages[i];
                 string badge = lang.HasNativePrompt
-                    ? $" \u2022 {Loc.GetString("AiSong/NativePromptAvailable")}"
+                    ? $" \u2022 {Loc.GetString("AiSong/NativePromptBadge")}"
                     : "";
                 PreferredLanguageSelector.Items.Add($"{lang.DisplayLabel}{badge}");
                 _languageCodes.Add(lang.Code);
@@ -117,7 +117,7 @@ namespace wisland.Views.Settings
             RefreshTargetMarketPlaceholder();
 
             PreferNativePromptToggle.IsOn = _settings.AiPreferNativePrompt;
-            RefreshNativePromptAvailability();
+            RefreshLocalizationPanels();
         }
 
         private void RefreshTargetMarketPlaceholder()
@@ -125,24 +125,27 @@ namespace wisland.Views.Settings
             string? code = _settings.AiPreferredLanguage;
             if (string.IsNullOrEmpty(code))
             {
-                TargetMarketBox.PlaceholderText = Loc.GetString("AiSong/TargetMarketPlaceholderDefault");
+                TargetMarketBox.PlaceholderText = Loc.GetString("AiSong/RegionPlaceholderDefault");
                 return;
             }
 
             var lang = AiPromptLanguage.All
                 .FirstOrDefault(l => string.Equals(l.Code, code, StringComparison.OrdinalIgnoreCase));
             TargetMarketBox.PlaceholderText = lang?.DefaultMarket
-                ?? Loc.GetString("AiSong/TargetMarketPlaceholderDefault");
+                ?? Loc.GetString("AiSong/RegionPlaceholderDefault");
         }
 
-        private void RefreshNativePromptAvailability()
+        private void RefreshLocalizationPanels()
         {
             string? code = _settings.AiPreferredLanguage;
             bool hasNative = !string.IsNullOrEmpty(code)
                 && AiPromptLanguage.All.Any(l =>
                     string.Equals(l.Code, code, StringComparison.OrdinalIgnoreCase) && l.HasNativePrompt);
 
+            // Show the native prompt toggle only when the selected language has a built-in prompt
+            NativePromptPanel.Visibility = hasNative ? Visibility.Visible : Visibility.Collapsed;
             PreferNativePromptToggle.IsEnabled = hasNative;
+
             if (!hasNative && PreferNativePromptToggle.IsOn)
             {
                 _suppressSelectionChanged = true;
@@ -152,8 +155,9 @@ namespace wisland.Views.Settings
                 _settings.Save();
             }
 
-            NativePromptUnavailableHint.IsOpen = !string.IsNullOrEmpty(code) && !hasNative;
-            NativePromptUnavailableHint.Message = Loc.GetString("AiSong/NativePromptUnavailable");
+            // Hide region override when native prompt is active (the built-in prompt already targets the right region)
+            bool showRegion = !string.IsNullOrEmpty(code) && !(hasNative && PreferNativePromptToggle.IsOn);
+            RegionOverridePanel.Visibility = showRegion ? Visibility.Visible : Visibility.Collapsed;
         }
 
         private void RefreshCacheCount()
@@ -190,7 +194,7 @@ namespace wisland.Views.Settings
                 _settings.AiPreferredLanguage = string.IsNullOrEmpty(code) ? null : code;
                 _settings.Save();
                 RefreshTargetMarketPlaceholder();
-                RefreshNativePromptAvailability();
+                RefreshLocalizationPanels();
                 _onAiSettingsChanged();
             }
         }
@@ -208,6 +212,7 @@ namespace wisland.Views.Settings
             if (_suppressSelectionChanged) return;
             _settings.AiPreferNativePrompt = PreferNativePromptToggle.IsOn;
             _settings.Save();
+            RefreshLocalizationPanels();
             _onAiSettingsChanged();
         }
 

@@ -262,9 +262,8 @@ namespace wisland.Services
                 config.Tools = [new GTypes.Tool { GoogleSearch = new GTypes.GoogleSearch() }];
             }
 
-            if (TryNormalizeThinkingBudget(profile, out int budget))
+            if (TryApplyThinkingConfig(profile, config))
             {
-                config.ThinkingConfig = new GTypes.ThinkingConfig { ThinkingBudget = budget };
             }
 
             GTypes.GenerateContentResponse response;
@@ -349,17 +348,27 @@ namespace wisland.Services
                 || modelId.StartsWith("gemini-5", StringComparison.OrdinalIgnoreCase);
         }
 
-        private static bool TryNormalizeThinkingBudget(AiModelProfile profile, out int budget)
+        private static bool TryApplyThinkingConfig(AiModelProfile profile, GTypes.GenerateContentConfig config)
         {
-            budget = 0;
-
             switch (profile.ReasoningEffort?.Trim().ToLowerInvariant())
             {
-                case "none": budget = 0; return true;
-                case "low": budget = 1024; return true;
-                case "medium": budget = 8192; return true;
-                case "high": budget = 24576; return true;
-                default: return false;
+                case "minimal":
+                    config.ThinkingConfig = new GTypes.ThinkingConfig { ThinkingLevel = GTypes.ThinkingLevel.Minimal };
+                    return true;
+                case "low":
+                    config.ThinkingConfig = new GTypes.ThinkingConfig { ThinkingLevel = GTypes.ThinkingLevel.Low };
+                    return true;
+                case "medium":
+                    config.ThinkingConfig = new GTypes.ThinkingConfig { ThinkingLevel = GTypes.ThinkingLevel.Medium };
+                    return true;
+                case "high":
+                    config.ThinkingConfig = new GTypes.ThinkingConfig { ThinkingLevel = GTypes.ThinkingLevel.High };
+                    return true;
+                case "none":
+                    config.ThinkingConfig = new GTypes.ThinkingConfig { ThinkingBudget = 0 };
+                    return true;
+                default:
+                    return false;
             }
         }
 

@@ -111,9 +111,10 @@
                             IsOn="True"/>
 
                     <TextBlock x:Uid="AiModelsGroundingHint" x:Name="GroundingHintText"
-                            Style="{StaticResource BodyTextBlockStyle}"
-                            Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                            Style="{StaticResource CaptionTextBlockStyle}"
+                            Foreground="{ThemeResource TextFillColorTertiaryBrush}"
                             TextWrapping="WrapWholeWords"
+                            Margin="0,-8,0,0"
                             Visibility="Collapsed"/>
 
                     <StackPanel Orientation="Horizontal"
