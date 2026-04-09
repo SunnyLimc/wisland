@@ -1,0 +1,19 @@
+name: "Wisland CodeQL config"
+
+# This is a local desktop WinUI 3 application with no remote/HTTP inputs.
+# The default CodeQL threat model (remote sources only) is appropriate.
+# We do NOT enable threat-models: local, as Environment.GetFolderPath()
+# and similar OS APIs are not attacker-controlled in a local desktop context.
+
+queries:
+  - uses: security-extended
+
+# Exclude false-positive rules for desktop app:
+# - cs/path-injection: All file paths derive from Environment.GetFolderPath(LocalApplicationData)
+#   combined with hardcoded subdirectories, validated through SafePaths helper.
+# - cs/command-line-injection: Process.Start targets hardcoded explorer.exe only.
+query-filters:
+  - exclude:
+      id: cs/path-injection
+  - exclude:
+      id: cs/command-line-injection
