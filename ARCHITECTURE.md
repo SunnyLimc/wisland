@@ -1,672 +1,379 @@
-# Wisland Architecture
+# Architecture
 
-This document is the implementation-facing map of the project. It is written for both human contributors and AI coding agents.
+> Implementation guide for contributors and AI coding agents.
+> Read this before editing behavior across multiple modules.
 
-If you only need the quick entrypoint, start with `README.md`. If you need to change behavior, runtime flow, or module boundaries, read this file first.
+## 1. What Wisland Is
 
-## 1. Product Summary
+Wisland is a Windows desktop widget that recreates the Dynamic Island interaction pattern. It renders as a compact always-on-top floating shell that expands on hover, integrates with system media sessions, and can dock to the top edge of the screen — collapsing into a native 1px progress strip when another app is maximized.
 
-Wisland is a Windows desktop recreation of the "Dynamic Island" interaction pattern:
+It is a **pragmatic WinUI 3 desktop app**, not a strict MVVM app. There is no DI container, no event aggregator, and no command bus. Services are instantiated directly with `new` and held as fields on the composition root.
 
-- It renders as a compact always-on-top floating widget.
-- It expands on hover and during notifications.
-- It can be dragged and docked to the top edge of the screen.
-- When docked and another app is maximized, it can collapse into a thin progress line.
-- It integrates with Windows media sessions for track metadata, playback state, and progress.
-- It can track multiple GSMTC sessions at once while exposing a single focused session to the shell.
-- The expanded header uses a compact tab-strip metaphor with stacked source icons and a lightweight session picker overlay.
-- It supports a custom task-progress override, tray controls, backdrop switching, persisted settings, and local logging.
-- It can optionally resolve clean song metadata from AI models (Google GenAI or OpenAI-compatible) using structured output with alternative candidates.
-
-## 2. Architectural Style
-
-This is a pragmatic WinUI 3 desktop app, not a strict MVVM app.
-
-The current architecture is intentionally split like this:
-
-- `MainWindow` is the composition root and runtime orchestrator.
-- `IslandController` is the pure state and animation target engine.
-- `MediaService`, `SettingsService`, `ForegroundWindowMonitor`, `WindowAppearanceService`, and `ShellVisibilityService` are side-effect adapters.
-- `AiSongResolverService` and `AiSongPromptBuilder` handle optional AI metadata resolution.
-- `Views/` and `Controls/` are lightweight presentation units.
-- `Models/` now also contain semantic appearance tokens for theme-aware styling.
-- `Helpers/` isolate Win32 and operational concerns.
-
-That split matters. If you are changing code, keep logic placement consistent:
-
-- Put pure state transitions and animation targets in `IslandController`.
-- Put WinUI element synchronization in `MainWindow`.
-- Put OS integration in `Helpers/`.
-- Put media/session integration in `MediaService`.
-- Put foreground-window polling in `ForegroundWindowMonitor`.
-- Put backdrop and DWM appearance application in `WindowAppearanceService`.
-- Put docked line-overlay ownership in `ShellVisibilityService`.
-- Put persistence in `SettingsService`.
-- Put AI song resolution in `AiSongResolverService` and prompt construction in `AiSongPromptBuilder`.
-
-## 3. System Map
+## 2. Architectural Layers
 
 ```text
-App.xaml.cs
-  -> creates MainWindow
-
-MainWindow
-  -> configures window behavior, tray, backdrop, timers, media hookup
-  -> owns render loop and input events
-  -> delegates state targeting to IslandController
-  -> reacts to ForegroundWindowMonitor events
-  -> listens for system theme and accent-color changes
-  -> delegates backdrop/corner application to WindowAppearanceService
-  -> delegates docked line-overlay ownership to ShellVisibilityService
-  -> syncs logical state into XAML and AppWindow geometry
-  -> owns focused-session selection, manual lock timing, auto-focus debounce, stable visual session ordering, and session cycling rules
-  -> keeps the displayed source pinned during reconnect grace while the arbiter tracks the next auto winner
-
-IslandController
-  -> stores logical flags
-  -> computes target width/height/Y/opacities
-  -> advances current state with exponential decay
-
-MediaService
-  -> listens to Windows GSMTC session changes
-  -> maps raw GSMTC sessions onto stable logical source keys
-  -> keeps reconnecting sources alive in a short waiting state before pruning them
-  -> exposes immutable media session snapshots and the system current logical source key
-  -> runs short refresh bursts after session churn and transport skips to reduce late GSMTC updates
-
-MediaSourceIconResolver
-  -> resolves best-effort source app icons for the expanded header tab strip
-
-SettingsService
-  -> persists backdrop + position + dock state
-
-AiSongResolverService
-  -> resolves clean song metadata via AI models (Google GenAI native or OpenAI-compatible)
-  -> dual-path architecture: Google GenAI SDK with structured output + grounding + thinking config, OpenAI-compatible with JSON schema
-  -> manages an in-memory + file-persisted result cache
-  -> logs prompt template, config (temperature, thinking, grounding), full prompts, raw responses, and alternatives
-
-AiSongPromptBuilder
-  -> constructs user messages from native language templates (zh-Hans, zh-Hant, ja) or a generic English template
-  -> returns both the composed message and the template name for logging
-
-ForegroundWindowMonitor
-  -> polls the foreground window state when the island is docked
-  -> raises maximized-state changes to the shell
-
-WindowAppearanceService
-  -> resolves theme-aware visual tokens from backdrop + system theme + accent
-  -> applies shell surface, text/icon colors, progress palette, and DWM corner preferences
-
-ShellVisibilityService
-  -> owns NativeLineWindow
-  -> shows and hides the docked line overlay
-  -> translates logical shell line requests into DPI-aware Win32 overlay geometry
-  -> applies palette-driven native line appearance without coupling line rendering to MainWindow
-
-Views / Controls
-  -> render compact content, expanded media content, liquid progress visuals,
-  -> and reusable directional content transitions shared across island surfaces
-  -> Settings/ pages for appearance, AI models, AI song cleanup, and diagnostics
-
-SettingsWindow
-  -> secondary window with NavigationView and fused custom title bar
-  -> hosts settings pages in a Frame
-
-Helpers
-  -> logging, localization, native line overlay window, Win32/DWM interop
+┌─────────────────────────────────────────────────────────────────┐
+│  MainWindow  (composition root + shell orchestrator)            │
+│  10 partial files by concern: Animation, Appearance, Display-   │
+│  Anchor, Interaction, Lifetime, Media, Notifications,           │
+│  SessionPicker, State, Tray                                     │
+├─────────────────────────────────────────────────────────────────┤
+│  Views / Controls       │  Services                             │
+│  CompactView            │  IslandController (pure logic)        │
+│  ExpandedMediaView      │  MediaService (6 partials)            │
+│  SessionPickerOverlay   │  AiSongResolverService                │
+│  LiquidProgressBar      │  AiSongPromptBuilder                  │
+│  DirectionalContent-    │  SettingsService                      │
+│  TransitionCoordinator  │  ForegroundWindowMonitor              │
+│                         │  WindowAppearanceService              │
+│  Settings pages (4)     │  ShellVisibilityService               │
+├─────────────────────────┴───────────────────────────────────────┤
+│  Helpers                                                        │
+│  Logger, Loc, SafePaths, WindowInterop, NativeLineWindow,       │
+│  MediaSource{App,Icon}Resolver, CompactSurfaceLayout,           │
+│  SessionPickerPlacementResolver, SessionPickerOverlayLayout     │
+├─────────────────────────────────────────────────────────────────┤
+│  Models                                                         │
+│  IslandConfig (constants), IslandState (render state),          │
+│  IslandVisualTokens, MediaSessionSnapshot, palettes, AI types   │
+└─────────────────────────────────────────────────────────────────┘
 ```
 
-## 4. Repository Layout
+**Placement rules** — where code belongs:
 
-```text
-wisland/
-├── App.xaml / App.xaml.cs
-│   Startup and unhandled exception logging.
-├── MainWindow.xaml / MainWindow.*.cs
-│   Top-level shell split into partial files for state, animation, interaction,
-│   media, tray, appearance, and lifetime concerns.
-├── Models/
-│   ├── AiModelProfile.cs
-│   ├── AiModelProvider.cs
-│   ├── AiSongResult.cs
-│   ├── BackdropType.cs
-│   ├── ContentTransitionDirection.cs
-│   ├── DirectionalTransitionProfile.cs
-│   ├── HoverMode.cs
-│   ├── IslandConfig.cs
-│   ├── MediaSessionSnapshot.cs
-│   ├── IslandState.cs
-│   ├── IslandThemeKind.cs
-│   ├── IslandVisualTokens.cs
-│   └── ProgressBarPalette.cs
-├── Services/
-│   ├── AiSongResolverService.cs
-│   ├── ForegroundWindowMonitor.cs
-│   ├── IslandController.cs
-│   ├── Media/
-│   │   ├── MediaFocusArbiter.cs
-│   │   ├── MediaService*.cs
-│   │   └── MediaSourceNameFormatter.cs
-│   ├── ShellVisibilityService.cs
-│   ├── SettingsService.cs
-│   └── WindowAppearanceService.cs
-├── Views/
-│   ├── CompactView.xaml(.cs)
-│   ├── ExpandedMediaView.xaml(.cs)
-│   └── Settings/
-│       ├── AiModelsPage.xaml(.cs)
-│       ├── AiSongOverridePage.xaml(.cs)
-│       ├── AppearancePage.xaml(.cs)
-│       └── DiagnosticsPage.xaml(.cs)
-├── Controls/
-│   ├── DirectionalContentTransitionCoordinator.cs
-│   └── LiquidProgressBar.xaml(.cs)
-├── Helpers/
-│   ├── Loc.cs
-│   ├── Logger.cs
-│   ├── MediaSourceIconResolver.cs
-│   ├── NativeLineWindow.cs
-│   └── WindowInterop.cs
-├── Strings/
-│   ├── en-US/Resources.resw
-│   ├── ja/Resources.resw
-│   └── zh-Hans/Resources.resw
-└── Assets/ + Properties/
-    Packaging, publish profiles, and app assets.
-```
-
-## 5. Runtime Flow
-
-### 5.1 Launch
-
-1. `App.OnLaunched()` creates `MainWindow` and activates it.
-2. `MainWindow` configures the WinUIEx window manager:
-   - hidden title bar
-   - always on top
-   - not resizable/minimizable/maximizable
-   - hidden from task switchers
-   - visible in system tray
-3. Saved settings are loaded from `%LocalAppData%/Wisland/settings.json`.
-4. The controller is initialized with starting position and docked state.
-5. Backdrop is restored.
-6. Media integration, timers, composition clipping, shell visibility services, and theme listeners are initialized.
-7. `CompositionTarget.Rendering` becomes the per-frame update loop.
-
-### 5.2 Input -> State -> Frame
-
-The central loop is:
-
-```text
-Pointer / timer / media event
-  -> MainWindow updates controller flags or service state
-  -> MainWindow refreshes appearance when system theme or accent changes
-  -> MainWindow calls UpdateState()
-  -> IslandController recalculates targets
-  -> per-frame UpdateAnimation() advances current state
-  -> MainWindow syncs state into XAML + AppWindow and delegates line overlay visibility to ShellVisibilityService
-```
-
-### 5.3 Per-Frame Animation
-
-`MainWindow.UpdateAnimation()` runs on every render tick and does five jobs:
-
-1. Normalize `dt` and refresh DPI scale.
-2. Advance extrapolated media progress via `MediaService.Tick(dt)`.
-3. Advance island physics via `IslandController.Tick(dt)`.
-4. Update visual children:
-   - `LiquidProgressBar`
-   - border size and corner radius
-   - compact and expanded view opacity
-   - hit testing
-   - composition clip
-5. Sync the actual OS window rectangle with `AppWindow.MoveAndResize(...)`.
-
-This project does not use XAML storyboards for shell motion. Motion is driven by explicit math each frame.
-
-### 5.4 Docked / Maximized "Line Mode"
-
-When all of these are true:
-
-- the island is docked,
-- the foreground app is maximized,
-- the island is not hovered,
-- the island is not notifying,
-- the island is not being dragged,
-
-the main island can be moved off-screen and represented by a `NativeLineWindow`, owned through `ShellVisibilityService`, that paints a 1px progress strip.
-
-This is one of the most sensitive parts of the app because it depends on:
-
-- DPI-aware physical pixel math
-- monitor work area anchoring
-- raw Win32 window painting
-- hover re-entry timing
-
-## 6. Feature Map
-
-### Core user-visible features
-
-- Compact island shell
-- Expanded media panel
-- Focused multi-session media shell
-- Hover expansion
-- Temporary notification expansion
-- Drag and drop repositioning
-- Top-edge docking
-- Docked hidden line mode for maximized foreground apps
-- Media playback controls
-- Media timeline progress
-- Custom task progress override
-- AI song metadata resolution (Google GenAI and OpenAI-compatible) with structured output and alternative candidates
-- Configurable AI model profiles with temperature, thinking depth, and grounding controls
-- Tray menu actions
-- Backdrop switching between `Mica`, `Acrylic`, and `None`
-- Persisted position and visual preference
-- File logging for diagnostics
-- Multi-language settings UI (English, Japanese, Chinese Simplified)
-
-### Non-goals of the current implementation
-
-- Full MVVM abstraction
-- Cross-platform support
-- Plugin system
-- Formal command bus or event aggregator
-- Test-heavy architecture
-
-Those are possible future directions, but they are not how the current code is organized.
-
-## 7. Module Responsibilities
-
-### `MainWindow`
-
-Owns orchestration and side effects:
-
-- input event handlers
-- drag lifecycle
-- hover timers
-- foreground maximized detection
-- shell visibility coordination
-- render loop
-- media UI synchronization
-- focused-session selection, lock expiry, stable visual session ordering, and non-loop wheel cycling
-- auto-focus debounce and reconnect waiting-state handling
-- tray menu wiring
-- backdrop application
-- persistence save points
-
-Important implication: `MainWindow` is still the shell boundary, but it is now split across partial files by runtime concern. Do not move pure state math here if it belongs in `IslandController`.
-
-### `IslandController`
-
-Owns logical flags and animation targets:
-
-- `IsHovered`
-- `IsDragging`
-- `IsDocked`
-- `IsNotifying`
-- `IsForegroundMaximized`
-- `IsHoverPending`
-
-It also owns the `Current` `IslandState` and computes target width, height, Y, and content opacities.
-
-Key behavior:
-
-- expanded targets when hovered or notifying
-- compact targets when idle
-- dock peek target when docked
-- drag-time live dock release
-- exponential decay state advancement
-
-This class has no WinUI dependency and should stay that way.
-
-### `MediaService`
-
-Wraps Windows GSMTC:
-
-- requests the session manager and listens for manager/session changes
-- maps raw GSMTC sessions onto stable logical sources instead of one-off raw session identities
-- keeps reconnecting sources in `WaitingForReconnect` for a short grace window before pruning
-- exposes immutable `MediaSessionSnapshot` values and `SystemCurrentSessionKey`
-- provides transport controls against an explicit session key
-- extrapolates progress locally between timeline updates for playing sessions
-- runs a short refresh burst after transport skips and manager session churn
-- raises track notifications only for the system current session
-
-Failure mode is intentionally soft: errors are logged and the app keeps running.
-
-### `SettingsService`
-
-Persists only stable user preferences and placement data:
-
-- backdrop type
-- horizontal center position
-- last Y position
-- docked flag
-- AI model profiles (provider, endpoint, API key via DPAPI, model ID, temperature, thinking depth, grounding toggle)
-- AI song override preferences (language, market, native prompt toggle)
-- display language override
-- log level
-
-It is not a general state snapshot system.
-
-### `AiSongResolverService`
-
-Resolves clean song metadata via AI models:
-
-- dual-path architecture: Google GenAI SDK (native) and OpenAI-compatible endpoints
-- Google path uses structured output schema (6 fields: title, title-alt, title-alt2, artist, artist-alt, artist-alt2) with `PropertyOrdering`, optional grounding search, and configurable thinking level
-- OpenAI path uses strict JSON schema with the same 6 fields
-- per-profile configuration: temperature (0–2), thinking depth (minimal/low/medium/high/off), Google grounding toggle
-- manages an in-memory LRU cache with file persistence
-- `TestModelAsync` allows testing a profile from the settings UI
-- logs at multiple levels: Info for key events, Debug for config/prompts/responses, Trace for full prompt text in API methods
-
-### `AiSongPromptBuilder`
-
-Constructs user messages for AI song resolution:
-
-- supports native language templates (zh-Hans, zh-Hant, ja) and a generic English template with language/market substitution
-- returns a `(Message, TemplateName)` tuple so callers can log which template was selected
-- template names: `"minimal"`, `"native:{code}"`, `"generic:{code}"`
-
-### `ForegroundWindowMonitor`
-
-Owns the polling loop for foreground maximized-window detection.
-
-This keeps shell state transitions separate from:
-
-- Win32 foreground window lookup
-- maximized-state inspection
-- timer ownership
-
-`MainWindow` now subscribes to state changes instead of owning the polling logic directly.
-
-### `WindowAppearanceService`
-
-Owns shell appearance application:
-
-- backdrop selection
-- semantic token resolution for light/dark + accent-aware styling
-- text color application
-- border background updates
-- progress palette application
-- DWM corner preference changes
-
-This keeps `MainWindow` from directly coordinating WinUI backdrop objects, accent-aware color decisions, and native corner preferences.
-
-### `ShellVisibilityService`
-
-Owns the docked line overlay abstraction:
-
-- lifetime of `NativeLineWindow`
-- DPI-aware geometry for the 1px line overlay
-- progress updates for the line surface
-- theme-aware line palette updates
-- line hide/show calls from the shell
-
-This keeps `MainWindow` from directly managing the Win32 overlay window instance.
-
-### `CompactView`
-
-Minimal compact content surface. It now keeps its own two-slot text surface wired to the shared directional transition coordinator and exposes a lightweight session-count hint for multi-source media states.
-
-### `ExpandedMediaView`
-
-Expanded content surface for:
-
-- compact tab-strip header with stacked source avatars
-- stable stacked-avatar deck order with neutral focus/reorder animation for non-direction changes
-- best-effort source app icons with monogram fallback
-- chip-triggered session picker overlay request
-- title
-- artist
-- direction-aware metadata transition animation for previous / next track changes
-- previous / play-pause / next controls
-
-It raises button/toggle events and leaves command behavior to the parent window. It no longer owns low-level composition choreography directly; instead it supplies header and metadata snapshots to shared directional transition coordinators.
-
-### `SessionPickerWindow` + `SessionPickerOverlayView`
-
-Dedicated secondary shell surface for the multi-session drop list.
-
-- `MainWindow` owns its lifetime, visibility, placement, and dismissal rules
-- `SessionPickerOverlayView` owns row layout, keyboard handling, async icon fill, and theme refresh
-- `Helpers/SessionPickerPlacementResolver` keeps anchor-to-overlay placement pure and testable
-- `Services/IslandController.IsTransientSurfaceOpen` keeps the island expanded while the list is open
-- `ExpandedMediaView` only raises the chip toggle event and exposes the chip anchor bounds
-- row projection is centralized in `SessionPickerRowProjector`, so playback state / subtitle / selected state stay out of the view layer
-- the overlay list uses a compact `ListView` template with a reserved accessory slot, async source icon fill, and monogram fallback
-- top and bottom scroll boundaries are softened with fade chrome instead of extra spacer rows
-- runtime `SessionPickerOverlayLayoutMetrics` publish the realized panel height, while horizontal anchoring stays tied to the chip's geometric center
-- `SessionPickerWindow` converts desired client bounds into an explicit outer `AppWindow` rect, because the secondary WinUI overlay window did not size reliably via `ResizeClient(...)`
-- dismiss opacity / offset / duration presets are centralized in `SessionPickerOverlayDismissMotion`, so chevron timing and overlay content dismiss stay aligned
-
-### `DirectionalContentTransitionCoordinator`
-
-Reusable WinUI composition coordinator for two-slot horizontal content transitions.
-
-It owns:
-
-- outgoing / incoming slot swapping
-- z-order handoff
-- offset, opacity, and scale timing
-- directional clip choreography
-- viewport clipping and center-point updates
-
-This is the preferred place for future collapsed / compact directional content animations, rather than duplicating composition code inside each view.
-
-### `LiquidProgressBar`
-
-Custom visual component that gives the island its moving progress feel.
-
-It layers:
-
-- a frosted base
-- shimmer flow
-- a dynamic tail
-- a bright leading edge core
-
-Its update model is velocity-aware and includes dirty checks to reduce unnecessary layout work.
-
-Its colors are now palette-driven rather than hardcoded, so theme changes do not require motion logic changes.
-
-### `NativeLineWindow`
-
-Raw Win32 overlay window used only for the fully tucked docked state. It now renders a small layered edge rail with per-pixel alpha, rather than a flat two-color `WM_PAINT` strip, and is owned by `ShellVisibilityService`.
-
-### `WindowInterop`
-
-Thin Win32/DWM interop wrapper used for:
-
-- querying the foreground window
-- checking whether that window is maximized
-- switching corner rounding and shadow behavior
-
-### `Logger`
-
-Writes daily log files under `%LocalAppData%/Wisland/logs/`. Logging must never crash the app.
-
-### `Loc`
-
-Static localization helper wrapping MRT Core (`Microsoft.Windows.ApplicationModel.Resources.ResourceManager`).
-
-- `Initialize(string? languageOverride)` — creates the resource manager and, in packaged mode, applies a BCP-47 language override via `PrimaryLanguageOverride`. Must be called once at startup before any window is created.
-- `CanOverrideLanguage` — `true` when the app runs with package identity and `PrimaryLanguageOverride` is available. `false` in unpackaged mode.
-- `GetString(string key)` — returns the localized string for a resource key (e.g. `"Tray/Show"`). Falls back to the key itself when the resource is missing.
-- `GetFormatted(string key, params object[] args)` — format-string variant of `GetString`.
-
-In packaged mode (MSIX / Sparse Package), `PrimaryLanguageOverride` drives both x:Uid and `GetString()`. In unpackaged mode the app follows the Windows display language and the language selector is disabled.
-
-## 8. Internationalization (i18n)
-
-The app supports multiple display languages using MRT Core (Windows App SDK resource system).
-
-### Supported languages
-
-| Tag | Language |
+| Concern | Where it goes |
 | --- | --- |
-| `en-US` | English (default) |
-| `ja` | Japanese |
-| `zh-Hans` | Chinese Simplified |
+| Pure state transitions and animation targets | `IslandController` |
+| WinUI element sync and `AppWindow` geometry | `MainWindow` |
+| GSMTC session discovery and source tracking | `Services/Media/` |
+| Focused-session selection and lock/cycling policy | `MainWindow.Media.cs` |
+| Backdrop, tokens, DWM corners | `WindowAppearanceService` |
+| Docked line overlay | `ShellVisibilityService` → `NativeLineWindow` |
+| Foreground window polling | `ForegroundWindowMonitor` |
+| AI metadata resolution | `AiSongResolverService` |
+| AI prompt construction | `AiSongPromptBuilder` |
+| Persistence | `SettingsService` |
+| Win32/DWM interop | `WindowInterop` |
+| Multi-monitor math, display positioning | `WindowInterop` + `MainWindow.DisplayAnchor.cs` |
+| Path-safe local file I/O | `SafePaths` |
 
-### Resource files
+## 3. Startup Sequence
 
-Localized strings live in `.resw` files under `Strings/{language-tag}/Resources.resw`. All three files must contain an identical set of keys; adding a key to one file requires adding it to the other two.
-
-### XAML strings
-
-XAML elements use `x:Uid` with a `{ElementName}.{Property}` naming convention:
-
-```xml
-<TextBlock x:Uid="DiagnosticsTitle"/>          <!-- resolves DiagnosticsTitle.Text -->
-<Button x:Uid="AiModelsAdd"/>                   <!-- resolves AiModelsAdd.Content -->
-<InfoBar x:Uid="LanguageRestartHint"/>          <!-- resolves LanguageRestartHint.Message -->
+```text
+App.OnLaunched()
+  1. Logger.Info(...)
+  2. new SettingsService() → .Load()        // bootstrap instance for language
+  3. Loc.Initialize(settings.Language)       // MRT Core + PrimaryLanguageOverride
+  4. new MainWindow() → .Activate()
 ```
 
-### Code-behind strings
+`MainWindow` constructor:
 
-Code-behind uses `Loc.GetString("Category/Key")` or `Loc.GetFormatted("Category/Key", args)`:
-
-```csharp
-var title = Loc.GetString("Media/NoMedia");
-var cache = Loc.GetFormatted("AiSong/CachedEntries", count);
+```text
+  5. Configure WindowManager (WinUIEx): hidden title bar, always-on-top,
+     not resizable/minimizable/maximizable, hidden from Alt-Tab
+  6. new SettingsService() → .Load()        // runtime instance (separate from App's)
+  7. new AiSongResolverService(settings)
+  8. Initialize display anchor from saved physical coordinates (multi-monitor aware)
+  9. Create system tray icon
+ 10. Create 5 DispatcherTimers (hover debounce, dock hover delay,
+     cursor tracker, foreground monitor callback, session lock expiry)
+ 11. Initialize IslandController with starting position
+ 12. Restore backdrop
+ 13. Start MediaService, ForegroundWindowMonitor, ShellVisibilityService
+ 14. Wire CompositionTarget.Rendering → per-frame update loop
+ 15. Multi-pass startup bounds reconciliation (up to 4 passes)
 ```
 
-### Language override
+> **Note**: Two independent `SettingsService` instances exist at runtime — one in `App` (used only to bootstrap `Loc`) and one owned by `MainWindow` for all runtime use. They are not shared.
 
-Users can change the display language from Settings → Appearance. The selection is persisted via `SettingsService.Language` (a nullable BCP-47 tag) and applied at startup through `Loc.Initialize(settings.Language)`. A restart is required after changing the language.
+## 4. The Render Loop
 
-In unpackaged mode (`Loc.CanOverrideLanguage == false`), the language selector is locked to "System Default" and grayed out with an informational hint. The app follows the Windows display language.
+All shell motion is **frame-driven**, not storyboard-driven. `CompositionTarget.Rendering` fires every frame and drives:
 
-In packaged mode (MSIX or Sparse Package), `PrimaryLanguageOverride` is set at startup, which drives both `x:Uid` resolution and `Loc.GetString()` lookups.
+```text
+Per frame:
+  1. Compute delta time (capped at IslandConfig.MaxDeltaTime)
+  2. Refresh DPI scale and work area (deduped logging)
+  3. MediaService.Tick(dt)          — extrapolate media progress
+  4. IslandController.Tick(dt)      — advance render state via exponential decay
+  5. Update visual children:
+     - LiquidProgressBar progress/palette
+     - Border size and corner radius
+     - Compact and expanded view opacity
+     - Hit-test visibility
+     - Composition clip bounds
+  6. AppWindow.MoveAndResize(...)   — sync OS window rect
+  7. Session picker overlay position interpolation (if open)
+```
 
-### Adding a new language
+The universal interpolation method is **exponential decay**:
 
-1. Create `Strings/{tag}/Resources.resw` with the same keys as the existing files.
-2. Add the language to the `LanguageSelector` ComboBox in `Views/Settings/AppearancePage.xaml`.
-3. No code changes are required.
+```
+current += (target - current) × (1 - e^(-speed × dt))
+```
 
-### Constraints
+where `speed` is `IslandConfig.AnimationSpeed` (25.0). This produces smooth, framerate-independent motion without springs or keyframes.
 
-- `PrimaryLanguageOverride` requires package identity (MSIX or Sparse Package). Unpackaged apps cannot override language at runtime — the app follows the OS display language.
-- `Loc.Initialize()` catches exceptions from `new ResourceManager()` so that the unit-test host (which lacks WinRT activation) degrades to key-as-fallback behavior.
-- `.resw` keys use two formats: dotted (`ElementName.Property`) for `x:Uid`, slash (`Category/Key`) for code-behind `Loc.GetString()`. The dot is a property-path separator in MRT Core, so dotted keys cannot be looked up via `GetValue()`.
-
-## 9. State Model
-
-There are two levels of state:
+## 5. State Model
 
 ### Logical state
 
 Boolean mode flags on `IslandController`:
 
-- hover
-- drag
-- dock
-- notification
-- foreground maximized
-- hover pending
+| Flag | Drives |
+| --- | --- |
+| `IsHovered` | Expanded targets |
+| `IsDragging` | Live position tracking |
+| `IsDocked` | Top-edge auto-hide |
+| `IsNotifying` | Temporary expansion |
+| `IsForegroundMaximized` | Docked line mode |
+| `IsHoverPending` | Debounced hover entry |
+| `IsTransientSurfaceOpen` | Keep expanded while picker is open |
 
-`MainWindow` now also owns an explicit `HoverMode` runtime state for shell orchestration. This is especially important for docked line mode, where pointer-driven hover and global cursor-tracked hover do not share the same event source.
+`MainWindow` owns an additional runtime `HoverMode` enum for shell orchestration — important because docked-line hover and island-surface hover use different event sources.
 
 ### Render state
 
-Continuous values in `IslandState`:
+`IslandState` is a 7-property mutable POCO interpolated each frame:
 
-- width
-- height
-- Y
-- center X
-- compact opacity
-- expanded opacity
-- hit-test visibility
+- `Width`, `Height`, `Y`, `CenterX`
+- `CompactOpacity`, `ExpandedOpacity`
+- `IsHitTestVisible`
 
-This split is deliberate:
+**Logical state decides where the island wants to go. Render state decides what is on screen.**
 
-- logical state decides where the island wants to go
-- render state decides what is currently on screen
+## 6. Docked Line Mode
 
-## 10. Invariants
+When the island is docked, not hovered, not notifying, not dragged, and the foreground app is maximized — the main island window moves off-screen and a `NativeLineWindow` (raw Win32 layered window) renders a 1–2px progress strip.
 
-These are the rules that contributors should preserve:
+This is one of the most sensitive subsystems because it depends on:
 
-1. `IslandController` stays UI-framework-free.
+- DPI-aware physical pixel math via `WindowInterop`
+- Monitor work area anchoring
+- Raw Win32 `CreateWindowEx` / GDI bitmap painting (bypasses WinUI entirely)
+- Hover re-entry timing from cursor tracker polling
+- `ShellVisibilityService` as the ownership facade
+
+The line window uses a pixel buffer rendered into a GDI bitmap with per-pixel alpha, dirty-flag redraws, and palette-driven colors. It is completely decoupled from WinUI/XAML.
+
+## 7. Media Integration
+
+### MediaService (6 partial files)
+
+```text
+MediaService.cs                 Core: GSMTC manager, events, transport controls
+MediaService.State.cs           Snapshot and progress extrapolation
+MediaService.SourceTracking.cs  Stable logical source keys with reconnect grace
+MediaService.Refresh.cs         Burst refresh after session churn or transport skips
+MediaService.InternalTypes.cs   Internal structs (TrackedSource, etc.)
+```
+
+Key behaviors:
+
+- Maps raw GSMTC sessions onto **stable logical source keys** so re-connecting apps don't shuffle the UI
+- Keeps sources in `WaitingForReconnect` for a grace window before pruning
+- Extrapolates progress locally between timeline updates for playing sessions
+- Runs short refresh bursts after transport skips and manager session churn
+- Thread-safe via `lock (_gate)` and `SemaphoreSlim`
+
+### Focus arbitration
+
+`MediaFocusArbiter` decides which session gets visual focus with debounce and grace windows. `MainWindow.Media.cs` tracks the "displayed session key" independently from the "selected session key" to support manual lock, auto-focus debounce, reconnect waiting-state pinning, and non-loop wheel cycling.
+
+### Source resolution
+
+- `MediaSourceAppResolver` — three-tier display name lookup: Start Menu shortcuts → AppsFolder COM enumeration → `AppInfo` for packaged apps. Results cached via `ConcurrentDictionary<string, Lazy<>>`.
+- `MediaSourceIconResolver` — async icon resolver with deduplicated in-flight cache. Packaged logos → executable thumbnails → shell items. Failed resolutions are evicted to allow retries.
+
+## 8. AI Song Resolution
+
+Dual-path architecture for optional clean-metadata resolution:
+
+| Path | SDK | Output format |
+| --- | --- | --- |
+| Google GenAI | `Google.GenAI` 1.6 | Structured output with `PropertyOrdering`, optional grounding + thinking |
+| OpenAI-compatible | `OpenAI` 2.10 | Strict JSON schema |
+
+Both paths use a 6-field schema: `title`, `title-alt`, `title-alt2`, `artist`, `artist-alt`, `artist-alt2`.
+
+**`AiSongPromptBuilder`** constructs locale-aware prompts:
+
+- Native-language templates for `zh-Hans`, `zh-Hant`, `ja` — full natural-language prompts, not just variable substitution
+- Generic English template with language/market substitution
+- Returns `(Message, TemplateName)` for logging which template was selected
+
+**`AiSongResolverService`** manages:
+
+- Per-profile config: temperature (0–2), thinking depth, Google grounding toggle
+- In-memory LRU cache + file persistence (`ai-song-cache.json` via `SafePaths`)
+- Multi-level logging: Info for key events, Debug for config/prompts, Trace for full API payloads
+- `TestModelAsync` for settings UI validation
+
+## 9. Visual System
+
+### Animation
+
+All motion uses the **Composition API** — not XAML Storyboards:
+
+- `DirectionalContentTransitionCoordinator` — reusable two-slot content switcher with `InsetClip`, offset/opacity/scale timing, and `CubicBezierEasingFunction`. Used by both `CompactView` and `ExpandedMediaView`.
+- `ExpandedMediaView` — header avatar strip with composition-level scale/offset animations for reordering, separate easing for hover/press/focus states.
+- `SessionPickerOverlayView` — panel/list reveal via composition visuals, scroll fade via composition clips.
+- `LiquidProgressBar` — layered frosted base, shimmer flow, dynamic tail, bright leading edge. Velocity-aware with dirty checks. Palette-driven colors.
+
+### Theming
+
+`WindowAppearanceService` resolves `IslandVisualTokens` from (backdrop type, theme kind, accent color) and applies them to all surfaces. It manages `MicaBackdrop` / `DesktopAcrylicBackdrop` lifecycle with change-guarding and controls DWM corner preferences.
+
+### Window system
+
+| Window | Type | Purpose |
+| --- | --- | --- |
+| `MainWindow` | WinUI 3 (WinUIEx) | Primary island shell |
+| `SessionPickerWindow` | WinUI 3 (WinUIEx) | Borderless secondary overlay, show/hide lifecycle |
+| `SettingsWindow` | WinUI 3 (WinUIEx) | NavigationView + Frame, fused title bar |
+| `NativeLineWindow` | Raw Win32 | 1px docked progress strip (GDI + layered window) |
+
+## 10. Persistence
+
+`SettingsService` writes JSON to `%LocalAppData%/Wisland/settings.json` via `SafePaths` (path-traversal guard). All file I/O uses atomic writes (`.tmp` → rename).
+
+Persisted data:
+
+| Category | Fields |
+| --- | --- |
+| Appearance | Backdrop type |
+| Position | CenterX, LastY, physical anchor X/Y, relative position, docked flag |
+| AI models | Provider, endpoint, model ID, temperature, thinking depth, grounding toggle, API key (DPAPI-encrypted) |
+| AI prompts | Language, market, native prompt toggle |
+| Display | Language override, log level |
+| Window | Settings window size |
+
+`Load()` gracefully falls back to defaults on any exception. All numeric fields are sanitized with range clamping.
+
+## 11. Internationalization
+
+### Resource files
+
+`Strings/{en-US,ja,zh-Hans}/Resources.resw` — all three must contain identical key sets.
+
+### Key conventions
+
+| Context | Format | Example |
+| --- | --- | --- |
+| XAML `x:Uid` | `ElementName.Property` | `DiagnosticsTitle.Text` |
+| Code-behind `Loc.GetString()` | `Category/Key` | `Media/NoMedia` |
+
+The dot/slash distinction matters: MRT Core treats dots as property-path separators, so dotted keys cannot be looked up via `GetValue()`.
+
+### Language override
+
+- **Packaged mode** (MSIX / Sparse Package): `PrimaryLanguageOverride` drives both `x:Uid` and `GetString()`.
+- **Unpackaged mode** (`WindowsPackageType=None`, current default): `PrimaryLanguageOverride` throws `InvalidOperationException`. The app follows the OS display language and the Settings language selector is disabled with an `InfoBar` hint.
+
+### Adding a new language
+
+1. Create `Strings/{tag}/Resources.resw` with the same keys as existing files.
+2. Add the language to the `LanguageSelector` in `Views/Settings/AppearancePage.xaml`.
+
+## 12. Testing
+
+The test project (`wisland.Tests/`) uses **source-file linking** instead of a project reference to avoid WinUI hosting dependencies:
+
+```xml
+<Compile Include="..\..\Helpers\CompactSurfaceLayout.cs" Link="Helpers\CompactSurfaceLayout.cs" />
+```
+
+This means: **new testable files must be manually linked** in `wisland.Tests.csproj`.
+
+Currently tested modules:
+
+- `IslandController` (transient surface)
+- `MediaFocusArbiter`
+- `MediaSourceAppResolver`
+- `MediaSourceNameFormatter`
+- `SessionPickerRowProjector`
+- `SessionPickerOverlayLayout`
+- `SessionPickerPlacementResolver`
+- `SessionPickerOverlayDismissMotion`
+- `CompactSurfaceLayout`
+
+```powershell
+dotnet test wisland.Tests\wisland.Tests.csproj -c Debug
+```
+
+## 13. CI/CD
+
+### CodeQL (`codeql.yml`)
+
+- Triggers on push/PR to `main`
+- .NET 10, `security-extended` query pack
+- Custom config excludes `cs/path-injection` and `cs/command-line-injection` (false positives — all paths derive from `SafePaths`, process targets are hardcoded)
+
+### Release (`release.yml`)
+
+- Triggers on push to `main`, `v*` tags, manual dispatch
+- Matrix: x64, x86, ARM64
+- `dotnet publish` with platform-specific publish profiles → zip → upload artifact
+
+## 14. Security Boundaries
+
+- **`SafePaths`** — all local file I/O (settings, cache, logs) goes through a path-traversal guard that validates results stay under `%LocalAppData%/Wisland/`
+- **DPAPI** — AI API keys are encrypted at rest via `System.Security.Cryptography.ProtectedData`
+- **No network inputs** — this is a local desktop app. The only outbound calls are optional AI API requests initiated by user configuration
+- **CodeQL** runs on every push with `security-extended` queries
+
+## 15. Invariants
+
+Rules that contributors must preserve:
+
+1. `IslandController` stays UI-framework-free. No `using Microsoft.UI.*`.
 2. Motion is frame-driven, not storyboard-driven.
-3. `MainWindow` is the only place that should directly sync shell state into WinUI elements and `AppWindow`.
-4. Docked hidden mode is a two-window system: the main island window plus a `NativeLineWindow` managed by `ShellVisibilityService`. When the session picker is open, a temporary secondary WinUI window is also active.
-5. Settings persistence should remain small, explicit, and tolerant of corruption.
-6. Service failures should log and degrade gracefully rather than crash the process.
-7. Transport controls and progress always follow the focused displayed session, while docked new-track notifications follow the system current session.
-8. Local development uses the standard `bin/` and `obj/` output trees; do not add repo-local alternate build-output directories to dodge file locks.
-9. Multi-session visual ordering should remain stable for the user; background priority changes may change focus, but should not constantly reshuffle the header strip.
+3. `MainWindow` is the only place that syncs shell state into WinUI elements and `AppWindow`.
+4. Docked hidden mode is a multi-window system: main island + `NativeLineWindow` (via `ShellVisibilityService`). Session picker adds a temporary secondary WinUI window.
+5. Settings persistence is small, explicit, and tolerant of corruption.
+6. Service failures log and degrade gracefully — never crash the process.
+7. Transport controls and progress follow the focused displayed session; docked new-track notifications follow the system current session.
+8. Use standard `bin/`/`obj/` output trees. No ad-hoc build-output directories.
+9. Multi-session visual ordering remains stable for the user.
+10. All file paths go through `SafePaths`. No raw `Path.Combine` with user-influenced segments.
 
-## 11. Fast Change Guide
-
-Use this table before editing:
+## 16. Change Guide
 
 | Goal | Primary file(s) | Notes |
 | --- | --- | --- |
-| Change compact / expanded sizing | `Models/IslandConfig.cs`, `Services/IslandController.cs` | Config holds constants, controller holds target logic. |
-| Change animation feel | `Models/IslandConfig.cs`, `Services/IslandController.cs`, `Controls/LiquidProgressBar.xaml.cs` | Shell motion and progress motion are separate concerns. |
-| Change docking behavior | `Services/IslandController.cs`, `Services/ForegroundWindowMonitor.cs`, `MainWindow.State.cs`, `MainWindow.Animation.cs` | Controller handles logical targets, monitor handles foreground polling, MainWindow handles physical anchoring. |
-| Change hidden line mode | `MainWindow.State.cs`, `MainWindow.Animation.cs`, `Services/ShellVisibilityService.cs`, `Helpers/NativeLineWindow.cs`, `Services/WindowAppearanceService.cs` | Be careful with DPI, monitor math, and corner state transitions. |
-| Change compact UI | `Views/CompactView.xaml`, `Views/CompactView.xaml.cs`, `Controls/DirectionalContentTransitionCoordinator.cs` | Compact content owns text/count-hint decisions; shared directional motion lives in the coordinator. |
-| Change expanded media UI | `Views/ExpandedMediaView.xaml`, `Views/ExpandedMediaView.xaml.cs`, `Controls/DirectionalContentTransitionCoordinator.cs`, `Helpers/MediaSourceIconResolver.cs` | View owns header/metadata/control structure; shared directional motion lives in the coordinator. |
-| Change tray actions | `MainWindow.Tray.cs` | `CreateTrayMenu()` is the entrypoint. |
-| Add a persisted setting | `Services/SettingsService.cs`, `Models/BackdropType.cs`, `MainWindow.Lifetime.cs`, `MainWindow.Appearance.cs` | Keep persisted values typed at the shell boundary whenever possible. |
-| Change media behavior | `Services/Media/*.cs`, `MainWindow.Media.cs`, `MainWindow.Notifications.cs` | Service owns GSMTC session discovery; window decides focused-session policy and UI response. |
-| Change diagnostics | `Helpers/Logger.cs` | Logging is local-file based. |
-| Add/change a localized string | `Strings/*/Resources.resw`, XAML or code-behind caller | Add the key to **all three** `.resw` files. Use `x:Uid` in XAML or `Loc.GetString()` in code. See Section 8. |
-| Add a new display language | `Strings/{tag}/Resources.resw`, `Views/Settings/AppearancePage.xaml` | Copy an existing `.resw`, translate values, add a ComboBox entry. |
-| Change AI song resolution | `Services/AiSongResolverService.cs`, `Services/AiSongPromptBuilder.cs` | Resolver owns API calls and caching; builder owns prompt templates. |
-| Add an AI model setting | `Models/AiModelProfile.cs`, `Services/SettingsService.cs`, `Views/Settings/AiModelsPage.xaml(.cs)` | Add property, DTO field, serialization, and UI control. Wire into API calls in resolver. |
-| Change AI prompt templates | `Services/AiSongPromptBuilder.cs` | Native templates use `{0}`–`{3}` placeholders; generic uses `{0}`–`{5}`. |
-| Change settings UI | `SettingsWindow.cs`, `Views/Settings/*.xaml(.cs)` | Pages are hosted in a Frame via NavigationView. Title bar is a custom overlay. |
+| Change compact/expanded sizing | `Models/IslandConfig.cs`, `Services/IslandController.cs` | Config holds constants, controller holds target logic |
+| Change animation feel | `Models/IslandConfig.cs`, `Services/IslandController.cs`, `Controls/LiquidProgressBar.xaml.cs` | Shell motion and progress motion are separate |
+| Change docking behavior | `IslandController`, `ForegroundWindowMonitor`, `MainWindow.State.cs`, `MainWindow.Animation.cs` | Controller targets, monitor polls, MainWindow anchors |
+| Change hidden line mode | `MainWindow.State/Animation.cs`, `ShellVisibilityService`, `NativeLineWindow`, `WindowAppearanceService` | DPI, monitor math, corner state — tread carefully |
+| Change compact UI | `Views/CompactView.*`, `DirectionalContentTransitionCoordinator` | View owns text; coordinator owns motion |
+| Change expanded media UI | `Views/ExpandedMediaView.*`, `DirectionalContentTransitionCoordinator`, `MediaSourceIconResolver` | View owns header/metadata/controls; coordinator owns motion |
+| Change tray actions | `MainWindow.Tray.cs` | `CreateTrayMenu()` entrypoint |
+| Add a persisted setting | `SettingsService`, relevant model, `MainWindow.Lifetime.cs` | Keep values typed at the shell boundary |
+| Change media behavior | `Services/Media/*.cs`, `MainWindow.Media.cs`, `MainWindow.Notifications.cs` | Service owns GSMTC; window owns focus policy |
+| Change diagnostics | `Helpers/Logger.cs` | Local-file based, 7-day retention |
+| Add/change localized string | `Strings/*/Resources.resw` + XAML or code-behind caller | Add key to **all three** `.resw` files |
+| Add a new language | `Strings/{tag}/Resources.resw`, `Views/Settings/AppearancePage.xaml` | Copy, translate, add ComboBox entry |
+| Change AI resolution | `AiSongResolverService`, `AiSongPromptBuilder` | Resolver owns API + cache; builder owns prompts |
+| Add AI model setting | `AiModelProfile`, `SettingsService`, `Views/Settings/AiModelsPage.*` | Add property, DTO field, serialization, UI, then wire into resolver |
+| Change AI prompt templates | `AiSongPromptBuilder` | Native templates use `{0}`–`{3}`; generic uses `{0}`–`{5}` |
+| Change settings UI | `SettingsWindow.cs`, `Views/Settings/*` | Pages hosted in Frame via NavigationView |
+| Change display anchor logic | `MainWindow.DisplayAnchor.cs`, `WindowInterop` | Physical anchor persistence, multi-monitor restore |
+| Add a test | `wisland.Tests/` | Link source files in `.csproj`, write xUnit test |
 
-## 12. Best Practices For Vibe Coding In This Repo
+## 17. Coding With AI In This Repo
 
-If you are working quickly with an AI assistant, use this order:
-
-1. Read `README.md` for intent and navigation.
-2. Read this file for boundaries and runtime flow.
-3. Read the exact module you want to change.
+1. Read **README.md** for intent and navigation.
+2. Read **this file** for boundaries and runtime flow.
+3. Read the **exact module** you want to change.
 4. Preserve the current placement of responsibilities before introducing a new pattern.
 5. Prefer small, local edits over broad architectural rewrites.
-6. Update docs when you change behavior, module ownership, or a contributor-facing invariant.
-7. Prefer standard `dotnet build` outputs; if you only need a compile check while the app is running, use `dotnet msbuild /t:Compile` instead of creating ad-hoc output folders inside the repo.
+6. Update docs when you change behavior, module ownership, or an invariant.
+7. Use `dotnet build wisland.slnx -c Debug -p:Platform=x64` for standard builds. Use `dotnet msbuild /t:Compile` if the DLL is locked.
 
-The best "vibe coding" approach for this codebase is not "rewrite everything into patterns". It is:
+The best approach for this codebase is not "rewrite into patterns" — it is:
 
-- understand the runtime loop,
-- keep pure logic and side effects separated,
-- keep native window polling and native appearance application behind services,
-- document real behavior instead of idealized architecture,
-- leave obvious extension seams for later.
-
-## 13. Recommended Next Refactors
-
-These are documentation-backed refactor seams, not mandatory changes:
-
-- Introduce a typed settings snapshot model if persisted preferences expand beyond a few fields.
-- Introduce manual smoke-test notes for docking, DPI, and line-mode behavior if UI changes become frequent.
-
-## 14. Documentation Contract
-
-The project now uses a two-level documentation model:
-
-- `README.md` is the onboarding and navigation entrypoint.
-- `ARCHITECTURE.md` is the implementation and change guide.
-
-Update `README.md` when:
-
-- a user-visible feature changes
-- setup or run instructions change
-- the doc map changes
-
-Update `ARCHITECTURE.md` when:
-
-- module ownership changes
-- runtime flow changes
-- state/invariant rules change
-- new extension seams or risks become important
+- Understand the render loop
+- Keep pure logic and side effects separated
+- Keep native window concerns behind services
+- Document real behavior, not idealized architecture
