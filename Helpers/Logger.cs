@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Concurrent;
 using System.IO;
 using System.Runtime.CompilerServices;
 
@@ -24,7 +25,11 @@ namespace wisland.Helpers
     {
         private static readonly object _lock = new();
         private static readonly string _logDirectory;
+        private static readonly ConcurrentDictionary<(string?, string?), string> _sourceCache = new();
         private const int LogRetentionDays = 7;
+
+        private static StreamWriter? _writer;
+        private static string? _writerDate;
 
         private static LogLevel _minimumLevel =
 #if DEBUG
@@ -83,13 +88,28 @@ namespace wisland.Helpers
             try
             {
                 string source = FormatSource(filePath, memberName);
-                var fileName = $"wisland_{DateTime.Now:yyyy-MM-dd}.log";
-                var fullPath = Path.Combine(_logDirectory, fileName);
-                var line = $"[{DateTime.Now:HH:mm:ss.fff}] [{tag}] [{source}] {message}{Environment.NewLine}";
+                var now = DateTime.Now;
+                var dateKey = now.ToString("yyyy-MM-dd");
+                var line = $"[{now:HH:mm:ss.fff}] [{tag}] [{source}] {message}";
 
                 lock (_lock)
                 {
-                    File.AppendAllText(fullPath, line);
+                    if (_writer == null || _writerDate != dateKey)
+                    {
+                        _writer?.Flush();
+                        _writer?.Dispose();
+                        var fullPath = Path.Combine(_logDirectory, $"wisland_{dateKey}.log");
+                        _writer = new StreamWriter(fullPath, append: true) { AutoFlush = false };
+                        _writerDate = dateKey;
+                    }
+
+                    _writer.WriteLine(line);
+
+                    // Flush immediately for warnings/errors; buffer lower levels
+                    if (level >= LogLevel.Warn)
+                    {
+                        _writer.Flush();
+                    }
                 }
             }
             catch
@@ -98,15 +118,36 @@ namespace wisland.Helpers
             }
         }
 
+        /// <summary>
+        /// Flushes the buffered log writer. Called during application shutdown.
+        /// </summary>
+        public static void Flush()
+        {
+            lock (_lock)
+            {
+                try
+                {
+                    _writer?.Flush();
+                }
+                catch
+                {
+                    // Best-effort
+                }
+            }
+        }
+
         private static string FormatSource(string? filePath, string? memberName)
         {
-            string className = "?";
-            if (!string.IsNullOrEmpty(filePath))
+            return _sourceCache.GetOrAdd((filePath, memberName), static key =>
             {
-                className = Path.GetFileNameWithoutExtension(filePath);
-            }
+                string className = "?";
+                if (!string.IsNullOrEmpty(key.Item1))
+                {
+                    className = Path.GetFileNameWithoutExtension(key.Item1);
+                }
 
-            return string.IsNullOrEmpty(memberName) ? className : $"{className}.{memberName}";
+                return string.IsNullOrEmpty(key.Item2) ? className : $"{className}.{key.Item2}";
+            });
         }
 
         private static void CleanupOldLogs()

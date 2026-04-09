@@ -108,16 +108,14 @@ namespace wisland.Services
                 _settings.AiTargetMarket,
                 _settings.AiPreferNativePrompt);
 
-            Logger.Debug($"AI prompt template: {templateName}");
-            Logger.Debug($"AI user message:\n{userMessage}");
-
             try
             {
                 string provider = AiModelProviderNames.Normalize(profile.Provider);
                 bool isGoogle = string.Equals(provider, nameof(AiModelProvider.GoogleAIStudio), StringComparison.Ordinal);
                 Logger.Debug(isGoogle
-                    ? $"AI request: provider={provider}, model={profile.ModelId}, temperature={profile.Temperature:F1}, thinking={profile.ReasoningEffort ?? "default"}, grounding={profile.GoogleGroundingEnabled}"
-                    : $"AI request: provider={provider}, model={profile.ModelId}, endpoint={profile.Endpoint}, temperature={profile.Temperature:F1}");
+                    ? $"AI request: template={templateName}, provider={provider}, model={profile.ModelId}, temperature={profile.Temperature:F1}, thinking={profile.ReasoningEffort ?? "default"}, grounding={profile.GoogleGroundingEnabled}"
+                    : $"AI request: template={templateName}, provider={provider}, model={profile.ModelId}, endpoint={profile.Endpoint}, temperature={profile.Temperature:F1}");
+                Logger.Trace($"AI user message:\n{userMessage}");
 
                 string? responseJson;
 
@@ -175,7 +173,18 @@ namespace wisland.Services
             string Title, string Artist,
             string? TitleAlt, string? TitleAlt2,
             string? ArtistAlt, string? ArtistAlt2,
-            bool? GroundingUsed);
+            bool? GroundingUsed)
+        {
+            public string FormatAlternatives()
+            {
+                var parts = new List<string>();
+                if (!string.IsNullOrEmpty(TitleAlt)) parts.Add($"title-alt: {TitleAlt}");
+                if (!string.IsNullOrEmpty(TitleAlt2)) parts.Add($"title-alt2: {TitleAlt2}");
+                if (!string.IsNullOrEmpty(ArtistAlt)) parts.Add($"artist-alt: {ArtistAlt}");
+                if (!string.IsNullOrEmpty(ArtistAlt2)) parts.Add($"artist-alt2: {ArtistAlt2}");
+                return string.Join(" | ", parts);
+            }
+        }
 
         public static async Task<TestModelResult?> TestModelAsync(
             AiModelProfile profile, string testTitle, string testArtist,
@@ -191,11 +200,10 @@ namespace wisland.Services
             bool isGoogle = string.Equals(provider, nameof(AiModelProvider.GoogleAIStudio), StringComparison.Ordinal);
 
             Logger.Info($"AI test requested: '{testTitle}' by '{testArtist}' from '{sourceName}'");
-            Logger.Debug($"AI prompt template: {templateName}");
-            Logger.Debug($"AI user message:\n{userMessage}");
             Logger.Debug(isGoogle
-                ? $"AI request: provider={provider}, model={profile.ModelId}, temperature={profile.Temperature:F1}, thinking={profile.ReasoningEffort ?? "default"}, grounding={profile.GoogleGroundingEnabled}"
-                : $"AI request: provider={provider}, model={profile.ModelId}, endpoint={profile.Endpoint}, temperature={profile.Temperature:F1}");
+                ? $"AI request: template={templateName}, provider={provider}, model={profile.ModelId}, temperature={profile.Temperature:F1}, thinking={profile.ReasoningEffort ?? "default"}, grounding={profile.GoogleGroundingEnabled}"
+                : $"AI request: template={templateName}, provider={provider}, model={profile.ModelId}, endpoint={profile.Endpoint}, temperature={profile.Temperature:F1}");
+            Logger.Trace($"AI user message:\n{userMessage}");
 
             string? responseJson;
             bool? groundingUsed = null;

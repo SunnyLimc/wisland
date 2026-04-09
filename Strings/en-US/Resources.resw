@@ -270,6 +270,18 @@
   <data name="AiModels/ValidationInvalidUrl" xml:space="preserve">
     <value>Endpoint must be a valid URL.</value>
   </data>
+  <data name="AiModels/DeleteConfirmTitle" xml:space="preserve">
+    <value>Delete Model</value>
+  </data>
+  <data name="AiModels/DeleteConfirmMessage" xml:space="preserve">
+    <value>Are you sure you want to delete "{0}"? This cannot be undone.</value>
+  </data>
+  <data name="AiModels/DeleteConfirmYes" xml:space="preserve">
+    <value>Delete</value>
+  </data>
+  <data name="AiModels/DeleteConfirmNo" xml:space="preserve">
+    <value>Cancel</value>
+  </data>
   <data name="AiModels/ProviderOpenAI" xml:space="preserve">
     <value>OpenAI Compatible</value>
   </data>
@@ -312,6 +324,18 @@
   <!-- AI Song Override page (code-behind) -->
   <data name="AiSong/CachedEntries" xml:space="preserve">
     <value>Cached entries: {0}</value>
+  </data>
+  <data name="AiSong/ClearAllConfirmTitle" xml:space="preserve">
+    <value>Clear All Cache</value>
+  </data>
+  <data name="AiSong/ClearAllConfirmMessage" xml:space="preserve">
+    <value>This will delete all cached AI song results. Continue?</value>
+  </data>
+  <data name="AiSong/ClearAllConfirmYes" xml:space="preserve">
+    <value>Clear</value>
+  </data>
+  <data name="AiSong/ClearAllConfirmNo" xml:space="preserve">
+    <value>Cancel</value>
   </data>
 
   <!-- AI Song Override — Localization section -->

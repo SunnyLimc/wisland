@@ -29,6 +29,14 @@ namespace wisland.Views.Settings
             _aiResolver.CacheChanged += OnCacheChanged;
         }
 
+        public void Cleanup()
+        {
+            _testCts?.Cancel();
+            _testCts?.Dispose();
+            _testCts = null;
+            _aiResolver.CacheChanged -= OnCacheChanged;
+        }
+
         private void OnLoaded(object sender, RoutedEventArgs e)
         {
             RefreshUI();
@@ -202,7 +210,10 @@ namespace wisland.Views.Settings
         private void TargetMarketBox_LostFocus(object sender, RoutedEventArgs e)
         {
             string value = TargetMarketBox.Text?.Trim() ?? "";
-            _settings.AiTargetMarket = string.IsNullOrEmpty(value) ? null : value;
+            string? newValue = string.IsNullOrEmpty(value) ? null : value;
+            if (string.Equals(_settings.AiTargetMarket, newValue, StringComparison.Ordinal))
+                return;
+            _settings.AiTargetMarket = newValue;
             _settings.Save();
             _onAiSettingsChanged();
         }
@@ -223,8 +234,21 @@ namespace wisland.Views.Settings
             _onAiSettingsChanged();
         }
 
-        private void ClearAll_Click(object sender, RoutedEventArgs e)
+        private async void ClearAll_Click(object sender, RoutedEventArgs e)
         {
+            var dialog = new ContentDialog
+            {
+                Title = Loc.GetString("AiSong/ClearAllConfirmTitle"),
+                Content = Loc.GetString("AiSong/ClearAllConfirmMessage"),
+                PrimaryButtonText = Loc.GetString("AiSong/ClearAllConfirmYes"),
+                CloseButtonText = Loc.GetString("AiSong/ClearAllConfirmNo"),
+                DefaultButton = ContentDialogButton.Close,
+                XamlRoot = this.XamlRoot
+            };
+
+            if (await dialog.ShowAsync() != ContentDialogResult.Primary)
+                return;
+
             _aiResolver.ClearCache();
             RefreshCacheCount();
             _onAiSettingsChanged();
@@ -264,6 +288,7 @@ namespace wisland.Views.Settings
             }
 
             _testCts?.Cancel();
+            _testCts?.Dispose();
             _testCts = new CancellationTokenSource(TimeSpan.FromSeconds(30));
             TestRunButton.IsEnabled = false;
             TestResultInfoBar.Severity = InfoBarSeverity.Informational;
@@ -294,7 +319,7 @@ namespace wisland.Views.Settings
                 string main = string.Format(
                     Loc.GetString("AiSong/TestSuccess"),
                     result?.Title ?? "?", result?.Artist ?? "?") + groundingTag;
-                string alts = FormatAlternatives(result);
+                string alts = result?.FormatAlternatives() ?? "";
 
                 TestResultInfoBar.Severity = InfoBarSeverity.Success;
                 TestResultInfoBar.Message = string.IsNullOrEmpty(alts) ? main : main + "\n" + alts;
@@ -313,17 +338,6 @@ namespace wisland.Views.Settings
             {
                 TestRunButton.IsEnabled = true;
             }
-        }
-
-        private static string FormatAlternatives(AiSongResolverService.TestModelResult? r)
-        {
-            if (r == null) return "";
-            var parts = new List<string>();
-            if (!string.IsNullOrEmpty(r.TitleAlt)) parts.Add($"title-alt: {r.TitleAlt}");
-            if (!string.IsNullOrEmpty(r.TitleAlt2)) parts.Add($"title-alt2: {r.TitleAlt2}");
-            if (!string.IsNullOrEmpty(r.ArtistAlt)) parts.Add($"artist-alt: {r.ArtistAlt}");
-            if (!string.IsNullOrEmpty(r.ArtistAlt2)) parts.Add($"artist-alt2: {r.ArtistAlt2}");
-            return string.Join(" | ", parts);
         }
 
         /// <summary>Parses "m:ss" or plain seconds into total seconds.</summary>

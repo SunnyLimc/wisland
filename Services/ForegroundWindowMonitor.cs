@@ -49,13 +49,20 @@ namespace wisland.Services
                 return;
             }
 
-            IntPtr currentWindow = _windowHandleProvider();
-            IntPtr foregroundWindow = WindowInterop.GetForegroundWindow();
-            bool isMaximized = foregroundWindow != IntPtr.Zero
-                && foregroundWindow != currentWindow
-                && WindowInterop.IsWindowMaximized(foregroundWindow);
+            try
+            {
+                IntPtr currentWindow = _windowHandleProvider();
+                IntPtr foregroundWindow = WindowInterop.GetForegroundWindow();
+                bool isMaximized = foregroundWindow != IntPtr.Zero
+                    && foregroundWindow != currentWindow
+                    && WindowInterop.IsWindowMaximized(foregroundWindow);
 
-            UpdateState(isMaximized);
+                UpdateState(isMaximized);
+            }
+            catch (Exception ex)
+            {
+                Logger.Error(ex, "Foreground window check failed");
+            }
         }
 
         private void OnTimerTick(object? sender, object e) => CheckNow();

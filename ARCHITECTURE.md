@@ -530,7 +530,7 @@ Code-behind uses `Loc.GetString("Category/Key")` or `Loc.GetFormatted("Category/
 
 ```csharp
 var title = Loc.GetString("Media/NoMedia");
-var cache = Loc.GetFormatted("AiSong/CacheCount", count);
+var cache = Loc.GetFormatted("AiSong/CachedEntries", count);
 ```
 
 ### Language override

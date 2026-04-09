@@ -65,9 +65,9 @@ namespace wisland.Views.Settings
                     UseShellExecute = true
                 });
             }
-            catch
+            catch (Exception ex)
             {
-                // Best-effort
+                Logger.Warn($"Failed to open logs folder: {ex.Message}");
             }
         }
     }

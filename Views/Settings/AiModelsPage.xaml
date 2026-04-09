@@ -13,9 +13,19 @@
                     <RowDefinition Height="*"/>
                 </Grid.RowDefinitions>
 
-                <TextBlock x:Uid="AiModelsTitle"
-                    Style="{StaticResource TitleTextBlockStyle}"
-                    Margin="32,12,32,0"/>
+                <Grid Margin="32,12,32,0">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="*"/>
+                        <ColumnDefinition Width="Auto"/>
+                    </Grid.ColumnDefinitions>
+                    <TextBlock x:Uid="AiModelsTitle"
+                        Style="{StaticResource TitleTextBlockStyle}"/>
+                    <Button x:Uid="AiModelsAdd" x:Name="AddModelButton"
+                            Grid.Column="1"
+                            Click="AddModel_Click"
+                            Style="{StaticResource AccentButtonStyle}"
+                            VerticalAlignment="Center"/>
+                </Grid>
 
                 <ScrollViewer Grid.Row="1" Background="Transparent">
                         <StackPanel Spacing="16"
@@ -29,19 +39,24 @@
 
             <!-- Model list -->
             <ListView x:Name="ModelList"
-                    SelectionMode="None"
-                      ItemClick="ModelList_ItemClick"
-                    IsItemClickEnabled="True">
+                    SelectionMode="None">
                 <ListView.ItemTemplate>
                     <DataTemplate>
                         <Grid Padding="4,8"
                                 ColumnSpacing="12">
                             <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="Auto"/>
                                 <ColumnDefinition Width="*"/>
                                 <ColumnDefinition Width="Auto"/>
                                 <ColumnDefinition Width="Auto"/>
                             </Grid.ColumnDefinitions>
-                            <StackPanel Grid.Column="0"
+                            <FontIcon Grid.Column="0"
+                                      Glyph="&#xE73E;"
+                                      FontSize="14"
+                                      Foreground="{ThemeResource AccentTextFillColorPrimaryBrush}"
+                                      Visibility="{Binding ActiveBadgeVisibility}"
+                                      VerticalAlignment="Center"/>
+                            <StackPanel Grid.Column="1"
                                     VerticalAlignment="Center">
                                 <TextBlock Text="{Binding DisplayName}"
                                         FontWeight="SemiBold"/>
@@ -49,12 +64,12 @@
                                         Foreground="{ThemeResource TextFillColorSecondaryBrush}"
                                         FontSize="12"/>
                             </StackPanel>
-                            <Button Grid.Column="1"
+                            <Button Grid.Column="2"
                                     x:Uid="AiModelsEdit"
                                     Tag="{Binding Id}"
                                     Click="EditModel_Click"
                                     Padding="8,4"/>
-                            <Button Grid.Column="2"
+                            <Button Grid.Column="3"
                                     x:Uid="AiModelsDelete"
                                     Tag="{Binding Id}"
                                     Click="DeleteModel_Click"
@@ -63,10 +78,6 @@
                     </DataTemplate>
                 </ListView.ItemTemplate>
             </ListView>
-
-            <Button x:Uid="AiModelsAdd" x:Name="AddModelButton"
-                    Click="AddModel_Click"
-                    Style="{StaticResource AccentButtonStyle}"/>
 
             <!-- Add/Edit form -->
             <Border x:Name="FormPanel"
@@ -144,11 +155,13 @@
                         <Button x:Uid="AiModelsSave" x:Name="SaveButton"
                                 Click="SaveModel_Click"
                                 Style="{StaticResource AccentButtonStyle}"/>
-                        <Button x:Uid="AiModelsTestConnection" x:Name="TestConnectionButton"
-                                Click="TestConnection_Click"/>
                         <Button x:Uid="AiModelsCancel" x:Name="CancelButton"
                                 Click="CancelForm_Click"/>
                     </StackPanel>
+
+                    <Button x:Uid="AiModelsTestConnection" x:Name="TestConnectionButton"
+                            Click="TestConnection_Click"
+                            Margin="0,4,0,0"/>
 
                     <InfoBar x:Name="TestResultBar"
                              IsOpen="False"

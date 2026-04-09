@@ -117,7 +117,7 @@ namespace wisland
             if (cached == null)
                 return context;
 
-            Logger.Debug($"AI override applied: '{session.Title}' → '{cached.Title}'");
+            Logger.Trace($"AI override applied: '{session.Title}' → '{cached.Title}'");
             var overridden = session with { Title = cached.Title, Artist = cached.Artist };
             return context with
             {

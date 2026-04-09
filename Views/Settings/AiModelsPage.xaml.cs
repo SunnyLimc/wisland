@@ -29,6 +29,13 @@ namespace wisland.Views.Settings
             Loaded += OnLoaded;
         }
 
+        public void Cleanup()
+        {
+            _testCts?.Cancel();
+            _testCts?.Dispose();
+            _testCts = null;
+        }
+
         private void UpdateTemperatureText()
         {
             TemperatureValueText.Text = TemperatureSlider.Value.ToString("F1");
@@ -45,7 +52,8 @@ namespace wisland.Views.Settings
                 {
                     Id = m.Id,
                     DisplayName = m.DisplayName,
-                    Summary = $"{AiModelProviderNames.GetDisplayName(m.Provider)} · {m.ModelId}"
+                    Summary = $"{AiModelProviderNames.GetDisplayName(m.Provider)} · {m.ModelId}",
+                    IsActive = string.Equals(m.Id, _settings.ActiveAiModelId, StringComparison.Ordinal)
                 });
             }
         }
@@ -58,9 +66,8 @@ namespace wisland.Views.Settings
             ProviderCombo.SelectedIndex = 0;
             EndpointBox.Text = GetDefaultEndpoint(GetSelectedProviderTag());
             FormPanel.Visibility = Visibility.Visible;
+            SetListInteractivity(false);
         }
-
-        private void ModelList_ItemClick(object sender, ItemClickEventArgs e) { }
 
         private void EditModel_Click(object sender, RoutedEventArgs e)
         {
@@ -82,13 +89,30 @@ namespace wisland.Views.Settings
                 TemperatureSlider.Value = model.Temperature;
                 SyncReasoningEffortVisibility();
                 FormPanel.Visibility = Visibility.Visible;
+                SetListInteractivity(false);
             }
         }
 
-        private void DeleteModel_Click(object sender, RoutedEventArgs e)
+        private async void DeleteModel_Click(object sender, RoutedEventArgs e)
         {
             if (sender is Button btn && btn.Tag is string id)
             {
+                var model = _settings.AiModels.FirstOrDefault(m => m.Id == id);
+                if (model == null) return;
+
+                var dialog = new ContentDialog
+                {
+                    Title = Loc.GetString("AiModels/DeleteConfirmTitle"),
+                    Content = string.Format(Loc.GetString("AiModels/DeleteConfirmMessage"), model.DisplayName),
+                    PrimaryButtonText = Loc.GetString("AiModels/DeleteConfirmYes"),
+                    CloseButtonText = Loc.GetString("AiModels/DeleteConfirmNo"),
+                    DefaultButton = ContentDialogButton.Close,
+                    XamlRoot = this.XamlRoot
+                };
+
+                if (await dialog.ShowAsync() != ContentDialogResult.Primary)
+                    return;
+
                 _settings.AiModels.RemoveAll(m => m.Id == id);
                 if (string.Equals(_settings.ActiveAiModelId, id, StringComparison.Ordinal))
                 {
@@ -177,6 +201,7 @@ namespace wisland.Views.Settings
             _settings.Save();
             FormPanel.Visibility = Visibility.Collapsed;
             FormError.IsOpen = false;
+            SetListInteractivity(true);
             RefreshList();
             _onAiSettingsChanged();
         }
@@ -186,6 +211,7 @@ namespace wisland.Views.Settings
             FormPanel.Visibility = Visibility.Collapsed;
             FormError.IsOpen = false;
             TestResultBar.IsOpen = false;
+            SetListInteractivity(true);
         }
 
         private CancellationTokenSource? _testCts;
@@ -206,6 +232,7 @@ namespace wisland.Views.Settings
             }
 
             _testCts?.Cancel();
+            _testCts?.Dispose();
             _testCts = new CancellationTokenSource(TimeSpan.FromSeconds(30));
             TestConnectionButton.IsEnabled = false;
             TestResultBar.Severity = InfoBarSeverity.Informational;
@@ -242,7 +269,7 @@ namespace wisland.Views.Settings
                 string main = string.Format(
                     Loc.GetString("AiModels/TestSuccess"),
                     result?.Title ?? "?", result?.Artist ?? "?") + groundingTag;
-                string alts = FormatAlternatives(result);
+                string alts = result?.FormatAlternatives() ?? "";
 
                 TestResultBar.Severity = InfoBarSeverity.Success;
                 TestResultBar.Message = string.IsNullOrEmpty(alts) ? main : main + "\n" + alts;
@@ -298,17 +325,6 @@ namespace wisland.Views.Settings
                 ? tag : null;
         }
 
-        private static string FormatAlternatives(AiSongResolverService.TestModelResult? r)
-        {
-            if (r == null) return "";
-            var parts = new List<string>();
-            if (!string.IsNullOrEmpty(r.TitleAlt)) parts.Add($"title-alt: {r.TitleAlt}");
-            if (!string.IsNullOrEmpty(r.TitleAlt2)) parts.Add($"title-alt2: {r.TitleAlt2}");
-            if (!string.IsNullOrEmpty(r.ArtistAlt)) parts.Add($"artist-alt: {r.ArtistAlt}");
-            if (!string.IsNullOrEmpty(r.ArtistAlt2)) parts.Add($"artist-alt2: {r.ArtistAlt2}");
-            return string.Join(" | ", parts);
-        }
-
         private void SetProviderComboByTag(string provider)
         {
             string normalizedProvider = AiModelProviderNames.Normalize(provider);
@@ -353,6 +369,12 @@ namespace wisland.Views.Settings
             TestResultBar.IsOpen = false;
         }
 
+        private void SetListInteractivity(bool enabled)
+        {
+            ModelList.IsEnabled = enabled;
+            AddModelButton.IsEnabled = enabled;
+        }
+
         private static string GetDefaultEndpoint(string provider) => provider switch
         {
             nameof(AiModelProvider.OpenAICompatible) => "https://api.openai.com/v1",
@@ -364,6 +386,8 @@ namespace wisland.Views.Settings
             public string Id { get; set; } = string.Empty;
             public string DisplayName { get; set; } = string.Empty;
             public string Summary { get; set; } = string.Empty;
+            public bool IsActive { get; set; }
+            public Visibility ActiveBadgeVisibility => IsActive ? Visibility.Visible : Visibility.Collapsed;
         }
     }
 }

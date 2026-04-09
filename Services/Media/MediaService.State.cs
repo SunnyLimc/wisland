@@ -97,7 +97,7 @@ namespace wisland.Services
         {
             if (changeResult.ShouldNotifySessions)
             {
-                Logger.Debug($"Dispatching session change: {_sessions.Count} session(s)");
+                Logger.Trace($"Dispatching session change: {_sessions.Count} session(s)");
                 SessionsChanged?.Invoke();
                 MediaChanged?.Invoke();
             }

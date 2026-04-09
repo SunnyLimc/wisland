@@ -67,8 +67,8 @@ namespace wisland
             var manager = WindowManager.Get(this);
             manager.MinWidth = 640;
             manager.MinHeight = 480;
-            manager.Width = 800;
-            manager.Height = 560;
+            manager.Width = _settings.SettingsWindowWidth ?? 800;
+            manager.Height = _settings.SettingsWindowHeight ?? 560;
 
             _contentFrame = new Frame
             {
@@ -124,6 +124,19 @@ namespace wisland
 
             Content = _rootGrid;
             ApplyBackdrop(_settings.BackdropType);
+
+            Closed += OnClosed;
+        }
+
+        private void OnClosed(object sender, WindowEventArgs args)
+        {
+            _aiModelsPage?.Cleanup();
+            _aiSongOverridePage?.Cleanup();
+
+            var manager = WindowManager.Get(this);
+            _settings.SettingsWindowWidth = (int)manager.Width;
+            _settings.SettingsWindowHeight = (int)manager.Height;
+            _settings.Save();
         }
 
         private void NavView_Loaded(object sender, RoutedEventArgs e)

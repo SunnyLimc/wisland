@@ -69,6 +69,7 @@ namespace wisland
 
             DisposeSessionPickerOverlay();
             _shellVisibilityService.Dispose();
+            Logger.Flush();
         }
 
         private void RequestAppExit()

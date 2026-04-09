@@ -40,85 +40,107 @@
                     TextWrapping="WrapWholeWords"/>
 
             <!-- Localization section -->
-            <TextBlock x:Uid="AiSongLocalizationTitle" x:Name="AiSongLocalizationTitleText"
-                    Style="{StaticResource SubtitleTextBlockStyle}"
-                    Margin="0,16,0,0"/>
-            <TextBlock x:Uid="AiSongLocalizationDescription" x:Name="AiSongLocalizationDescriptionText"
-                       Style="{StaticResource BodyTextBlockStyle}"
-                       Foreground="{ThemeResource TextFillColorSecondaryBrush}"
-                       TextWrapping="WrapWholeWords"/>
+            <Border Background="{ThemeResource CardBackgroundFillColorDefaultBrush}"
+                    BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}"
+                    BorderThickness="1"
+                    CornerRadius="8"
+                    Padding="20,16"
+                    Margin="0,8,0,0">
+                <StackPanel Spacing="12">
+                    <TextBlock x:Uid="AiSongLocalizationTitle" x:Name="AiSongLocalizationTitleText"
+                            Style="{StaticResource SubtitleTextBlockStyle}"/>
+                    <TextBlock x:Uid="AiSongLocalizationDescription" x:Name="AiSongLocalizationDescriptionText"
+                               Style="{StaticResource BodyTextBlockStyle}"
+                               Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                               TextWrapping="WrapWholeWords"/>
 
-            <ComboBox x:Uid="AiSongPreferredLanguage" x:Name="PreferredLanguageSelector"
-                      Width="320"
-                      SelectionChanged="PreferredLanguageSelector_SelectionChanged"/>
+                    <ComboBox x:Uid="AiSongPreferredLanguage" x:Name="PreferredLanguageSelector"
+                              Width="320"
+                              SelectionChanged="PreferredLanguageSelector_SelectionChanged"/>
 
-            <!-- Native prompt toggle — shown only when a language with native support is selected -->
-            <StackPanel x:Name="NativePromptPanel" Spacing="4" Visibility="Collapsed">
-                <ToggleSwitch x:Uid="AiSongPreferNativePrompt" x:Name="PreferNativePromptToggle"
-                              Toggled="PreferNativePromptToggle_Toggled"/>
-                <TextBlock x:Uid="AiSongNativePromptHint"
-                           Style="{StaticResource CaptionTextBlockStyle}"
-                           Foreground="{ThemeResource TextFillColorTertiaryBrush}"
-                           TextWrapping="WrapWholeWords"
-                           Margin="0,-4,0,0"/>
-            </StackPanel>
+                    <!-- Native prompt toggle — shown only when a language with native support is selected -->
+                    <StackPanel x:Name="NativePromptPanel" Spacing="4" Visibility="Collapsed">
+                        <ToggleSwitch x:Uid="AiSongPreferNativePrompt" x:Name="PreferNativePromptToggle"
+                                      Toggled="PreferNativePromptToggle_Toggled"/>
+                        <TextBlock x:Uid="AiSongNativePromptHint"
+                                   Style="{StaticResource CaptionTextBlockStyle}"
+                                   Foreground="{ThemeResource TextFillColorTertiaryBrush}"
+                                   TextWrapping="WrapWholeWords"
+                                   Margin="0,-4,0,0"/>
+                    </StackPanel>
 
-            <!-- Region override — hidden when native prompt is ON -->
-            <StackPanel x:Name="RegionOverridePanel" Spacing="4">
-                <TextBox x:Uid="AiSongRegionOverride" x:Name="TargetMarketBox"
-                         Width="320" HorizontalAlignment="Left"
-                         LostFocus="TargetMarketBox_LostFocus"/>
-                <TextBlock x:Uid="AiSongRegionOverrideHint"
-                           Style="{StaticResource CaptionTextBlockStyle}"
-                           Foreground="{ThemeResource TextFillColorTertiaryBrush}"
-                           TextWrapping="WrapWholeWords"/>
-            </StackPanel>
+                    <!-- Region override — hidden when native prompt is ON -->
+                    <StackPanel x:Name="RegionOverridePanel" Spacing="4">
+                        <TextBox x:Uid="AiSongRegionOverride" x:Name="TargetMarketBox"
+                                 Width="320" HorizontalAlignment="Left"
+                                 LostFocus="TargetMarketBox_LostFocus"/>
+                        <TextBlock x:Uid="AiSongRegionOverrideHint"
+                                   Style="{StaticResource CaptionTextBlockStyle}"
+                                   Foreground="{ThemeResource TextFillColorTertiaryBrush}"
+                                   TextWrapping="WrapWholeWords"/>
+                    </StackPanel>
+                </StackPanel>
+            </Border>
 
             <!-- Cache section -->
-            <TextBlock x:Uid="AiSongCacheTitle" x:Name="AiSongCacheTitleText"
-                    Style="{StaticResource SubtitleTextBlockStyle}"
-                    Margin="0,16,0,0"/>
-            <TextBlock x:Uid="AiSongCacheDescription" x:Name="AiSongCacheDescriptionText"
-                       Style="{StaticResource BodyTextBlockStyle}"
-                       Foreground="{ThemeResource TextFillColorSecondaryBrush}"
-                       TextWrapping="WrapWholeWords"/>
+            <Border Background="{ThemeResource CardBackgroundFillColorDefaultBrush}"
+                    BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}"
+                    BorderThickness="1"
+                    CornerRadius="8"
+                    Padding="20,16">
+                <StackPanel Spacing="12">
+                    <TextBlock x:Uid="AiSongCacheTitle" x:Name="AiSongCacheTitleText"
+                            Style="{StaticResource SubtitleTextBlockStyle}"/>
+                    <TextBlock x:Uid="AiSongCacheDescription" x:Name="AiSongCacheDescriptionText"
+                               Style="{StaticResource BodyTextBlockStyle}"
+                               Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                               TextWrapping="WrapWholeWords"/>
 
-            <TextBlock x:Name="CacheCountText"
-                    Text=""/>
+                    <TextBlock x:Name="CacheCountText"
+                            Text=""/>
 
-            <StackPanel Orientation="Horizontal"
-                    Spacing="8">
-                <Button x:Uid="AiSongClearLast" x:Name="ClearLastButton"
-                        Click="ClearLast_Click"/>
-                <Button x:Uid="AiSongClearAll" x:Name="ClearAllButton"
-                        Click="ClearAll_Click"/>
-            </StackPanel>
+                    <StackPanel Orientation="Horizontal"
+                            Spacing="8">
+                        <Button x:Uid="AiSongClearLast" x:Name="ClearLastButton"
+                                Click="ClearLast_Click"/>
+                        <Button x:Uid="AiSongClearAll" x:Name="ClearAllButton"
+                                Click="ClearAll_Click"/>
+                    </StackPanel>
+                </StackPanel>
+            </Border>
 
             <!-- Test section -->
-            <TextBlock x:Uid="AiSongTestTitle" x:Name="AiSongTestTitleText"
-                    Style="{StaticResource SubtitleTextBlockStyle}"
-                    Margin="0,16,0,0"/>
-            <TextBlock x:Uid="AiSongTestDescription" x:Name="AiSongTestDescriptionText"
-                       Style="{StaticResource BodyTextBlockStyle}"
-                       Foreground="{ThemeResource TextFillColorSecondaryBrush}"
-                       TextWrapping="WrapWholeWords"/>
+            <Border Background="{ThemeResource CardBackgroundFillColorDefaultBrush}"
+                    BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}"
+                    BorderThickness="1"
+                    CornerRadius="8"
+                    Padding="20,16">
+                <StackPanel Spacing="12">
+                    <TextBlock x:Uid="AiSongTestTitle" x:Name="AiSongTestTitleText"
+                            Style="{StaticResource SubtitleTextBlockStyle}"/>
+                    <TextBlock x:Uid="AiSongTestDescription" x:Name="AiSongTestDescriptionText"
+                               Style="{StaticResource BodyTextBlockStyle}"
+                               Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                               TextWrapping="WrapWholeWords"/>
 
-            <TextBox x:Uid="AiSongTestSongTitle" x:Name="TestSongTitleBox"
-                     Width="320" HorizontalAlignment="Left"/>
-            <TextBox x:Uid="AiSongTestSongArtist" x:Name="TestSongArtistBox"
-                     Width="320" HorizontalAlignment="Left"/>
-            <TextBox x:Uid="AiSongTestSourceName" x:Name="TestSourceNameBox"
-                     Width="320" HorizontalAlignment="Left"/>
-            <TextBox x:Uid="AiSongTestDuration" x:Name="TestDurationBox"
-                     Width="160" HorizontalAlignment="Left"/>
+                    <TextBox x:Uid="AiSongTestSongTitle" x:Name="TestSongTitleBox"
+                             Width="320" HorizontalAlignment="Left"/>
+                    <TextBox x:Uid="AiSongTestSongArtist" x:Name="TestSongArtistBox"
+                             Width="320" HorizontalAlignment="Left"/>
+                    <TextBox x:Uid="AiSongTestSourceName" x:Name="TestSourceNameBox"
+                             Width="320" HorizontalAlignment="Left"/>
+                    <TextBox x:Uid="AiSongTestDuration" x:Name="TestDurationBox"
+                             Width="160" HorizontalAlignment="Left"/>
 
-            <Button x:Uid="AiSongTestRun" x:Name="TestRunButton"
-                    Click="TestRun_Click"
-                    Style="{StaticResource AccentButtonStyle}"/>
+                    <Button x:Uid="AiSongTestRun" x:Name="TestRunButton"
+                            Click="TestRun_Click"
+                            Style="{StaticResource AccentButtonStyle}"/>
 
-            <InfoBar x:Name="TestResultInfoBar"
-                     IsOpen="False"
-                     IsClosable="True"/>
+                    <InfoBar x:Name="TestResultInfoBar"
+                             IsOpen="False"
+                             IsClosable="True"/>
+                </StackPanel>
+            </Border>
                         </StackPanel>
                 </ScrollViewer>
         </Grid>

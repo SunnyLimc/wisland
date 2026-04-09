@@ -270,11 +270,55 @@
   <data name="AiModels/ValidationInvalidUrl" xml:space="preserve">
     <value>端点必须是有效的 URL。</value>
   </data>
+  <data name="AiModels/DeleteConfirmTitle" xml:space="preserve">
+    <value>删除模型</value>
+  </data>
+  <data name="AiModels/DeleteConfirmMessage" xml:space="preserve">
+    <value>确定要删除“{0}”吗？此操作无法撤销。</value>
+  </data>
+  <data name="AiModels/DeleteConfirmYes" xml:space="preserve">
+    <value>删除</value>
+  </data>
+  <data name="AiModels/DeleteConfirmNo" xml:space="preserve">
+    <value>取消</value>
+  </data>
   <data name="AiModels/ProviderOpenAI" xml:space="preserve">
     <value>OpenAI 兼容</value>
   </data>
   <data name="AiModels/ProviderGoogle" xml:space="preserve">
     <value>Google AI Studio</value>
+  </data>
+
+  <!-- AI Models page — Test connection -->
+  <data name="AiModelsTestConnection.Content" xml:space="preserve">
+    <value>测试</value>
+  </data>
+  <data name="AiModels/TestMissingFields" xml:space="preserve">
+    <value>请至少输入 API 密钥和模型 ID 以进行测试。</value>
+  </data>
+  <data name="AiModels/TestRunning" xml:space="preserve">
+    <value>正在测试连接…</value>
+  </data>
+  <data name="AiModels/TestSongTitle" xml:space="preserve">
+    <value>NIGHT DANCER (Official Video)</value>
+  </data>
+  <data name="AiModels/TestSongArtist" xml:space="preserve">
+    <value>imase</value>
+  </data>
+  <data name="AiModels/TestSuccess" xml:space="preserve">
+    <value>✓ 模型响应: {0} — {1}</value>
+  </data>
+  <data name="AiModels/TestTimeout" xml:space="preserve">
+    <value>连接在 30 秒后超时。</value>
+  </data>
+  <data name="AiModels/TestFailed" xml:space="preserve">
+    <value>连接失败: {0}</value>
+  </data>
+  <data name="AiModelsApiKeyHeaderGoogle.Header" xml:space="preserve">
+    <value>API 密钥</value>
+  </data>
+  <data name="AiModelsApiKeyHeaderGoogle.PlaceholderText" xml:space="preserve">
+    <value>AIza...</value>
   </data>
 
   <!-- AI Song Override page -->
@@ -310,6 +354,18 @@
   </data>
   <data name="AiSong/CachedEntries" xml:space="preserve">
     <value>缓存条目: {0}</value>
+  </data>
+  <data name="AiSong/ClearAllConfirmTitle" xml:space="preserve">
+    <value>清除所有缓存</value>
+  </data>
+  <data name="AiSong/ClearAllConfirmMessage" xml:space="preserve">
+    <value>将删除所有已缓存的 AI 歌曲结果。是否继续？</value>
+  </data>
+  <data name="AiSong/ClearAllConfirmYes" xml:space="preserve">
+    <value>清除</value>
+  </data>
+  <data name="AiSong/ClearAllConfirmNo" xml:space="preserve">
+    <value>取消</value>
   </data>
 
   <!-- AI Song Override — Localization section -->

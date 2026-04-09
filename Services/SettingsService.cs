@@ -71,6 +71,12 @@ namespace wisland.Services
         /// <summary>Whether to use a native-language prompt template when available for the preferred language.</summary>
         public bool AiPreferNativePrompt { get; set; }
 
+        /// <summary>Persisted settings window width. Null means use default.</summary>
+        public int? SettingsWindowWidth { get; set; }
+
+        /// <summary>Persisted settings window height. Null means use default.</summary>
+        public int? SettingsWindowHeight { get; set; }
+
         /// <summary>
         /// Load settings from disk. Returns silently with defaults if file doesn't exist or is corrupted.
         /// </summary>
@@ -89,8 +95,8 @@ namespace wisland.Services
                     CenterX = SanitizeCenterX(data.CenterX);
                     LastY = SanitizeLastY(data.LastY);
                     IsDocked = data.IsDocked;
-                    AnchorPhysicalX = SanitizeAnchorPhysical(data.AnchorPhysicalX);
-                    AnchorPhysicalY = SanitizeAnchorPhysical(data.AnchorPhysicalY);
+                    AnchorPhysicalX = data.AnchorPhysicalX;
+                    AnchorPhysicalY = data.AnchorPhysicalY;
                     RelativeCenterX = SanitizeRelativeCenterX(data.RelativeCenterX);
                     RelativeTopY = SanitizeRelativeTopY(data.RelativeTopY);
                     AiModels = DeserializeAiModels(data.AiModels);
@@ -101,6 +107,8 @@ namespace wisland.Services
                     AiPreferredLanguage = data.AiPreferredLanguage;
                     AiTargetMarket = data.AiTargetMarket;
                     AiPreferNativePrompt = data.AiPreferNativePrompt;
+                    SettingsWindowWidth = data.SettingsWindowWidth;
+                    SettingsWindowHeight = data.SettingsWindowHeight;
                 }
             }
             catch (Exception ex)
@@ -127,8 +135,8 @@ namespace wisland.Services
                     CenterX = SanitizeCenterX(CenterX),
                     LastY = SanitizeLastY(LastY),
                     IsDocked = IsDocked,
-                    AnchorPhysicalX = SanitizeAnchorPhysical(AnchorPhysicalX),
-                    AnchorPhysicalY = SanitizeAnchorPhysical(AnchorPhysicalY),
+                    AnchorPhysicalX = AnchorPhysicalX,
+                    AnchorPhysicalY = AnchorPhysicalY,
                     RelativeCenterX = SanitizeRelativeCenterX(RelativeCenterX),
                     RelativeTopY = SanitizeRelativeTopY(RelativeTopY),
                     AiModels = SerializeAiModels(AiModels),
@@ -138,7 +146,9 @@ namespace wisland.Services
                     Language = Language,
                     AiPreferredLanguage = AiPreferredLanguage,
                     AiTargetMarket = AiTargetMarket,
-                    AiPreferNativePrompt = AiPreferNativePrompt
+                    AiPreferNativePrompt = AiPreferNativePrompt,
+                    SettingsWindowWidth = SettingsWindowWidth,
+                    SettingsWindowHeight = SettingsWindowHeight
                 };
 
                 var json = JsonSerializer.Serialize(data, JsonOptions);
@@ -165,9 +175,6 @@ namespace wisland.Services
 
         private static double SanitizeLastY(double value)
             => double.IsFinite(value) && value >= 0 ? value : DefaultLastY;
-
-        private static int? SanitizeAnchorPhysical(int? value)
-            => value.HasValue ? value : null;
 
         private static double? SanitizeRelativeCenterX(double? value)
             => value.HasValue && double.IsFinite(value.Value) && value.Value >= 0 ? value : null;
@@ -267,6 +274,8 @@ namespace wisland.Services
             public string? AiPreferredLanguage { get; set; }
             public string? AiTargetMarket { get; set; }
             public bool AiPreferNativePrompt { get; set; }
+            public int? SettingsWindowWidth { get; set; }
+            public int? SettingsWindowHeight { get; set; }
         }
 
         private sealed class AiModelProfileData

@@ -251,7 +251,7 @@ namespace wisland.Services
                 return;
             }
 
-            Logger.Debug("Starting refresh burst");
+            Logger.Trace("Starting refresh burst");
 
             CancellationTokenSource? previousCts;
             CancellationTokenSource nextCts = new();

@@ -270,11 +270,55 @@
   <data name="AiModels/ValidationInvalidUrl" xml:space="preserve">
     <value>エンドポイントは有効な URL である必要があります。</value>
   </data>
+  <data name="AiModels/DeleteConfirmTitle" xml:space="preserve">
+    <value>モデルを削除</value>
+  </data>
+  <data name="AiModels/DeleteConfirmMessage" xml:space="preserve">
+    <value>「{0}」を削除しますか？この操作は元に戻せません。</value>
+  </data>
+  <data name="AiModels/DeleteConfirmYes" xml:space="preserve">
+    <value>削除</value>
+  </data>
+  <data name="AiModels/DeleteConfirmNo" xml:space="preserve">
+    <value>キャンセル</value>
+  </data>
   <data name="AiModels/ProviderOpenAI" xml:space="preserve">
     <value>OpenAI 互換</value>
   </data>
   <data name="AiModels/ProviderGoogle" xml:space="preserve">
     <value>Google AI Studio</value>
+  </data>
+
+  <!-- AI Models page — Test connection -->
+  <data name="AiModelsTestConnection.Content" xml:space="preserve">
+    <value>テスト</value>
+  </data>
+  <data name="AiModels/TestMissingFields" xml:space="preserve">
+    <value>テストするには API キーとモデル ID を入力してください。</value>
+  </data>
+  <data name="AiModels/TestRunning" xml:space="preserve">
+    <value>接続をテスト中…</value>
+  </data>
+  <data name="AiModels/TestSongTitle" xml:space="preserve">
+    <value>NIGHT DANCER (Official Video)</value>
+  </data>
+  <data name="AiModels/TestSongArtist" xml:space="preserve">
+    <value>imase</value>
+  </data>
+  <data name="AiModels/TestSuccess" xml:space="preserve">
+    <value>✓ モデル応答: {0} — {1}</value>
+  </data>
+  <data name="AiModels/TestTimeout" xml:space="preserve">
+    <value>30 秒後に接続がタイムアウトしました。</value>
+  </data>
+  <data name="AiModels/TestFailed" xml:space="preserve">
+    <value>接続に失敗しました: {0}</value>
+  </data>
+  <data name="AiModelsApiKeyHeaderGoogle.Header" xml:space="preserve">
+    <value>API キー</value>
+  </data>
+  <data name="AiModelsApiKeyHeaderGoogle.PlaceholderText" xml:space="preserve">
+    <value>AIza...</value>
   </data>
 
   <!-- AI Song Override page -->
@@ -310,6 +354,18 @@
   </data>
   <data name="AiSong/CachedEntries" xml:space="preserve">
     <value>キャッシュ数: {0}</value>
+  </data>
+  <data name="AiSong/ClearAllConfirmTitle" xml:space="preserve">
+    <value>すべてのキャッシュをクリア</value>
+  </data>
+  <data name="AiSong/ClearAllConfirmMessage" xml:space="preserve">
+    <value>AI 楽曲結果のキャッシュをすべて削除します。続行しますか？</value>
+  </data>
+  <data name="AiSong/ClearAllConfirmYes" xml:space="preserve">
+    <value>クリア</value>
+  </data>
+  <data name="AiSong/ClearAllConfirmNo" xml:space="preserve">
+    <value>キャンセル</value>
   </data>
 
   <!-- AI Song Override — Localization section -->
