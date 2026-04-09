@@ -35,7 +35,14 @@ namespace wisland.Services
                 return;
             }
 
-            await _refreshSemaphore.WaitAsync().ConfigureAwait(false);
+            try
+            {
+                await _refreshSemaphore.WaitAsync().ConfigureAwait(false);
+            }
+            catch (ObjectDisposedException)
+            {
+                return;
+            }
             try
             {
                 await RefreshSessionsCoreAsync().ConfigureAwait(false);

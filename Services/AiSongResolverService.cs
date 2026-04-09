@@ -112,7 +112,7 @@ namespace wisland.Services
                 bool isGoogle = string.Equals(provider, nameof(AiModelProvider.GoogleAIStudio), StringComparison.Ordinal);
                 Logger.Debug(isGoogle
                     ? $"AI request: template={templateName}, provider={provider}, model={profile.ModelId}, temperature={profile.Temperature:F1}, thinking={profile.ReasoningEffort ?? "default"}, grounding={profile.GoogleGroundingEnabled}"
-                    : $"AI request: template={templateName}, provider={provider}, model={profile.ModelId}, endpoint={profile.Endpoint}, temperature={profile.Temperature:F1}");
+                    : $"AI request: template={templateName}, provider={provider}, model={profile.ModelId}, endpoint={SanitizeEndpointForLog(profile.Endpoint)}, temperature={profile.Temperature:F1}");
                 Logger.Trace($"AI user message:\n{userMessage}");
 
                 string? responseJson;
@@ -200,7 +200,7 @@ namespace wisland.Services
             Logger.Info($"AI test requested: '{testTitle}' by '{testArtist}' from '{sourceName}'");
             Logger.Debug(isGoogle
                 ? $"AI request: template={templateName}, provider={provider}, model={profile.ModelId}, temperature={profile.Temperature:F1}, thinking={profile.ReasoningEffort ?? "default"}, grounding={profile.GoogleGroundingEnabled}"
-                : $"AI request: template={templateName}, provider={provider}, model={profile.ModelId}, endpoint={profile.Endpoint}, temperature={profile.Temperature:F1}");
+                : $"AI request: template={templateName}, provider={provider}, model={profile.ModelId}, endpoint={SanitizeEndpointForLog(profile.Endpoint)}, temperature={profile.Temperature:F1}");
             Logger.Trace($"AI user message:\n{userMessage}");
 
             string? responseJson;
@@ -387,7 +387,7 @@ namespace wisland.Services
                 Temperature = (float)profile.Temperature
             };
 
-            Logger.Debug($"OpenAI config: model={profile.ModelId}, endpoint={profile.Endpoint}, temperature={profile.Temperature:F1}, schema=song_metadata (strict)");
+            Logger.Debug($"OpenAI config: model={profile.ModelId}, endpoint={SanitizeEndpointForLog(profile.Endpoint)}, temperature={profile.Temperature:F1}, schema=song_metadata (strict)");
             Logger.Trace($"OpenAI prompt:\n{userMessage}");
 
             ChatCompletion completion = await client.CompleteChatAsync(messages, options, ct);
@@ -431,6 +431,14 @@ namespace wisland.Services
             return modelId.StartsWith("gemini-3", StringComparison.OrdinalIgnoreCase)
                 || modelId.StartsWith("gemini-4", StringComparison.OrdinalIgnoreCase)
                 || modelId.StartsWith("gemini-5", StringComparison.OrdinalIgnoreCase);
+        }
+
+        private static string SanitizeEndpointForLog(string? endpoint)
+        {
+            if (string.IsNullOrEmpty(endpoint)) return "(empty)";
+            if (Uri.TryCreate(endpoint, UriKind.Absolute, out var uri) && !string.IsNullOrEmpty(uri.Query))
+                return uri.GetLeftPart(UriPartial.Path) + "?<redacted>";
+            return endpoint;
         }
 
         private static bool TryApplyThinkingConfig(AiModelProfile profile, GTypes.GenerateContentConfig config)

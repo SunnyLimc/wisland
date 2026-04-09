@@ -200,9 +200,9 @@ namespace wisland.Services
                 byte[] plainBytes = ProtectedData.Unprotect(encrypted, null, DataProtectionScope.CurrentUser);
                 return Encoding.UTF8.GetString(plainBytes);
             }
-            catch
+            catch (Exception)
             {
-                // If decryption fails (e.g., migrated from another user), return empty.
+                // If decryption fails (e.g., migrated from another user/corrupted data), return empty.
                 return string.Empty;
             }
         }

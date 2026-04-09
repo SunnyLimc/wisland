@@ -63,7 +63,7 @@ namespace wisland.Views.Settings
                 System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo
                 {
                     FileName = "explorer.exe",
-                    Arguments = logDir,
+                    Arguments = $"\"{logDir}\"",
                     UseShellExecute = false
                 });
             }

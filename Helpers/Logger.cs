@@ -31,7 +31,7 @@ namespace wisland.Helpers
         private static StreamWriter? _writer;
         private static string? _writerDate;
 
-        private static LogLevel _minimumLevel =
+        private static volatile LogLevel _minimumLevel =
 #if DEBUG
             LogLevel.Debug;
 #else

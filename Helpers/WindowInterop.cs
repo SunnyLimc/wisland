@@ -11,7 +11,7 @@ namespace wisland.Helpers
     public static class WindowInterop
     {
         [DllImport("user32.dll")]
-        public static extern IntPtr GetForegroundWindow();
+        internal static extern IntPtr GetForegroundWindow();
 
         [DllImport("user32.dll")]
         private static extern IntPtr MonitorFromPoint(POINT pt, uint dwFlags);
@@ -103,10 +103,10 @@ namespace wisland.Helpers
         public static bool IsWindowMaximized(IntPtr hwnd)
         {
             if (hwnd == IntPtr.Zero) return false;
-            
+
             WINDOWPLACEMENT placement = new WINDOWPLACEMENT();
             placement.length = Marshal.SizeOf(placement);
-            
+
             if (GetWindowPlacement(hwnd, ref placement))
             {
                 return placement.showCmd == SW_SHOWMAXIMIZED;
@@ -243,14 +243,14 @@ namespace wisland.Helpers
 
         // --- DWM API for Shadow Control ---
         [DllImport("dwmapi.dll", PreserveSig = true)]
-        public static extern int DwmSetWindowAttribute(IntPtr hwnd, int attr, ref int attrValue, int attrSize);
+        internal static extern int DwmSetWindowAttribute(IntPtr hwnd, int attr, ref int attrValue, int attrSize);
 
-        public const int DWMWA_WINDOW_CORNER_PREFERENCE = 33;
-        
-        public const int DWMWCP_DEFAULT = 0;       // Let the system decide
-        public const int DWMWCP_DONOTROUND = 1;    // No rounding, no shadow
-        public const int DWMWCP_ROUND = 2;         // Full rounded corners + large shadow
-        public const int DWMWCP_ROUNDSMALL = 3;    // Small rounded corners + small/light shadow
+        internal const int DWMWA_WINDOW_CORNER_PREFERENCE = 33;
+
+        internal const int DWMWCP_DEFAULT = 0;       // Let the system decide
+        internal const int DWMWCP_DONOTROUND = 1;    // No rounding, no shadow
+        internal const int DWMWCP_ROUND = 2;         // Full rounded corners + large shadow
+        internal const int DWMWCP_ROUNDSMALL = 3;    // Small rounded corners + small/light shadow
 
         public static bool TryGetWindowFrameInsets(IntPtr hwnd, out Models.WindowFrameInsets insets)
         {

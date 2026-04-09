@@ -32,11 +32,18 @@ namespace wisland
 
         private async Task InitializeMediaAsync()
         {
-            _mediaService.SessionsChanged += OnMediaServiceChanged;
-            _mediaService.TrackChanged += OnTrackChanged;
-            await _mediaService.InitializeAsync();
-            SyncMediaUI();
-            UpdateRenderLoopState();
+            try
+            {
+                _mediaService.SessionsChanged += OnMediaServiceChanged;
+                _mediaService.TrackChanged += OnTrackChanged;
+                await _mediaService.InitializeAsync();
+                SyncMediaUI();
+                UpdateRenderLoopState();
+            }
+            catch (Exception ex)
+            {
+                Logger.Error(ex, "Failed to initialize media service");
+            }
         }
 
         private void OnMediaServiceChanged()
@@ -140,6 +147,7 @@ namespace wisland
 
             // Cancel any previous in-flight request
             _aiResolveCts?.Cancel();
+            _aiResolveCts?.Dispose();
             var cts = new CancellationTokenSource();
             _aiResolveCts = cts;
 
@@ -167,6 +175,10 @@ namespace wisland
                 }
             }
             catch (OperationCanceledException) { }
+            catch (Exception ex)
+            {
+                Logger.Warn($"AI resolve failed: {ex.Message}");
+            }
         }
 
         internal void OnAiSettingsChanged()
@@ -281,20 +293,31 @@ namespace wisland
         }
 
         private async void PlayPause_Click(object? sender, EventArgs e)
-            => await _mediaService.PlayPauseAsync(_displayedSessionKey);
+        {
+            try { await _mediaService.PlayPauseAsync(_displayedSessionKey); }
+            catch (Exception ex) { Logger.Warn($"PlayPause failed: {ex.Message}"); }
+        }
 
         private async void SkipNext_Click(object? sender, EventArgs e)
         {
-            RegisterTransportWaitingFallback();
-            RegisterPendingMediaTransitionDirection(ContentTransitionDirection.Forward);
-            await _mediaService.SkipNextAsync(_displayedSessionKey);
+            try
+            {
+                RegisterTransportWaitingFallback();
+                RegisterPendingMediaTransitionDirection(ContentTransitionDirection.Forward);
+                await _mediaService.SkipNextAsync(_displayedSessionKey);
+            }
+            catch (Exception ex) { Logger.Warn($"SkipNext failed: {ex.Message}"); }
         }
 
         private async void SkipPrevious_Click(object? sender, EventArgs e)
         {
-            RegisterTransportWaitingFallback();
-            RegisterPendingMediaTransitionDirection(ContentTransitionDirection.Backward);
-            await _mediaService.SkipPreviousAsync(_displayedSessionKey);
+            try
+            {
+                RegisterTransportWaitingFallback();
+                RegisterPendingMediaTransitionDirection(ContentTransitionDirection.Backward);
+                await _mediaService.SkipPreviousAsync(_displayedSessionKey);
+            }
+            catch (Exception ex) { Logger.Warn($"SkipPrevious failed: {ex.Message}"); }
         }
 
         private void RootGrid_PointerWheelChanged(object sender, Microsoft.UI.Xaml.Input.PointerRoutedEventArgs e)

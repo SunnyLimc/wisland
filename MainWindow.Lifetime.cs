@@ -65,6 +65,7 @@ namespace wisland
             _mediaService.Dispose();
 
             _aiResolveCts?.Cancel();
+            _aiResolveCts?.Dispose();
             _aiResolveCts = null;
 
             DisposeSessionPickerOverlay();

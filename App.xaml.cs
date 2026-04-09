@@ -18,6 +18,7 @@ namespace wisland
         private void App_UnhandledException(object sender, Microsoft.UI.Xaml.UnhandledExceptionEventArgs e)
         {
             Logger.Error(e.Exception, $"Unhandled exception: {e.Message}");
+            Logger.Flush();
         }
 
         protected override void OnLaunched(Microsoft.UI.Xaml.LaunchActivatedEventArgs args)

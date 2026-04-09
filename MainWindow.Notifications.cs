@@ -23,6 +23,7 @@ namespace wisland
             _notificationCts = notificationCts;
 
             previousCts?.Cancel();
+            previousCts?.Dispose();
 
             try
             {
