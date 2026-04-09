@@ -52,17 +52,19 @@ namespace wisland.Views.Settings
 
         private void OpenLogsFolderButton_Click(object sender, RoutedEventArgs e)
         {
-            string logDir = Path.Combine(
-                Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
-                "Wisland", "logs");
+            string logDir = Helpers.SafePaths.Combine("logs");
             Directory.CreateDirectory(logDir);
+
+            if (!Directory.Exists(logDir))
+                return;
 
             try
             {
                 System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo
                 {
-                    FileName = logDir,
-                    UseShellExecute = true
+                    FileName = "explorer.exe",
+                    Arguments = logDir,
+                    UseShellExecute = false
                 });
             }
             catch (Exception ex)

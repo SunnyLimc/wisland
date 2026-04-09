@@ -17,6 +17,7 @@
 
   <ItemGroup>
     <Compile Include="..\Helpers\Logger.cs" Link="Helpers\Logger.cs" />
+    <Compile Include="..\Helpers\SafePaths.cs" Link="Helpers\SafePaths.cs" />
     <Compile Include="..\Helpers\Loc.cs" Link="Helpers\Loc.cs" />
     <Compile Include="..\Helpers\CompactSurfaceLayout.cs" Link="Helpers\CompactSurfaceLayout.cs" />
     <Compile Include="..\Helpers\MediaSourceAppResolver.cs" Link="Helpers\MediaSourceAppResolver.cs" />

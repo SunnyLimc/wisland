@@ -42,9 +42,7 @@ namespace wisland.Helpers
 
         static Logger()
         {
-            _logDirectory = Path.Combine(
-                Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
-                "Wisland", "logs");
+            _logDirectory = SafePaths.Combine("logs");
             Directory.CreateDirectory(_logDirectory);
             CleanupOldLogs();
         }

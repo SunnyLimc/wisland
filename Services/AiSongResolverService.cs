@@ -18,9 +18,7 @@ namespace wisland.Services
     public sealed class AiSongResolverService
     {
         private static readonly JsonSerializerOptions CacheJsonOptions = new() { WriteIndented = true };
-        private static readonly string CachePath = Path.Combine(
-            System.Environment.GetFolderPath(System.Environment.SpecialFolder.LocalApplicationData),
-            "Wisland", "ai-song-cache.json");
+        private static readonly string CachePath = Helpers.SafePaths.Combine("ai-song-cache.json");
 
         private static readonly BinaryData StructuredOutputSchema = BinaryData.FromBytes(
             """
