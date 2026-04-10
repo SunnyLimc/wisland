@@ -212,6 +212,9 @@ namespace wisland.Views
 
         public void SetColors(Color main, Color sub, Color icon)
         {
+            if (_mainColor == main && _subColor == sub && _iconColor == icon)
+                return;
+
             _mainColor = main;
             _subColor = sub;
             _iconColor = icon;
@@ -786,9 +789,9 @@ namespace wisland.Views
                 return;
             }
 
-            double currentWidth = !double.IsNaN(_headerChipWidth)
-                ? _headerChipWidth
-                : HeaderChipBorder.ActualWidth;
+            double currentWidth = _headerChipWidthStoryboard != null
+                ? HeaderChipBorder.ActualWidth
+                : (!double.IsNaN(_headerChipWidth) ? _headerChipWidth : HeaderChipBorder.ActualWidth);
 
             if (currentWidth <= 0 || Math.Abs(currentWidth - targetWidth) < 0.5)
             {
@@ -1303,32 +1306,33 @@ namespace wisland.Views
 
         private double MeasureHeaderContentWidth(HeaderTextSnapshot snapshot, AvatarStripSnapshot avatarSnapshot)
         {
-            _measureLabelStack ??= new StackPanel
+            if (_measureLabelStack == null)
             {
-                Orientation = Orientation.Horizontal,
-                Spacing = 4
-            };
-            _measureLabel ??= new TextBlock
-            {
-                FontSize = HeaderLabelPrimary.FontSize,
-                FontWeight = HeaderLabelPrimary.FontWeight,
-                TextTrimming = TextTrimming.CharacterEllipsis,
-                MaxWidth = HeaderLabelPrimary.MaxWidth
-            };
-
-            _measureLabelStack.Children.Clear();
-            _measureLabel.Text = snapshot.Label;
-            _measureLabelStack.Children.Add(_measureLabel);
-
-            if (snapshot.ShowExpandHint)
-            {
-                _measureExpandIcon ??= new FontIcon
+                _measureExpandIcon = new FontIcon
                 {
                     Glyph = HeaderExpandGlyphPrimary.Glyph,
                     FontSize = HeaderExpandGlyphPrimary.FontSize
                 };
+                _measureLabel = new TextBlock
+                {
+                    FontSize = HeaderLabelPrimary.FontSize,
+                    FontWeight = HeaderLabelPrimary.FontWeight,
+                    TextTrimming = TextTrimming.CharacterEllipsis,
+                    MaxWidth = HeaderLabelPrimary.MaxWidth
+                };
+                _measureLabelStack = new StackPanel
+                {
+                    Orientation = Orientation.Horizontal,
+                    Spacing = 4
+                };
+                _measureLabelStack.Children.Add(_measureLabel);
                 _measureLabelStack.Children.Add(_measureExpandIcon);
             }
+
+            _measureLabel!.Text = snapshot.Label;
+            _measureExpandIcon!.Visibility = snapshot.ShowExpandHint
+                ? Visibility.Visible
+                : Visibility.Collapsed;
 
             _measureLabelStack.Measure(new Size(double.PositiveInfinity, double.PositiveInfinity));
             double avatarWidth = MeasureHeaderAvatarViewportWidth(avatarSnapshot);

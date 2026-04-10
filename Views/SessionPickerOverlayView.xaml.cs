@@ -43,6 +43,7 @@ namespace wisland.Views
         private CubicBezierEasingFunction? _listRevealEasing;
         private bool _isCorrectingSessionListOffset;
         private double _sessionListViewportCompensation;
+        private float _lastPanelCenterPointWidth = float.NaN;
 
         public SessionPickerOverlayView()
         {
@@ -62,6 +63,9 @@ namespace wisland.Views
 
         public void SetColors(Color primary, Color secondary, Color surface)
         {
+            if (_primaryColor == primary && _secondaryColor == secondary && _surfaceColor == surface)
+                return;
+
             _primaryColor = primary;
             _secondaryColor = secondary;
             _surfaceColor = surface;
@@ -504,8 +508,18 @@ namespace wisland.Views
         private void SessionListScrollViewer_ViewChanged(object? sender, ScrollViewerViewChangedEventArgs e)
             => UpdateScrollEdgeChrome();
 
+        private bool _scrollChromeUpdateQueued;
+
         private void QueueScrollChromeUpdate()
-            => DispatcherQueue?.TryEnqueue(UpdateScrollEdgeChrome);
+        {
+            if (_scrollChromeUpdateQueued) return;
+            _scrollChromeUpdateQueued = true;
+            DispatcherQueue?.TryEnqueue(() =>
+            {
+                _scrollChromeUpdateQueued = false;
+                UpdateScrollEdgeChrome();
+            });
+        }
 
         private void UpdateScrollEdgeChrome()
         {
@@ -542,8 +556,10 @@ namespace wisland.Views
 
         private void SetEdgeFadeState(double topOpacity, double bottomOpacity)
         {
-            TopEdgeFade.Opacity = topOpacity;
-            BottomEdgeFade.Opacity = bottomOpacity;
+            if (TopEdgeFade.Opacity != topOpacity)
+                TopEdgeFade.Opacity = topOpacity;
+            if (BottomEdgeFade.Opacity != bottomOpacity)
+                BottomEdgeFade.Opacity = bottomOpacity;
         }
 
         private void NormalizeNonScrollableSessionListState()
@@ -657,9 +673,12 @@ namespace wisland.Views
 
         private void SetScrollIndicatorState(double opacity, double height, double offsetY)
         {
-            ScrollIndicator.Opacity = opacity;
-            ScrollIndicator.Height = height;
-            ScrollIndicatorTransform.Y = offsetY;
+            if (ScrollIndicator.Opacity != opacity)
+                ScrollIndicator.Opacity = opacity;
+            if (ScrollIndicator.Height != height)
+                ScrollIndicator.Height = height;
+            if (ScrollIndicatorTransform.Y != offsetY)
+                ScrollIndicatorTransform.Y = offsetY;
         }
 
         private static ScrollViewer? FindScrollViewer(DependencyObject root)
@@ -758,6 +777,13 @@ namespace wisland.Views
             }
 
             float width = (float)Math.Max(0.0, PanelBorder.ActualWidth);
+            if (!float.IsNaN(_lastPanelCenterPointWidth)
+                && Math.Abs(width - _lastPanelCenterPointWidth) < 0.5f)
+            {
+                return;
+            }
+
+            _lastPanelCenterPointWidth = width;
             _panelVisual.CenterPoint = new Vector3(width * 0.5f, 0.0f, 0.0f);
         }
 

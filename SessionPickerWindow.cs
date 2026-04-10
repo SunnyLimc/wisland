@@ -14,6 +14,7 @@ namespace wisland
         private bool _suppressDismiss;
         private WindowFrameInsets? _frameInsets;
         private RectInt32? _lastClientBounds;
+        private bool _chromeConfigured;
 
         public SessionPickerWindow()
         {
@@ -152,6 +153,8 @@ namespace wisland
 
         private void ConfigureChrome()
         {
+            if (_chromeConfigured) return;
+
             var hwnd = WinRT.Interop.WindowNative.GetWindowHandle(this);
             if (hwnd != IntPtr.Zero)
             {
@@ -161,6 +164,7 @@ namespace wisland
                     WindowInterop.DWMWA_WINDOW_CORNER_PREFERENCE,
                     ref cornerPreference,
                     sizeof(int));
+                _chromeConfigured = true;
             }
         }
 

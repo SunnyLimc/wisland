@@ -15,6 +15,7 @@ namespace wisland
         private bool _isSessionPickerOpen;
         private SessionPickerOverlayLayoutMetrics? _sessionPickerLayoutMetrics;
         private WindowFrameInsets? _mainWindowFrameInsets;
+        private IntPtr _mainWindowHwnd;
         private SessionPickerOverlayAnimationPhase _sessionPickerOverlayAnimationPhase;
         private TimeSpan? _sessionPickerOverlayAnimationStartTime;
         private RectInt32 _sessionPickerOverlayAnimationFromBounds;
@@ -508,8 +509,10 @@ namespace wisland
 
         private WindowFrameInsets GetMainWindowFrameInsets()
         {
-            IntPtr hwnd = WinRT.Interop.WindowNative.GetWindowHandle(this);
-            if (WindowInterop.TryGetWindowFrameInsets(hwnd, out WindowFrameInsets insets))
+            if (_mainWindowHwnd == IntPtr.Zero)
+                _mainWindowHwnd = WinRT.Interop.WindowNative.GetWindowHandle(this);
+
+            if (WindowInterop.TryGetWindowFrameInsets(_mainWindowHwnd, out WindowFrameInsets insets))
             {
                 if (!_mainWindowFrameInsets.HasValue || !_mainWindowFrameInsets.Value.Equals(insets))
                 {
