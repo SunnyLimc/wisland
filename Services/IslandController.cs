@@ -128,6 +128,16 @@ namespace wisland.Services
                 Current.Y += (_targetY - Current.Y) * t;
             }
 
+            // Snap to target when values are within settling thresholds to eliminate
+            // residual sub-pixel drift and stop the render loop cleanly.
+            const double posSnap = 0.25;
+            const double opSnap = 0.02;
+            if (Math.Abs(Current.Width - _targetWidth) < posSnap) Current.Width = _targetWidth;
+            if (Math.Abs(Current.Height - _targetHeight) < posSnap) Current.Height = _targetHeight;
+            if (Math.Abs(Current.Y - _targetY) < posSnap && !IsDragging) Current.Y = _targetY;
+            if (Math.Abs(Current.CompactOpacity - _targetCompactOpacity) < opSnap) Current.CompactOpacity = _targetCompactOpacity;
+            if (Math.Abs(Current.ExpandedOpacity - _targetExpandedOpacity) < opSnap) Current.ExpandedOpacity = _targetExpandedOpacity;
+
             Current.IsHitTestVisible = Math.Max(Current.CompactOpacity, Current.ExpandedOpacity) > IslandConfig.HitTestOpacityThreshold;
         }
 

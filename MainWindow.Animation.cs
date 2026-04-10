@@ -69,6 +69,9 @@ namespace wisland
             double t = 1.0 - Math.Exp(-IslandConfig.AnimationSpeed * dt);
             _controller.Tick(dt);
 
+            // Cache the displayed session snapshot once per frame to avoid redundant lookups
+            MediaSessionSnapshot? _frameDisplayedSession = GetDisplayedMediaSessionSnapshot();
+
             var state = _controller.Current;
             ClampControllerPositionToDisplay(displayWorkArea, state.Width, state.Height, _dpiScale);
             _controller.UpdateTargetState();
@@ -102,9 +105,9 @@ namespace wisland
                 && !shouldDisplayDockedLineNow
                 && state.Height <= IslandConfig.CompactHeight + 1;
 
-            bool shouldShowProgressEffect = ShouldShowProgressEffect();
+            bool shouldShowProgressEffect = ShouldShowProgressEffect(_frameDisplayedSession);
             IslandProgressBar.SetEffectVisible(shouldShowProgressEffect);
-            IslandProgressBar.SetShimmerActive(ShouldAnimateProgressShimmer());
+            IslandProgressBar.SetShimmerActive(ShouldAnimateProgressShimmer(_frameDisplayedSession));
 
             double progressTopBleed = isDockPeekState ? physicalPixelLogical : 0;
             if (Math.Abs(IslandProgressBar.Margin.Top + progressTopBleed) > 0.0001
@@ -113,7 +116,7 @@ namespace wisland
                 IslandProgressBar.Margin = new Thickness(0, -progressTopBleed, 0, -physicalPixelLogical);
             }
 
-            IslandProgressBar.Update(dt, t, GetDisplayedProgress(), visualWidth, visualHeight);
+            IslandProgressBar.Update(dt, t, GetDisplayedProgress(_frameDisplayedSession), visualWidth, visualHeight);
             RectInt32 bounds = ResolveIslandWindowBounds(state, displayWorkArea, _dpiScale);
 
             if (_isMediaProgressResetPending && IslandProgressBar.IsSettledAtZero)
@@ -201,12 +204,12 @@ namespace wisland
                 }
             }
 
-            if (CompactContent.Opacity != state.CompactOpacity)
+            if (Math.Abs(CompactContent.Opacity - state.CompactOpacity) > 0.005)
             {
                 CompactContent.Opacity = state.CompactOpacity;
             }
 
-            if (ExpandedContent.Opacity != state.ExpandedOpacity)
+            if (Math.Abs(ExpandedContent.Opacity - state.ExpandedOpacity) > 0.005)
             {
                 ExpandedContent.Opacity = state.ExpandedOpacity;
             }

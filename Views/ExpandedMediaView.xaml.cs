@@ -49,6 +49,11 @@ namespace wisland.Views
         private readonly long[] _avatarLoadTokens = new long[4];
         private readonly RectangleGeometry _headerAvatarViewportClip = new();
 
+        // Cached measurement elements to avoid per-transition XAML element allocation
+        private StackPanel? _measureLabelStack;
+        private TextBlock? _measureLabel;
+        private FontIcon? _measureExpandIcon;
+
         private Color _mainColor = Microsoft.UI.Colors.White;
         private Color _subColor = Microsoft.UI.Colors.LightGray;
         private Color _iconColor = Microsoft.UI.Colors.White;
@@ -1298,37 +1303,39 @@ namespace wisland.Views
 
         private double MeasureHeaderContentWidth(HeaderTextSnapshot snapshot, AvatarStripSnapshot avatarSnapshot)
         {
-            StackPanel labelStack = new()
+            _measureLabelStack ??= new StackPanel
             {
                 Orientation = Orientation.Horizontal,
                 Spacing = 4
             };
-
-            TextBlock label = new()
+            _measureLabel ??= new TextBlock
             {
-                Text = snapshot.Label,
                 FontSize = HeaderLabelPrimary.FontSize,
                 FontWeight = HeaderLabelPrimary.FontWeight,
                 TextTrimming = TextTrimming.CharacterEllipsis,
                 MaxWidth = HeaderLabelPrimary.MaxWidth
             };
-            labelStack.Children.Add(label);
+
+            _measureLabelStack.Children.Clear();
+            _measureLabel.Text = snapshot.Label;
+            _measureLabelStack.Children.Add(_measureLabel);
 
             if (snapshot.ShowExpandHint)
             {
-                labelStack.Children.Add(new FontIcon
+                _measureExpandIcon ??= new FontIcon
                 {
                     Glyph = HeaderExpandGlyphPrimary.Glyph,
                     FontSize = HeaderExpandGlyphPrimary.FontSize
-                });
+                };
+                _measureLabelStack.Children.Add(_measureExpandIcon);
             }
 
-            labelStack.Measure(new Size(double.PositiveInfinity, double.PositiveInfinity));
+            _measureLabelStack.Measure(new Size(double.PositiveInfinity, double.PositiveInfinity));
             double avatarWidth = MeasureHeaderAvatarViewportWidth(avatarSnapshot);
             double gapWidth = avatarWidth > 0
                 ? HeaderChipContentRoot.ColumnSpacing
                 : 0.0;
-            return Math.Ceiling(avatarWidth + gapWidth + labelStack.DesiredSize.Width);
+            return Math.Ceiling(avatarWidth + gapWidth + _measureLabelStack.DesiredSize.Width);
         }
 
         private HeaderTextSnapshot CreateMediaHeaderTextSnapshot(

@@ -171,13 +171,21 @@ namespace wisland
 
         private double GetDisplayedProgress()
         {
-            MediaSessionSnapshot? displayedSession = GetDisplayedMediaSessionSnapshot();
+            return GetDisplayedProgress(GetDisplayedMediaSessionSnapshot());
+        }
+
+        private double GetDisplayedProgress(MediaSessionSnapshot? displayedSession)
+        {
             return _taskProgress ?? (_isMediaProgressResetPending ? 0.0 : displayedSession?.Progress ?? 0.0);
         }
 
         private bool ShouldShowProgressEffect()
         {
-            MediaSessionSnapshot? displayedSession = GetDisplayedMediaSessionSnapshot();
+            return ShouldShowProgressEffect(GetDisplayedMediaSessionSnapshot());
+        }
+
+        private bool ShouldShowProgressEffect(MediaSessionSnapshot? displayedSession)
+        {
             bool hasDisplayedTimeline = displayedSession.HasValue && displayedSession.Value.HasTimeline;
             return _taskProgress.HasValue
                 || _isMediaProgressResetPending
@@ -187,7 +195,11 @@ namespace wisland
 
         private bool ShouldAnimateProgressShimmer()
         {
-            MediaSessionSnapshot? displayedSession = GetDisplayedMediaSessionSnapshot();
+            return ShouldAnimateProgressShimmer(GetDisplayedMediaSessionSnapshot());
+        }
+
+        private bool ShouldAnimateProgressShimmer(MediaSessionSnapshot? displayedSession)
+        {
             return _taskProgress.HasValue
                 || (displayedSession.HasValue
                     && displayedSession.Value.HasTimeline

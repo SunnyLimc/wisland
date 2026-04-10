@@ -16,6 +16,7 @@ namespace wisland.Controls
         private bool _isEffectVisible;
         private bool _isShimmerActive;
         private bool _shouldSnapToTargetWidth;
+        private bool _hasInitializedCoreInvariants;
 
         // Last-rendered values for dirty checking
         private double _lastRenderedWidth = -1;
@@ -82,13 +83,13 @@ namespace wisland.Controls
 
             if (_isShimmerActive)
             {
-                ShimmerTransform.X = -100;
+                ShimmerTransform.X = -300;
                 ShimmerStoryboard.Begin();
             }
             else
             {
                 ShimmerStoryboard.Stop();
-                ShimmerTransform.X = -100;
+                ShimmerTransform.X = -300;
                 ProgressShimmer.Opacity = 0;
             }
         }
@@ -139,6 +140,12 @@ namespace wisland.Controls
             {
                 _previousProgressWidth = _currentProgressWidth;
                 _currentProgressWidth += (targetProgressWidth - _currentProgressWidth) * t;
+
+                // Snap to target when within settling threshold to avoid residual drift
+                if (Math.Abs(_currentProgressWidth - targetProgressWidth) < 0.05)
+                {
+                    _currentProgressWidth = targetProgressWidth;
+                }
             }
 
             double finalProgressWidth = Math.Max(HorizontalInset, _currentProgressWidth);
@@ -187,8 +194,13 @@ namespace wisland.Controls
                     _lastRenderedCoreInset = coreInset;
                 }
 
-                ProgressLaserCore.Height = double.NaN;
-                ProgressLaserCore.CornerRadius = new CornerRadius(1);
+                if (!_hasInitializedCoreInvariants)
+                {
+                    ProgressLaserCore.Height = double.NaN;
+                    ProgressLaserCore.CornerRadius = new CornerRadius(1);
+                    _hasInitializedCoreInvariants = true;
+                }
+
                 _lastRenderedHeight = currentHeight;
             }
         }
