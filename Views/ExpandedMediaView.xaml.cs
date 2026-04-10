@@ -979,7 +979,13 @@ namespace wisland.Views
 
         private void UpdateHeaderAvatarViewportWidth(AvatarStripSnapshot snapshot)
         {
-            HeaderAvatarViewport.Width = MeasureHeaderAvatarViewportWidth(snapshot);
+            double width = MeasureHeaderAvatarViewportWidth(snapshot);
+            HeaderAvatarViewport.Width = width;
+            // Collapse the viewport when empty so ColumnSpacing is not applied,
+            // preventing the label from being offset right by the gap.
+            HeaderAvatarViewport.Visibility = width > 0
+                ? Visibility.Visible
+                : Visibility.Collapsed;
         }
 
         private void UpdateHeaderAvatarViewportBounds()
@@ -1301,7 +1307,9 @@ namespace wisland.Views
             Thickness padding = HeaderChipContentRoot.Margin;
             Thickness borderThickness = HeaderChipBorder.BorderThickness;
             double chromeWidth = padding.Left + padding.Right + borderThickness.Left + borderThickness.Right;
-            return Math.Ceiling(MeasureHeaderContentWidth(snapshot, avatarSnapshot) + chromeWidth);
+            // Add 1px buffer to compensate for subpixel text measurement differences
+            // between the offscreen measurement element and the in-tree TextBlock.
+            return Math.Ceiling(MeasureHeaderContentWidth(snapshot, avatarSnapshot) + chromeWidth) + 1;
         }
 
         private double MeasureHeaderContentWidth(HeaderTextSnapshot snapshot, AvatarStripSnapshot avatarSnapshot)
