@@ -72,13 +72,13 @@ namespace wisland.Views
         private void ApplyTextToSlot(int slotIndex, string text)
         {
             _slotText[slotIndex] = text;
-            GetTextBlock(slotIndex).Text = text;
+            GetMarquee(slotIndex).Text = text;
         }
 
         private void ApplyTextColorToSlot(int slotIndex)
-            => GetTextBlock(slotIndex).Foreground = new SolidColorBrush(_textColor);
+            => GetMarquee(slotIndex).MarqueeForeground = new SolidColorBrush(_textColor);
 
-        private TextBlock GetTextBlock(int slotIndex)
+        private MarqueeText GetMarquee(int slotIndex)
             => slotIndex == 0 ? CompactTextPrimary : CompactTextSecondary;
     }
 }

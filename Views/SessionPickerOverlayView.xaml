@@ -3,6 +3,7 @@
     xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
     xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
     xmlns:local="using:wisland.Views"
+    xmlns:controls="using:wisland.Controls"
     xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
     xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
     mc:Ignorable="d">
@@ -294,16 +295,16 @@
                                     <StackPanel Grid.Column="1"
                                                 Spacing="3"
                                                 VerticalAlignment="Center">
-                                        <TextBlock Text="{Binding SourceName}"
-                                                   FontSize="11"
-                                                   FontWeight="SemiBold"
-                                                   Foreground="{Binding SecondaryForeground}"
-                                                   TextTrimming="CharacterEllipsis" />
-                                        <TextBlock Text="{Binding SecondaryLine}"
-                                                   FontSize="13"
-                                                   FontWeight="SemiBold"
-                                                   Foreground="{Binding PrimaryForeground}"
-                                                   TextTrimming="CharacterEllipsis" />
+                                        <controls:MarqueeText Text="{Binding SourceName}"
+                                                   MarqueeFontSize="11"
+                                                   MarqueeFontWeight="SemiBold"
+                                                   MarqueeForeground="{Binding SecondaryForeground}"
+                                                   ScrollSpeed="26" />
+                                        <controls:MarqueeText Text="{Binding SecondaryLine}"
+                                                   MarqueeFontSize="13"
+                                                   MarqueeFontWeight="SemiBold"
+                                                   MarqueeForeground="{Binding PrimaryForeground}"
+                                                   ScrollSpeed="30" />
                                     </StackPanel>
 
                                     <Border Grid.Column="2"

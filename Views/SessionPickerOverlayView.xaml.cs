@@ -15,6 +15,7 @@ using Windows.Foundation;
 using Windows.System;
 using Windows.UI;
 using wisland.Helpers;
+using wisland.Controls;
 using wisland.Models;
 using wisland.Services;
 
@@ -93,6 +94,7 @@ namespace wisland.Views
 
         public void PrepareShowAnimation()
         {
+            ResetAllMarquees();
             EnsureChromeAnimationVisual();
             EnsurePanelAnimationVisual();
             EnsureSessionListAnimationVisual();
@@ -700,6 +702,28 @@ namespace wisland.Views
             }
 
             return null;
+        }
+
+        private void ResetAllMarquees()
+        {
+            for (int i = 0; i < SessionList.Items.Count; i++)
+            {
+                if (SessionList.ContainerFromIndex(i) is ListViewItem container)
+                    ResetMarqueesInTree(container);
+            }
+        }
+
+        private static void ResetMarqueesInTree(DependencyObject root)
+        {
+            int count = VisualTreeHelper.GetChildrenCount(root);
+            for (int i = 0; i < count; i++)
+            {
+                DependencyObject child = VisualTreeHelper.GetChild(root, i);
+                if (child is MarqueeText marquee)
+                    marquee.Reset();
+                else
+                    ResetMarqueesInTree(child);
+            }
         }
 
         private void EnsureChromeAnimationVisual()

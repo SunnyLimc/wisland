@@ -3,6 +3,7 @@
     xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
     xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
     xmlns:local="using:wisland.Views"
+    xmlns:controls="using:wisland.Controls"
     xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
     xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
     mc:Ignorable="d">
@@ -208,15 +209,15 @@
                   SizeChanged="MetadataViewport_SizeChanged">
                 <Grid x:Name="MetadataSlotPrimary">
                     <StackPanel VerticalAlignment="Center" HorizontalAlignment="Center">
-                        <TextBlock x:Name="MusicTitleTextPrimary" Text="" Foreground="White" FontSize="16" FontWeight="Bold" HorizontalAlignment="Center" TextAlignment="Center" TextTrimming="CharacterEllipsis" MaxWidth="320"/>
-                        <TextBlock x:Name="ArtistNameTextPrimary" Text="" Foreground="LightGray" FontSize="12" HorizontalAlignment="Center" TextAlignment="Center" TextTrimming="CharacterEllipsis" MaxWidth="320"/>
+                        <controls:MarqueeText x:Name="MusicTitleTextPrimary" Text="" MarqueeForeground="White" MarqueeFontSize="16" MarqueeFontWeight="Bold" HorizontalAlignment="Center" HorizontalTextAlignment="Center" MaxWidth="320" ScrollSpeed="32"/>
+                        <controls:MarqueeText x:Name="ArtistNameTextPrimary" Text="" MarqueeForeground="LightGray" MarqueeFontSize="12" HorizontalAlignment="Center" HorizontalTextAlignment="Center" MaxWidth="320" ScrollSpeed="28"/>
                     </StackPanel>
                 </Grid>
 
                 <Grid x:Name="MetadataSlotSecondary" Visibility="Collapsed">
                     <StackPanel VerticalAlignment="Center" HorizontalAlignment="Center">
-                        <TextBlock x:Name="MusicTitleTextSecondary" Text="" Foreground="White" FontSize="16" FontWeight="Bold" HorizontalAlignment="Center" TextAlignment="Center" TextTrimming="CharacterEllipsis" MaxWidth="320"/>
-                        <TextBlock x:Name="ArtistNameTextSecondary" Text="" Foreground="LightGray" FontSize="12" HorizontalAlignment="Center" TextAlignment="Center" TextTrimming="CharacterEllipsis" MaxWidth="320"/>
+                        <controls:MarqueeText x:Name="MusicTitleTextSecondary" Text="" MarqueeForeground="White" MarqueeFontSize="16" MarqueeFontWeight="Bold" HorizontalAlignment="Center" HorizontalTextAlignment="Center" MaxWidth="320" ScrollSpeed="32"/>
+                        <controls:MarqueeText x:Name="ArtistNameTextSecondary" Text="" MarqueeForeground="LightGray" MarqueeFontSize="12" HorizontalAlignment="Center" HorizontalTextAlignment="Center" MaxWidth="320" ScrollSpeed="28"/>
                     </StackPanel>
                 </Grid>
             </Grid>

@@ -3,6 +3,7 @@
     xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
     xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
     xmlns:local="using:wisland.Views"
+    xmlns:controls="using:wisland.Controls"
     xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
     xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
     mc:Ignorable="d">
@@ -13,27 +14,27 @@
               VerticalAlignment="Stretch"
               SizeChanged="TextViewport_SizeChanged">
             <Grid x:Name="CompactTextSlotPrimary">
-                <TextBlock x:Name="CompactTextPrimary"
-                           Text="Wisland"
-                           Foreground="White"
-                           HorizontalAlignment="Center"
-                           VerticalAlignment="Center"
-                           FontSize="12"
-                           TextAlignment="Center"
-                           TextTrimming="CharacterEllipsis"
-                           MaxWidth="160"/>
+                <controls:MarqueeText x:Name="CompactTextPrimary"
+                                      Text="Wisland"
+                                      MarqueeForeground="White"
+                                      HorizontalAlignment="Center"
+                                      VerticalAlignment="Center"
+                                      MarqueeFontSize="12"
+                                      HorizontalTextAlignment="Center"
+                                      MaxWidth="160"
+                                      ScrollSpeed="30"/>
             </Grid>
 
             <Grid x:Name="CompactTextSlotSecondary" Visibility="Collapsed">
-                <TextBlock x:Name="CompactTextSecondary"
-                           Text="Wisland"
-                           Foreground="White"
-                           HorizontalAlignment="Center"
-                           VerticalAlignment="Center"
-                           FontSize="12"
-                           TextAlignment="Center"
-                           TextTrimming="CharacterEllipsis"
-                           MaxWidth="160"/>
+                <controls:MarqueeText x:Name="CompactTextSecondary"
+                                      Text="Wisland"
+                                      MarqueeForeground="White"
+                                      HorizontalAlignment="Center"
+                                      VerticalAlignment="Center"
+                                      MarqueeFontSize="12"
+                                      HorizontalTextAlignment="Center"
+                                      MaxWidth="160"
+                                      ScrollSpeed="30"/>
             </Grid>
         </Grid>
     </Grid>

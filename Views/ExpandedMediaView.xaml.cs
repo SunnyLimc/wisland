@@ -1520,8 +1520,8 @@ namespace wisland.Views
         private void ApplyMetadataSnapshotToSlot(int slotIndex, MetadataSnapshot snapshot)
         {
             _metadataSnapshots[slotIndex] = snapshot;
-            TextBlock title = GetTitleText(slotIndex);
-            TextBlock artist = GetArtistText(slotIndex);
+            MarqueeText title = GetTitleText(slotIndex);
+            MarqueeText artist = GetArtistText(slotIndex);
 
             title.Text = snapshot.Title;
             artist.Text = snapshot.Artist;
@@ -1579,10 +1579,10 @@ namespace wisland.Views
         {
             SolidColorBrush mainBrush = new(_mainColor);
             SolidColorBrush subBrush = new(_subColor);
-            MusicTitleTextPrimary.Foreground = mainBrush;
-            MusicTitleTextSecondary.Foreground = mainBrush;
-            ArtistNameTextPrimary.Foreground = subBrush;
-            ArtistNameTextSecondary.Foreground = subBrush;
+            MusicTitleTextPrimary.MarqueeForeground = mainBrush;
+            MusicTitleTextSecondary.MarqueeForeground = mainBrush;
+            ArtistNameTextPrimary.MarqueeForeground = subBrush;
+            ArtistNameTextSecondary.MarqueeForeground = subBrush;
         }
 
         private void ApplyTransportIconColors()
@@ -1649,10 +1649,10 @@ namespace wisland.Views
                 _headerLabels[slotIndex].Text,
                 ShowExpandHint: _headerExpandGlyphs[slotIndex].Visibility == Visibility.Visible);
 
-        private TextBlock GetTitleText(int slotIndex)
+        private MarqueeText GetTitleText(int slotIndex)
             => slotIndex == 0 ? MusicTitleTextPrimary : MusicTitleTextSecondary;
 
-        private TextBlock GetArtistText(int slotIndex)
+        private MarqueeText GetArtistText(int slotIndex)
             => slotIndex == 0 ? ArtistNameTextPrimary : ArtistNameTextSecondary;
 
         private static string GetHeaderLabel(MediaSessionSnapshot session, bool showTransportSwitchingHint)
