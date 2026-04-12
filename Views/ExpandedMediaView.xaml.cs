@@ -245,8 +245,11 @@ namespace wisland.Views
 
         public Rect GetSessionPickerAnchorBounds(UIElement relativeTo)
         {
-            GeneralTransform transform = HeaderChipBorder.TransformToVisual(relativeTo);
-            return transform.TransformBounds(new Rect(0, 0, HeaderChipBorder.ActualWidth, HeaderChipBorder.ActualHeight));
+            // Use SessionHeaderButton (above the composition-transformed HeaderChipRoot)
+            // so that hover Scale/Translation on the chip visual don't cause sub-pixel
+            // anchor drift that jitters the session picker overlay window.
+            GeneralTransform transform = SessionHeaderButton.TransformToVisual(relativeTo);
+            return transform.TransformBounds(new Rect(0, 0, SessionHeaderButton.ActualWidth, SessionHeaderButton.ActualHeight));
         }
 
         private bool ApplyHeaderTextSnapshot(
