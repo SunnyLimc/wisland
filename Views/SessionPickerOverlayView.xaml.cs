@@ -22,7 +22,7 @@ namespace wisland.Views
 {
     public sealed partial class SessionPickerOverlayView : UserControl
     {
-        private static readonly MediaSourceIconResolver IconResolver = new();
+        private static MediaSourceIconResolver IconResolver => MediaSourceIconResolver.Shared;
         private const double ScrollFadeOpacity = 1.0;
         private const double ScrollFadeEpsilon = 0.5;
         private readonly ObservableCollection<SessionPickerRowVisualModel> _rows = new();

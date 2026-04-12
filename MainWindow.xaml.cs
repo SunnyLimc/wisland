@@ -221,7 +221,9 @@ namespace wisland
                 _settings,
                 _aiSongResolver,
                 onBackdropChanged: type => SetBackdrop(type),
-                onAiSettingsChanged: () => OnAiSettingsChanged());
+                onAiSettingsChanged: () => OnAiSettingsChanged(),
+                onSetTaskProgress: p => SetTaskProgress(p),
+                onClearTaskProgress: () => ClearTaskProgress());
             _settingsWindow.Closed += (_, _) => _settingsWindow = null;
             _settingsWindow.Activate();
         }

@@ -490,7 +490,37 @@
   <data name="LogLevelError.Content" xml:space="preserve">
     <value>Error</value>
   </data>
-  <data name="OpenLogsFolder.Content" xml:space="preserve">
+  <data name="LogLevelChanged" xml:space="preserve">
+    <value>ログレベルを {0} に変更しました。</value>
+  </data>
+  <data name="DebugDumpsHeader.Text" xml:space="preserve">
+    <value>デバッグダンプ</value>
+  </data>
+  <data name="DebugDumpsDescription.Text" xml:space="preserve">
+    <value>アイコン解決とメディアセッション検出のトラブルシューティング用に診断スナップショットを取得します。</value>
+  </data>
+  <data name="DumpIcons.Content" xml:space="preserve">
+    <value>アイコンをダンプ</value>
+  </data>
+  <data name="DumpGsmtc.Content" xml:space="preserve">
+    <value>GSMTCセッションをダンプ</value>
+  </data>
+  <data name="OpenDumpFolder.Content" xml:space="preserve">
     <value>ログフォルダーを開く</value>
+  </data>
+  <data name="DumpIconsTriggered" xml:space="preserve">
+    <value>セッションアイコンをダンプ中…</value>
+  </data>
+  <data name="DumpIconsDone" xml:space="preserve">
+    <value>アイコンダンプが完了しました。</value>
+  </data>
+  <data name="DumpGsmtcDone" xml:space="preserve">
+    <value>GSMTCセッションスナップショットをエクスポートしました。</value>
+  </data>
+  <data name="TestToolsHeader.Text" xml:space="preserve">
+    <value>テストツール</value>
+  </data>
+  <data name="TestProgress.Content" xml:space="preserve">
+    <value>プログレスバーをテスト</value>
   </data>
 </root>

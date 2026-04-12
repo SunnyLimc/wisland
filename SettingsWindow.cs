@@ -19,6 +19,8 @@ namespace wisland
         private readonly WindowAppearanceService _appearanceService = new();
         private readonly Action<Models.BackdropType> _onBackdropChanged;
         private readonly Action _onAiSettingsChanged;
+        private readonly Action<double> _onSetTaskProgress;
+        private readonly Action _onClearTaskProgress;
 
         private readonly NavigationView _navView;
         private readonly Frame _contentFrame;
@@ -33,12 +35,16 @@ namespace wisland
             SettingsService settings,
             AiSongResolverService aiResolver,
             Action<Models.BackdropType> onBackdropChanged,
-            Action onAiSettingsChanged)
+            Action onAiSettingsChanged,
+            Action<double> onSetTaskProgress,
+            Action onClearTaskProgress)
         {
             _settings = settings;
             _aiResolver = aiResolver;
             _onBackdropChanged = onBackdropChanged;
             _onAiSettingsChanged = onAiSettingsChanged;
+            _onSetTaskProgress = onSetTaskProgress;
+            _onClearTaskProgress = onClearTaskProgress;
 
             Title = Loc.GetString("Settings/Title");
             ExtendsContentIntoTitleBar = true;
@@ -170,7 +176,7 @@ namespace wisland
                     _contentFrame.Content = _aiSongOverridePage;
                     break;
                 case "diagnostics":
-                    _diagnosticsPage ??= new DiagnosticsPage(_settings);
+                    _diagnosticsPage ??= new DiagnosticsPage(_settings, _onSetTaskProgress, _onClearTaskProgress);
                     _contentFrame.Content = _diagnosticsPage;
                     break;
             }

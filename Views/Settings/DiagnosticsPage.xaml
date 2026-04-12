@@ -35,8 +35,41 @@
                                         <ComboBoxItem x:Uid="LogLevelError" Tag="Error"/>
                                 </ComboBox>
 
-                                <Button x:Uid="OpenLogsFolder" x:Name="OpenLogsFolderButton"
-                    Click="OpenLogsFolderButton_Click"/>
+                                <TextBlock x:Name="LogLevelStatusText"
+                       Style="{StaticResource CaptionTextBlockStyle}"
+                       Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                       Visibility="Collapsed"/>
+
+                                <TextBlock x:Uid="DebugDumpsHeader"
+                       Style="{StaticResource SubtitleTextBlockStyle}"
+                       Margin="0,16,0,0"/>
+
+                                <TextBlock x:Uid="DebugDumpsDescription"
+                       Style="{StaticResource BodyTextBlockStyle}"
+                       Foreground="{ThemeResource TextFillColorSecondaryBrush}"/>
+
+                                <StackPanel Orientation="Horizontal" Spacing="8">
+                                    <Button x:Uid="DumpIcons" x:Name="DumpIconsButton"
+                        Click="DumpIconsButton_Click"/>
+                                    <Button x:Uid="DumpGsmtc" x:Name="DumpGsmtcButton"
+                        Click="DumpGsmtcButton_Click"/>
+                                </StackPanel>
+
+                                <Button x:Uid="OpenDumpFolder" x:Name="OpenDumpFolderButton"
+                    Click="OpenDumpFolderButton_Click"/>
+
+                                <TextBlock x:Name="DumpStatusText"
+                       Style="{StaticResource CaptionTextBlockStyle}"
+                       Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                       TextWrapping="Wrap"
+                       Visibility="Collapsed"/>
+
+                                <TextBlock x:Uid="TestToolsHeader"
+                       Style="{StaticResource SubtitleTextBlockStyle}"
+                       Margin="0,16,0,0"/>
+
+                                <Button x:Uid="TestProgress" x:Name="TestProgressButton"
+                    Click="TestProgressButton_Click"/>
                         </StackPanel>
                 </ScrollViewer>
         </Grid>

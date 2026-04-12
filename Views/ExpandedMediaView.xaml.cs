@@ -21,7 +21,7 @@ namespace wisland.Views
 {
     public sealed partial class ExpandedMediaView : UserControl
     {
-        private static readonly MediaSourceIconResolver IconResolver = new();
+        private static MediaSourceIconResolver IconResolver => MediaSourceIconResolver.Shared;
         private const int HeaderAvatarVisibleCount = 3;
         private const float HeaderAvatarSize = 16.0f;
         private const float HeaderAvatarCenterPoint = HeaderAvatarSize * 0.5f;
