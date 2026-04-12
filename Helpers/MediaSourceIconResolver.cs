@@ -621,11 +621,11 @@ namespace wisland.Helpers
             // Build a tight square crop centered on the content.
             // Use a minimal 2% padding so the icon doesn't touch the clip edge.
             uint padded = Math.Max((uint)(contentMaxDim * 1.02), contentMaxDim + 2);
-            uint centerX = minX + contentW / 2;
-            uint centerY = minY + contentH / 2;
+            double centerX = minX + contentW * 0.5;
+            double centerY = minY + contentH * 0.5;
 
-            uint cropX = (uint)Math.Max(0, (int)centerX - (int)(padded / 2));
-            uint cropY = (uint)Math.Max(0, (int)centerY - (int)(padded / 2));
+            uint cropX = (uint)Math.Max(0, (int)Math.Round(centerX - padded * 0.5));
+            uint cropY = (uint)Math.Max(0, (int)Math.Round(centerY - padded * 0.5));
             uint cropW = Math.Min(padded, width - cropX);
             uint cropH = Math.Min(padded, height - cropY);
             uint cropSize = Math.Min(cropW, cropH);

@@ -356,6 +356,7 @@ namespace wisland.Views
             _headerLabelTransition.UpdateViewportBounds();
             InitializeHeaderLabelShiftMotion();
             InitializeHeaderAvatarStrip();
+            ApplyAvatarIconSubpixelCorrection();
             UpdateHeaderAvatarViewportWidth(_avatarStripSnapshot);
             UpdateHeaderAvatarViewportBounds();
             ApplyAvatarStripSnapshotImmediately(_avatarStripSnapshot);
@@ -978,6 +979,19 @@ namespace wisland.Views
             _avatarExitEasing = _avatarCompositor.CreateCubicBezierEasingFunction(
                 new Vector2(0.42f, 0.0f),
                 new Vector2(0.92f, 0.52f));
+        }
+
+        private void ApplyAvatarIconSubpixelCorrection()
+        {
+            // WinUI rounds Border content insets per-side during layout, which
+            // can bias small icon images by a fraction of a logical pixel.
+            // A fixed -0.25 logical pixel translate compensates for the
+            // right-down shift this introduces across common DPI scales.
+            var transform = new Microsoft.UI.Xaml.Media.TranslateTransform { X = -0.25, Y = -0.25 };
+            for (int i = 0; i < _headerAvatarImages.Length; i++)
+            {
+                _headerAvatarImages[i].RenderTransform = transform;
+            }
         }
 
         private void UpdateHeaderAvatarViewportWidth(AvatarStripSnapshot snapshot)
