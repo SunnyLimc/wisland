@@ -91,6 +91,9 @@ namespace wisland
         private readonly Microsoft.UI.Composition.RectangleClip _contentClip;
         private readonly Microsoft.UI.Composition.Visual _contentVisual;
 
+        /// <summary>Whether the immersive media view is currently the active expanded view.</summary>
+        private bool IsImmersiveActive => _settings.UseImmersiveMediaView;
+
         // --- OS Window Sync State ---
         private int _lastPhysX, _lastPhysY, _lastPhysW, _lastPhysH;
         private int _anchorPhysicalX;

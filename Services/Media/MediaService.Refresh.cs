@@ -359,6 +359,7 @@ namespace wisland.Services
                 string artist = string.IsNullOrWhiteSpace(mediaProperties?.Artist)
                     ? UnknownArtistName
                     : mediaProperties!.Artist;
+                Windows.Storage.Streams.IRandomAccessStreamReference? thumbnail = mediaProperties?.Thumbnail;
 
                 Logger.Trace($"Prefetched session state: '{session.SourceAppUserModelId}' Title='{title}', Artist='{artist}', Status={playbackStatus}, pos={positionSeconds:F1}s, dur={durationSeconds:F1}s");
 
@@ -368,7 +369,8 @@ namespace wisland.Services
                     playbackStatus,
                     hasTimeline,
                     positionSeconds,
-                    durationSeconds);
+                    durationSeconds,
+                    thumbnail);
             }
             catch (Exception ex)
             {
@@ -441,6 +443,7 @@ namespace wisland.Services
 
                 string nextTitle = string.IsNullOrWhiteSpace(props.Title) ? UnknownTrackTitle : props.Title;
                 string nextArtist = string.IsNullOrWhiteSpace(props.Artist) ? UnknownArtistName : props.Artist;
+                Windows.Storage.Streams.IRandomAccessStreamReference? nextThumbnail = props.Thumbnail;
                 DateTimeOffset nowUtc = DateTimeOffset.UtcNow;
                 ServiceChangeResult changeResult = default;
                 bool hasChanges = false;
@@ -453,6 +456,7 @@ namespace wisland.Services
                     }
 
                     hasChanges = ApplyMediaProperties_NoLock(tracked, nextTitle, nextArtist, nowUtc);
+                    tracked.Thumbnail = nextThumbnail;
                     if (hasChanges)
                     {
                         Logger.Debug($"Media properties updated for '{tracked.SessionKey}': Title='{nextTitle}', Artist='{nextArtist}'");

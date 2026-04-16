@@ -42,6 +42,8 @@ namespace wisland
                 GetThemeKind(),
                 _uiSettings.GetColorValue(UIColorType.Accent));
 
+            ImmersiveContent.SetColors(tokens.PrimaryTextColor, tokens.SecondaryTextColor, tokens.IconColor);
+
             Logger.Debug($"Appearance refreshed: theme={GetThemeKind()}, accent=#{_uiSettings.GetColorValue(UIColorType.Accent):X8}, backdrop={_currentBackdropType}");
 
             _currentVisualTokens = tokens;

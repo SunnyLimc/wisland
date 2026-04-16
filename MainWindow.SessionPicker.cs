@@ -34,6 +34,7 @@ namespace wisland
         private void InitializeSessionPickerOverlay()
         {
             ExpandedContent.SessionPickerToggleRequested += ExpandedContent_SessionPickerToggleRequested;
+            ImmersiveContent.SessionPickerToggleRequested += ExpandedContent_SessionPickerToggleRequested;
         }
 
         private void ApplySessionPickerAppearance(IslandVisualTokens tokens)
@@ -89,6 +90,7 @@ namespace wisland
             _sessionPickerLayoutMetrics = null;
             _controller.IsTransientSurfaceOpen = false;
             ExpandedContent.SetSessionPickerExpanded(false, useTransitions: false);
+            ImmersiveContent.SetSessionPickerExpanded(false, useTransitions: false);
             ResetSessionPickerOverlayAnimationState();
 
             if (_isClosed)
@@ -162,6 +164,10 @@ namespace wisland
                 true,
                 useTransitions: true,
                 durationOverrideMs: IslandConfig.SessionPickerOverlayOpenDurationMs);
+            ImmersiveContent.SetSessionPickerExpanded(
+                true,
+                useTransitions: true,
+                durationOverrideMs: IslandConfig.SessionPickerOverlayOpenDurationMs);
             BeginSessionPickerOpenAnimation(startBounds, endBounds);
             UpdateState();
         }
@@ -179,6 +185,10 @@ namespace wisland
             SessionPickerOverlayDismissMotion dismissMotion = SessionPickerOverlayDismissMotion.FromKind(dismissKind);
 
             ExpandedContent.SetSessionPickerExpanded(
+                false,
+                useTransitions: true,
+                durationOverrideMs: dismissMotion.DurationMs);
+            ImmersiveContent.SetSessionPickerExpanded(
                 false,
                 useTransitions: true,
                 durationOverrideMs: dismissMotion.DurationMs);
@@ -269,7 +279,9 @@ namespace wisland
         private bool TryGetSessionPickerAnchorPhysicalBounds(out RectInt32 anchorBounds)
         {
             anchorBounds = default;
-            Rect anchorLogicalBounds = ExpandedContent.GetSessionPickerAnchorBounds(RootGrid);
+            Rect anchorLogicalBounds = IsImmersiveActive
+                ? ImmersiveContent.GetSessionPickerAnchorBounds(RootGrid)
+                : ExpandedContent.GetSessionPickerAnchorBounds(RootGrid);
             if (anchorLogicalBounds.Width <= 0 || anchorLogicalBounds.Height <= 0)
             {
                 return false;

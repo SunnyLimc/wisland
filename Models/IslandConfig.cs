@@ -13,6 +13,10 @@ namespace wisland.Models
         public const double ExpandedWidth = 400;
         public const double ExpandedHeight = 120;
 
+        // --- Immersive Expanded State ---
+        public const double ImmersiveExpandedWidth = 420;
+        public const double ImmersiveExpandedHeight = 210;
+
         // --- Animation ---
         public const double AnimationSpeed = 25.0;
         public const double MaxDeltaTime = 0.1;

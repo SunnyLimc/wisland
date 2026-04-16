@@ -310,6 +310,7 @@ namespace wisland.Services
                 tracked.MissingSinceUtc = null;
                 ResetPendingReconnect_NoLock(tracked);
                 ApplyMediaProperties_NoLock(tracked, prefetchedState.Title, prefetchedState.Artist, nowUtc);
+                tracked.Thumbnail = prefetchedState.Thumbnail;
                 ApplyPlaybackState_NoLock(tracked, prefetchedState.PlaybackStatus, nowUtc);
                 ApplyTimelineState_NoLock(
                     tracked,

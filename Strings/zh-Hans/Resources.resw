@@ -523,4 +523,13 @@
   <data name="TestProgress.Content" xml:space="preserve">
     <value>测试进度条</value>
   </data>
+  <data name="Appearance/ImmersiveMediaToggle" xml:space="preserve">
+    <value>沉浸式媒体体验</value>
+  </data>
+  <data name="Appearance/ImmersiveMediaOn" xml:space="preserve">
+    <value>开</value>
+  </data>
+  <data name="Appearance/ImmersiveMediaOff" xml:space="preserve">
+    <value>关</value>
+  </data>
 </root>

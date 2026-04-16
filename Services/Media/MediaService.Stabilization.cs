@@ -316,6 +316,7 @@ namespace wisland.Services
                 tracked.Presence,
                 tracked.LastSeenUtc,
                 tracked.MissingSinceUtc,
-                MediaSessionStabilizationReason.None);
+                MediaSessionStabilizationReason.None,
+                tracked.Thumbnail);
     }
 }

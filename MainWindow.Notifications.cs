@@ -12,7 +12,8 @@ namespace wisland
         /// </summary>
         public void ShowNotification(string title, string message, int durationMs = IslandConfig.DefaultNotificationDurationMs, string? header = null)
         {
-            header ??= Loc.GetString("Media/Notification");            Logger.Info($"Notification shown: '{title}' ({durationMs}ms)");
+            header ??= Loc.GetString("Media/Notification");
+            Logger.Info($"Notification shown: '{title}' ({durationMs}ms)");
             _ = ShowNotificationAsync(title, message, header, durationMs);
         }
 
@@ -41,6 +42,7 @@ namespace wisland
 
                     HideSessionPickerOverlay(reconcileHover: false);
                     ExpandedContent.ShowNotification(title, message, header);
+                    ImmersiveContent.ShowNotification(title, message, header);
                     _controller.IsNotifying = true;
                     UpdateState();
                 });

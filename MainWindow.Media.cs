@@ -88,7 +88,18 @@ namespace wisland
 
             if (!_controller.IsNotifying)
             {
+                // Sync immersive dimensions on the controller
+                _controller.UseImmersiveDimensions = IsImmersiveActive;
+
                 ExpandedContent.UpdateMedia(
+                    context.DisplayedSession,
+                    context.DisplayIndex,
+                    context.OrderedSessions.Count,
+                    context.OrderedSessions,
+                    directionHint,
+                    context.ShowTransportSwitchingHint);
+
+                ImmersiveContent.UpdateMedia(
                     context.DisplayedSession,
                     context.DisplayIndex,
                     context.OrderedSessions.Count,

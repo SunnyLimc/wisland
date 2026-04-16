@@ -54,6 +54,9 @@
                     Severity="Informational"
                     IsOpen="False"
                     IsClosable="True"/>
+
+                                <ToggleSwitch x:Name="ImmersiveMediaToggle"
+                    Toggled="ImmersiveMediaToggle_Toggled"/>
                         </StackPanel>
                 </ScrollViewer>
         </Grid>

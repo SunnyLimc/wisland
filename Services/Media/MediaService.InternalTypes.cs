@@ -1,6 +1,7 @@
 using System;
 using wisland.Models;
 using Windows.Media.Control;
+using Windows.Storage.Streams;
 
 namespace wisland.Services
 {
@@ -47,6 +48,7 @@ namespace wisland.Services
             public double DurationSeconds { get; set; }
             public DateTimeOffset? LastDisplayedUtc { get; set; }
             public DateTimeOffset? LastSystemCurrentUtc { get; set; }
+            public IRandomAccessStreamReference? Thumbnail { get; set; }
             public bool HasPendingReconnect { get; set; }
             public string PendingTitle { get; set; }
             public string PendingArtist { get; set; }
@@ -73,7 +75,8 @@ namespace wisland.Services
             GlobalSystemMediaTransportControlsSessionPlaybackStatus PlaybackStatus,
             bool HasTimeline,
             double PositionSeconds,
-            double DurationSeconds)
+            double DurationSeconds,
+            IRandomAccessStreamReference? Thumbnail)
         {
             public static readonly PrefetchedSessionState Empty = new(
                 UnknownTrackTitle,
@@ -81,7 +84,8 @@ namespace wisland.Services
                 GlobalSystemMediaTransportControlsSessionPlaybackStatus.Closed,
                 HasTimeline: false,
                 PositionSeconds: 0,
-                DurationSeconds: 0);
+                DurationSeconds: 0,
+                Thumbnail: null);
 
             public bool HasConcreteMetadata => MediaService.HasConcreteMetadata(Title);
         }

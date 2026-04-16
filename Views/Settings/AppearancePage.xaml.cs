@@ -55,6 +55,11 @@ namespace wisland.Views.Settings
             }
 
             _suppressSelectionChanged = false;
+
+            ImmersiveMediaToggle.Header = Loc.GetString("Appearance/ImmersiveMediaToggle");
+            ImmersiveMediaToggle.OnContent = Loc.GetString("Appearance/ImmersiveMediaOn");
+            ImmersiveMediaToggle.OffContent = Loc.GetString("Appearance/ImmersiveMediaOff");
+            ImmersiveMediaToggle.IsOn = _settings.UseImmersiveMediaView;
         }
 
         private void BackdropSelector_SelectionChanged(object sender, SelectionChangedEventArgs e)
@@ -70,6 +75,13 @@ namespace wisland.Views.Settings
                 };
                 _onBackdropChanged(type);
             }
+        }
+
+        private void ImmersiveMediaToggle_Toggled(object sender, RoutedEventArgs e)
+        {
+            if (_suppressSelectionChanged) return;
+            _settings.UseImmersiveMediaView = ImmersiveMediaToggle.IsOn;
+            _settings.Save();
         }
 
         private void LanguageSelector_SelectionChanged(object sender, SelectionChangedEventArgs e)

@@ -69,6 +69,9 @@ namespace wisland.Services
         /// <summary>Whether to use a native-language prompt template when available for the preferred language.</summary>
         public bool AiPreferNativePrompt { get; set; }
 
+        /// <summary>Whether to use the immersive media view when expanding to a media session.</summary>
+        public bool UseImmersiveMediaView { get; set; }
+
         /// <summary>Persisted settings window width. Null means use default.</summary>
         public int? SettingsWindowWidth { get; set; }
 
@@ -105,6 +108,7 @@ namespace wisland.Services
                     AiPreferredLanguage = data.AiPreferredLanguage;
                     AiTargetMarket = data.AiTargetMarket;
                     AiPreferNativePrompt = data.AiPreferNativePrompt;
+                    UseImmersiveMediaView = data.UseImmersiveMediaView;
                     SettingsWindowWidth = data.SettingsWindowWidth;
                     SettingsWindowHeight = data.SettingsWindowHeight;
                 }
@@ -145,6 +149,7 @@ namespace wisland.Services
                     AiPreferredLanguage = AiPreferredLanguage,
                     AiTargetMarket = AiTargetMarket,
                     AiPreferNativePrompt = AiPreferNativePrompt,
+                    UseImmersiveMediaView = UseImmersiveMediaView,
                     SettingsWindowWidth = SettingsWindowWidth,
                     SettingsWindowHeight = SettingsWindowHeight
                 };
@@ -272,6 +277,7 @@ namespace wisland.Services
             public string? AiPreferredLanguage { get; set; }
             public string? AiTargetMarket { get; set; }
             public bool AiPreferNativePrompt { get; set; }
+            public bool UseImmersiveMediaView { get; set; }
             public int? SettingsWindowWidth { get; set; }
             public int? SettingsWindowHeight { get; set; }
         }

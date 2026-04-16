@@ -19,6 +19,11 @@ namespace wisland.Services
         public bool IsHoverPending { get; set; }
         public bool IsTransientSurfaceOpen { get; set; }
 
+        /// <summary>
+        /// When true, the expanded state uses the larger immersive dimensions.
+        /// </summary>
+        public bool UseImmersiveDimensions { get; set; }
+
         // --- Current Value Outputs ---
         public IslandState Current { get; } = new();
 
@@ -85,8 +90,8 @@ namespace wisland.Services
 
         private void SetExpandedTargets(double y)
         {
-            _targetWidth = IslandConfig.ExpandedWidth;
-            _targetHeight = IslandConfig.ExpandedHeight;
+            _targetWidth = UseImmersiveDimensions ? IslandConfig.ImmersiveExpandedWidth : IslandConfig.ExpandedWidth;
+            _targetHeight = UseImmersiveDimensions ? IslandConfig.ImmersiveExpandedHeight : IslandConfig.ExpandedHeight;
             _targetY = y;
             _targetCompactOpacity = 0;
             _targetExpandedOpacity = 1;

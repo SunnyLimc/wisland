@@ -525,4 +525,13 @@
   <data name="TestProgress.Content" xml:space="preserve">
     <value>Test Progress Bar</value>
   </data>
+  <data name="Appearance/ImmersiveMediaToggle" xml:space="preserve">
+    <value>Immersive media experience</value>
+  </data>
+  <data name="Appearance/ImmersiveMediaOn" xml:space="preserve">
+    <value>On</value>
+  </data>
+  <data name="Appearance/ImmersiveMediaOff" xml:space="preserve">
+    <value>Off</value>
+  </data>
 </root>
