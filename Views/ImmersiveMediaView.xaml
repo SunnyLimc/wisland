@@ -5,7 +5,8 @@
     xmlns:controls="using:wisland.Controls"
     xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
     xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
-    mc:Ignorable="d">
+    mc:Ignorable="d"
+    RequestedTheme="Dark">
 
     <UserControl.Resources>
         <Style x:Key="TransportButtonStyle" TargetType="Button">
@@ -99,10 +100,12 @@
                             <TextBlock x:Name="HeaderLabel"
                                        FontSize="10"
                                        FontWeight="SemiBold"
+                                       Foreground="White"
                                        VerticalAlignment="Center"
                                        MaxWidth="160"
                                        TextTrimming="CharacterEllipsis" />
                             <FontIcon x:Name="HeaderExpandGlyph"
+                                      Foreground="#99FFFFFF"
                                       Glyph="&#xE70D;"
                                       FontSize="8"
                                       VerticalAlignment="Center"
@@ -196,13 +199,14 @@
                 <TextBlock x:Name="ElapsedTimeText"
                            Grid.Column="0"
                            FontSize="10"
+                           Foreground="#C8C8C8D2"
                            VerticalAlignment="Center"
                            Text="0:00" />
 
                 <Grid Grid.Column="1" Height="4" VerticalAlignment="Center" CornerRadius="2">
                     <Border x:Name="ProgressTrack"
                             CornerRadius="2"
-                            Background="#40FFFFFF" />
+                            Background="#55FFFFFF" />
                     <Border x:Name="ProgressFill"
                             CornerRadius="2"
                             HorizontalAlignment="Left"
@@ -216,6 +220,7 @@
                 <TextBlock x:Name="TotalTimeText"
                            Grid.Column="2"
                            FontSize="10"
+                           Foreground="#C8C8C8D2"
                            VerticalAlignment="Center"
                            Text="0:00" />
             </Grid>
@@ -228,20 +233,23 @@
                         Margin="0,2,0,0">
                 <Button x:Name="BtnBack"
                         Style="{StaticResource TransportButtonStyle}"
+                        Foreground="White"
                         Click="BtnBack_Click">
-                    <FontIcon Glyph="&#xE892;" FontSize="16" />
+                    <FontIcon Glyph="&#xE892;" FontSize="16" Foreground="White" />
                 </Button>
 
                 <Button x:Name="BtnPlayPause"
                         Style="{StaticResource PlayPauseButtonStyle}"
+                        Foreground="White"
                         Click="BtnPlayPause_Click">
-                    <FontIcon x:Name="PlayPauseIcon" Glyph="&#xE769;" FontSize="18" />
+                    <FontIcon x:Name="PlayPauseIcon" Glyph="&#xE769;" FontSize="18" Foreground="White" />
                 </Button>
 
                 <Button x:Name="BtnForward"
                         Style="{StaticResource TransportButtonStyle}"
+                        Foreground="White"
                         Click="BtnForward_Click">
-                    <FontIcon Glyph="&#xE893;" FontSize="16" />
+                    <FontIcon Glyph="&#xE893;" FontSize="16" Foreground="White" />
                 </Button>
             </StackPanel>
         </Grid>

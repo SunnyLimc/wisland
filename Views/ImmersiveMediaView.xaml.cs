@@ -275,15 +275,17 @@ namespace wisland.Views
 
         private void ApplyBackgroundPalette(AlbumArtPalette palette)
         {
-            GradientStop0.Color = palette.Dominant;
-            GradientStop1.Color = palette.Secondary;
-            GradientStop2.Color = palette.Average;
+            // Always darken gradient colors aggressively so background is reliably dark
+            GradientStop0.Color = ClampBrightness(palette.Dominant, maxLuminance: 60);
+            GradientStop1.Color = ClampBrightness(palette.Secondary, maxLuminance: 40);
+            GradientStop2.Color = ClampBrightness(palette.Average, maxLuminance: 50);
 
-            // Derive accent color from palette for progress fill
-            _mainColor = LightenToVisible(palette.Dominant);
-            _subColor = Color.FromArgb(200, 200, 200, 210);
+            // Text/icons are always white/light — no accent derivation.
+            // Only the progress fill gets a subtle accent tint from the album art.
+            _mainColor = Microsoft.UI.Colors.White;
+            _subColor = Color.FromArgb(210, 200, 200, 215);
             _iconColor = Microsoft.UI.Colors.White;
-            ProgressFillBrush.Color = _mainColor;
+            ProgressFillBrush.Color = EnsureBright(palette.Dominant);
 
             if (IsLoaded)
             {
@@ -293,24 +295,39 @@ namespace wisland.Views
         }
 
         /// <summary>
-        /// Lightens a color so it is readable against a dark background.
-        /// Returns white if the input is too dark.
+        /// Clamps a color's perceived luminance to a maximum, preserving hue.
+        /// Ensures gradient background is always dark enough for white text.
         /// </summary>
-        private static Color LightenToVisible(Color c)
+        private static Color ClampBrightness(Color c, double maxLuminance)
         {
-            // Perceived luminance (ITU-R BT.601)
             double lum = 0.299 * c.R + 0.587 * c.G + 0.114 * c.B;
-            if (lum > 160)
-                return c; // Already bright enough
+            if (lum <= maxLuminance)
+                return c;
 
-            // Lift the color toward white while preserving hue
-            double factor = lum > 20 ? 220.0 / lum : 0;
-            if (factor > 4) factor = 4; // Cap to avoid oversaturation
+            double scale = maxLuminance / lum;
+            return Color.FromArgb(255,
+                (byte)(c.R * scale),
+                (byte)(c.G * scale),
+                (byte)(c.B * scale));
+        }
 
-            byte r = (byte)Math.Min(255, (int)(c.R * factor + 40));
-            byte g = (byte)Math.Min(255, (int)(c.G * factor + 40));
-            byte b = (byte)Math.Min(255, (int)(c.B * factor + 40));
-            return Color.FromArgb(255, r, g, b);
+        /// <summary>
+        /// Ensures a color is bright enough to be visible as an accent on dark backgrounds.
+        /// Used only for progress fill — not text (text is always white).
+        /// </summary>
+        private static Color EnsureBright(Color c)
+        {
+            double lum = 0.299 * c.R + 0.587 * c.G + 0.114 * c.B;
+            if (lum >= 140)
+                return c;
+            if (lum < 10)
+                return Color.FromArgb(255, 200, 200, 220); // Near-black → default light accent
+
+            double scale = Math.Min(4.0, 180.0 / lum);
+            return Color.FromArgb(255,
+                (byte)Math.Min(255, (int)(c.R * scale + 30)),
+                (byte)Math.Min(255, (int)(c.G * scale + 30)),
+                (byte)Math.Min(255, (int)(c.B * scale + 30)));
         }
 
         // --- Composition blur pipeline ---
@@ -388,20 +405,19 @@ namespace wisland.Views
         {
             if (!IsLoaded) return;
 
-            var mainBrush = new SolidColorBrush(_mainColor);
+            var whiteBrush = new SolidColorBrush(Microsoft.UI.Colors.White);
             var subBrush = new SolidColorBrush(_subColor);
 
-            HeaderLabel.Foreground = mainBrush;
+            HeaderLabel.Foreground = whiteBrush;
             HeaderExpandGlyph.Foreground = subBrush;
 
-            TitlePrimary.MarqueeForeground = mainBrush;
-            TitleSecondary.MarqueeForeground = mainBrush;
+            TitlePrimary.MarqueeForeground = whiteBrush;
+            TitleSecondary.MarqueeForeground = whiteBrush;
             ArtistPrimary.MarqueeForeground = subBrush;
             ArtistSecondary.MarqueeForeground = subBrush;
 
             ElapsedTimeText.Foreground = subBrush;
             TotalTimeText.Foreground = subBrush;
-            ProgressFillBrush.Color = _mainColor;
 
             AlbumArtFallback.Foreground = subBrush;
         }
@@ -410,15 +426,19 @@ namespace wisland.Views
         {
             if (!IsLoaded) return;
 
-            var iconBrush = new SolidColorBrush(_iconColor);
-            var playPauseBg = new SolidColorBrush(Color.FromArgb(40, _mainColor.R, _mainColor.G, _mainColor.B));
+            var whiteBrush = new SolidColorBrush(Microsoft.UI.Colors.White);
+            var playPauseBg = new SolidColorBrush(Color.FromArgb(35, 255, 255, 255));
+
+            BtnBack.Foreground = whiteBrush;
+            BtnForward.Foreground = whiteBrush;
+            BtnPlayPause.Foreground = whiteBrush;
 
             if (BtnBack.Content is FontIcon backIcon)
-                backIcon.Foreground = iconBrush;
+                backIcon.Foreground = whiteBrush;
             if (BtnForward.Content is FontIcon fwdIcon)
-                fwdIcon.Foreground = iconBrush;
+                fwdIcon.Foreground = whiteBrush;
 
-            PlayPauseIcon.Foreground = iconBrush;
+            PlayPauseIcon.Foreground = whiteBrush;
             BtnPlayPause.Background = playPauseBg;
         }
 
