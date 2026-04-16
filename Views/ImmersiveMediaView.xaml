@@ -64,10 +64,10 @@
             </Border>
             <!-- Album art blurred background (composition visual host) -->
             <Border x:Name="BlurHost"
-                    Opacity="0.45"
+                    Opacity="0.6"
                     IsHitTestVisible="False" />
             <!-- Dark scrim for text legibility -->
-            <Border Background="#80000000" IsHitTestVisible="False" />
+            <Border Background="#59000000" IsHitTestVisible="False" />
         </Grid>
 
         <!-- Content layer -->

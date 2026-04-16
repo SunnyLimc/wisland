@@ -456,7 +456,15 @@ namespace wisland.Services
                     }
 
                     hasChanges = ApplyMediaProperties_NoLock(tracked, nextTitle, nextArtist, nowUtc);
-                    tracked.Thumbnail = nextThumbnail;
+
+                    // Always update thumbnail and treat a new reference as a change
+                    // (GSMTC may update thumbnail independently from title/artist)
+                    if (!ReferenceEquals(tracked.Thumbnail, nextThumbnail))
+                    {
+                        tracked.Thumbnail = nextThumbnail;
+                        hasChanges = true;
+                    }
+
                     if (hasChanges)
                     {
                         Logger.Debug($"Media properties updated for '{tracked.SessionKey}': Title='{nextTitle}', Artist='{nextArtist}'");

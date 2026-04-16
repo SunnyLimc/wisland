@@ -30,7 +30,7 @@ namespace wisland.Views
         private bool _canOpenSessionPicker;
         private bool _isSessionPickerExpanded;
 
-        private string? _lastAlbumArtIdentity;
+        private Windows.Storage.Streams.IRandomAccessStreamReference? _lastThumbnailRef;
         private string? _lastSourceIconIdentity;
         private string? _lastHeaderLabel;
         private double _lastProgress;
@@ -119,13 +119,13 @@ namespace wisland.Views
 
             bool metadataChanged = ApplyMetadataSnapshot(nextMetadata, direction);
 
-            // Album art
+            // Album art — reload when the thumbnail reference changes
             if (session.HasValue)
             {
-                string albumArtIdentity = $"{session.Value.SessionKey}:{session.Value.Title}:{session.Value.Artist}";
-                if (!string.Equals(_lastAlbumArtIdentity, albumArtIdentity, StringComparison.Ordinal))
+                var thumbnailRef = session.Value.Thumbnail;
+                if (!ReferenceEquals(_lastThumbnailRef, thumbnailRef))
                 {
-                    _lastAlbumArtIdentity = albumArtIdentity;
+                    _lastThumbnailRef = thumbnailRef;
                     LoadAlbumArt(session.Value);
                 }
             }
@@ -233,9 +233,14 @@ namespace wisland.Views
 
         private async void LoadAlbumArt(MediaSessionSnapshot session)
         {
+            // Capture the reference we're loading for — if it changes mid-await, discard results
+            var targetRef = session.Thumbnail;
+
             try
             {
-                BitmapImage? albumArt = await AlbumArtColorExtractor.LoadThumbnailAsync(session.Thumbnail);
+                BitmapImage? albumArt = await AlbumArtColorExtractor.LoadThumbnailAsync(targetRef);
+                if (!ReferenceEquals(_lastThumbnailRef, targetRef)) return; // stale
+
                 if (albumArt != null)
                 {
                     AlbumArtImage.Source = albumArt;
@@ -243,14 +248,16 @@ namespace wisland.Views
 
                     // Extract colors for gradient background
                     string colorKey = $"{session.SessionKey}:{session.Title}:{session.Artist}";
-                    AlbumArtPalette? palette = await AlbumArtColorExtractor.ExtractAsync(session.Thumbnail, colorKey);
+                    AlbumArtPalette? palette = await AlbumArtColorExtractor.ExtractAsync(targetRef, colorKey);
+                    if (!ReferenceEquals(_lastThumbnailRef, targetRef)) return; // stale
+
                     if (palette.HasValue)
                     {
                         ApplyBackgroundPalette(palette.Value);
                     }
 
                     // Load blurred background via composition
-                    await LoadBlurredBackgroundAsync(session.Thumbnail);
+                    await LoadBlurredBackgroundAsync(targetRef);
                 }
                 else
                 {
@@ -260,7 +267,8 @@ namespace wisland.Views
             catch (Exception ex)
             {
                 Logger.Warn($"Failed to load album art: {ex.Message}");
-                ClearAlbumArt();
+                if (ReferenceEquals(_lastThumbnailRef, targetRef))
+                    ClearAlbumArt();
             }
         }
 
@@ -269,16 +277,17 @@ namespace wisland.Views
             AlbumArtImage.Source = null;
             AlbumArtFallback.Visibility = Visibility.Visible;
             ClearBlurSurface();
-            _lastAlbumArtIdentity = null;
+            _lastThumbnailRef = null;
             ApplyBackgroundPalette(AlbumArtPalette.Default);
         }
 
         private void ApplyBackgroundPalette(AlbumArtPalette palette)
         {
-            // Always darken gradient colors aggressively so background is reliably dark
-            GradientStop0.Color = ClampBrightness(palette.Dominant, maxLuminance: 60);
-            GradientStop1.Color = ClampBrightness(palette.Secondary, maxLuminance: 40);
-            GradientStop2.Color = ClampBrightness(palette.Average, maxLuminance: 50);
+            // Darken gradient so background stays dark enough for white text,
+            // but not so aggressively that the blur overlay has no color to show.
+            GradientStop0.Color = ClampBrightness(palette.Dominant, maxLuminance: 80);
+            GradientStop1.Color = ClampBrightness(palette.Secondary, maxLuminance: 55);
+            GradientStop2.Color = ClampBrightness(palette.Average, maxLuminance: 65);
 
             // Text/icons are always white/light — no accent derivation.
             // Only the progress fill gets a subtle accent tint from the album art.
