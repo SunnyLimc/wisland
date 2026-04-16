@@ -19,6 +19,9 @@ namespace wisland.Helpers
         private int[]? _pixelBuffer;
         private int _lastRenderedProgressWidth = -1;
         private bool _renderDirty = true;
+        private int _visualHeight;
+
+        public event Action? TouchActivated;
         private LinePalette _palette = new(
             Color.FromArgb(96, 255, 255, 255),
             Color.FromArgb(78, 104, 118, 138),
@@ -114,6 +117,7 @@ namespace wisland.Helpers
         private static readonly IntPtr HWND_TOPMOST = new IntPtr(-1);
         private const uint WM_NCHITTEST = 0x0084;
         private static readonly IntPtr HTTRANSPARENT = new IntPtr(-1);
+        private const uint WM_POINTERDOWN = 0x0246;
         private const uint ULW_ALPHA = 0x00000002;
         private const byte AC_SRC_OVER = 0x00;
         private const byte AC_SRC_ALPHA = 0x01;
@@ -121,6 +125,13 @@ namespace wisland.Helpers
         private const uint DIB_RGB_COLORS = 0;
 
         private delegate IntPtr WndProcDelegate(IntPtr hWnd, uint msg, IntPtr wParam, IntPtr lParam);
+
+        [DllImport("user32.dll")]
+        [return: MarshalAs(UnmanagedType.Bool)]
+        private static extern bool GetPointerType(uint pointerId, out uint pointerType);
+
+        private const uint PT_TOUCH = 0x00000002;
+        private const uint PT_PEN = 0x00000003;
 
         [StructLayout(LayoutKind.Sequential, CharSet = CharSet.Auto)]
         private struct WNDCLASSEX
@@ -204,7 +215,7 @@ namespace wisland.Helpers
             RegisterClassEx(ref wndClass);
 
             _hwnd = CreateWindowEx(
-                WS_EX_LAYERED | WS_EX_TRANSPARENT | WS_EX_TOPMOST | WS_EX_TOOLWINDOW | WS_EX_NOACTIVATE,
+                WS_EX_LAYERED | WS_EX_TOPMOST | WS_EX_TOOLWINDOW | WS_EX_NOACTIVATE,
                 _className,
                 "WislandLine",
                 WS_POPUP,
@@ -264,18 +275,19 @@ namespace wisland.Helpers
                 return;
             }
 
+            _visualHeight = Math.Max(1, height);
+            int touchHeight = Math.Max(_visualHeight, Models.IslandConfig.NativeLineTouchHeightPhysical);
             int nextWidth = Math.Max(1, width);
-            int nextHeight = Math.Max(1, height);
             bool geometryChanged = x != _lastX
                 || y != _lastY
                 || nextWidth != _lastWidth
-                || nextHeight != _lastHeight;
-            bool sizeChanged = nextWidth != _lastWidth || nextHeight != _lastHeight;
+                || touchHeight != _lastHeight;
+            bool sizeChanged = nextWidth != _lastWidth || touchHeight != _lastHeight;
 
             _lastX = x;
             _lastY = y;
             _lastWidth = nextWidth;
-            _lastHeight = nextHeight;
+            _lastHeight = touchHeight;
 
             if (sizeChanged)
             {
@@ -317,6 +329,16 @@ namespace wisland.Helpers
             if (msg == WM_NCHITTEST)
             {
                 return HTTRANSPARENT;
+            }
+
+            if (msg == WM_POINTERDOWN)
+            {
+                uint pointerId = (uint)(wParam.ToInt64() & 0xFFFF);
+                if (GetPointerType(pointerId, out uint pointerType)
+                    && (pointerType == PT_TOUCH || pointerType == PT_PEN))
+                {
+                    TouchActivated?.Invoke();
+                }
             }
 
             return DefWindowProc(hWnd, msg, wParam, lParam);
@@ -412,14 +434,21 @@ namespace wisland.Helpers
             int progressWidth = Math.Clamp((int)Math.Round(width * _progress), 0, width);
             int headWidth = progressWidth > 0 ? Math.Min(2, progressWidth) : 0;
             int headStart = Math.Max(0, progressWidth - headWidth);
+            int renderHeight = Math.Min(_visualHeight, height);
 
             for (int y = 0; y < height; y++)
             {
                 for (int x = 0; x < width; x++)
                 {
+                    if (y >= renderHeight)
+                    {
+                        pixels[(y * width) + x] = 0;
+                        continue;
+                    }
+
                     bool isActive = x < progressWidth;
                     bool isHead = isActive && x >= headStart;
-                    Color color = ResolvePixelColor(x, y, width, height, isActive, isHead);
+                    Color color = ResolvePixelColor(x, y, width, renderHeight, isActive, isHead);
                     double edgeOpacity = GetEdgeOpacity(x, width);
                     pixels[(y * width) + x] = unchecked((int)ToPremultipliedArgb(color, edgeOpacity));
                 }

@@ -20,6 +20,8 @@ namespace wisland.Services
             Windows.UI.Color.FromArgb(92, 72, 84, 100));
         private int _lineHeightPhysical = IslandConfig.NativeLinePhysicalHeight;
 
+        public event Action? LineTouchActivated;
+
         public void ApplyAppearance(LinePalette palette, int lineHeightPhysical)
         {
             _linePalette = palette;
@@ -34,7 +36,7 @@ namespace wisland.Services
         public void ShowDockedLine(int physicalX, int monitorTopPhysical, int physicalWidth, double progress)
         {
             bool firstShow = _lineWindow == null;
-            NativeLineWindow lineWindow = _lineWindow ??= new NativeLineWindow();
+            NativeLineWindow lineWindow = _lineWindow ??= CreateLineWindow();
             lineWindow.ApplyPalette(_linePalette);
             lineWindow.SetProgress(progress);
             lineWindow.Show(physicalX, monitorTopPhysical, physicalWidth, _lineHeightPhysical);
@@ -53,6 +55,13 @@ namespace wisland.Services
 
             Logger.Debug("Docked line window hidden");
             _lineWindow.Hide();
+        }
+
+        private NativeLineWindow CreateLineWindow()
+        {
+            var window = new NativeLineWindow();
+            window.TouchActivated += () => LineTouchActivated?.Invoke();
+            return window;
         }
 
         public void Dispose()

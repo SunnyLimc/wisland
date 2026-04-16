@@ -16,6 +16,11 @@ namespace wisland
                 return;
             }
 
+            if (_touchExpandedLatch)
+            {
+                return;
+            }
+
             SetHoverMode(HoverMode.None);
         }
 
@@ -64,7 +69,8 @@ namespace wisland
 
                 if (_hoverMode == HoverMode.LineActive)
                 {
-                    GetCursorPos(out var fallbackPoint);
+                    GetCursorPos(out var fallbackMouse);
+                    POINT fallbackPoint = IsTouch ? _lastPointerScreenPos : fallbackMouse;
                     SetHoverMode(
                         IsCursorWithinIslandBounds(fallbackPoint, IslandConfig.DockedLineBoundsMarginPhysical)
                             ? HoverMode.PointerActive

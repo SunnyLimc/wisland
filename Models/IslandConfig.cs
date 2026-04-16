@@ -149,5 +149,13 @@ namespace wisland.Models
 
         // --- Opacity Thresholds ---
         public const double HitTestOpacityThreshold = 0.5;
+
+        // --- Touch ---
+        public const double TouchTapMaxDistanceDip = 10.0;
+        public const int TouchTapMaxDurationMs = 300;
+        public const int TouchLongPressMs = 500;
+        public const int TouchAutoCollapseMs = 8000;
+        public const double SwipeThresholdDip = 40.0;
+        public const int NativeLineTouchHeightPhysical = 20;
     }
 }

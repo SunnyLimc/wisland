@@ -15,6 +15,7 @@ using WinUIEx;
 using wisland.Helpers;
 using wisland.Models;
 using wisland.Services;
+using Microsoft.UI.Input;
 
 namespace wisland
 {
@@ -39,6 +40,20 @@ namespace wisland
         private POINT _dragStartScreenPos;
         private double _dragPhysicalOffsetX;
         private double _dragPhysicalOffsetY;
+
+        // --- Touch Input State ---
+        private PointerDeviceType _lastPointerDeviceType;
+        private POINT _lastPointerScreenPos;
+        private ulong _touchDownTimestamp;
+        private Windows.Foundation.Point _touchDownPosition;
+        private bool _isTouchTapCandidate;
+        private bool _isTouchSwiping;
+        private double _swipeCumulativeX;
+        private bool _touchExpandedLatch;
+        private readonly DispatcherTimer _touchLongPressTimer;
+        private readonly DispatcherTimer _touchAutoCollapseTimer;
+        // Touch drag: use immediate window moves to avoid render-loop feedback jitter
+        private bool _isTouchDragging;
 
         // --- Timers & Progress ---
         private readonly DispatcherTimer _hoverDebounceTimer;
@@ -147,6 +162,13 @@ namespace wisland
                 _selectionLockTimer.Tick += SelectionLockTimer_Tick;
                 _autoFocusTimer = new DispatcherTimer();
                 _autoFocusTimer.Tick += AutoFocusTimer_Tick;
+
+                _touchLongPressTimer = new DispatcherTimer { Interval = TimeSpan.FromMilliseconds(IslandConfig.TouchLongPressMs) };
+                _touchLongPressTimer.Tick += TouchLongPressTimer_Tick;
+                _touchAutoCollapseTimer = new DispatcherTimer { Interval = TimeSpan.FromMilliseconds(IslandConfig.TouchAutoCollapseMs) };
+                _touchAutoCollapseTimer.Tick += TouchAutoCollapseTimer_Tick;
+
+                _shellVisibilityService.LineTouchActivated += OnLineTouchActivated;
                 _foregroundWindowMonitor.SetActive(_controller.IsDocked);
                 InitializeSessionPickerOverlay();
 
@@ -172,6 +194,128 @@ namespace wisland
         private double GetDisplayedProgress()
         {
             return GetDisplayedProgress(GetDisplayedMediaSessionSnapshot());
+        }
+
+        private bool IsTouch => _lastPointerDeviceType == PointerDeviceType.Touch;
+
+        private POINT GetPointerScreenPosition(Microsoft.UI.Xaml.Input.PointerRoutedEventArgs e)
+        {
+            var point = e.GetCurrentPoint(null).Position;
+            var windowPos = this.AppWindow.Position;
+            var frameInsets = GetMainWindowFrameInsets();
+            return new POINT
+            {
+                X = windowPos.X + frameInsets.Left + (int)Math.Round(point.X * _dpiScale),
+                Y = windowPos.Y + frameInsets.Top + (int)Math.Round(point.Y * _dpiScale)
+            };
+        }
+
+        private POINT GetDragScreenPosition(Microsoft.UI.Xaml.Input.PointerRoutedEventArgs e)
+        {
+            if (e.Pointer.PointerDeviceType != PointerDeviceType.Touch)
+            {
+                GetCursorPos(out var mousePos);
+                return mousePos;
+            }
+
+            // Use _lastPhysX/_lastPhysY (our own tracked window position) instead of
+            // AppWindow.Position which can be stale during rapid window moves.
+            var local = e.GetCurrentPoint(null).Position;
+            var frameInsets = GetMainWindowFrameInsets();
+
+            double screenX = _lastPhysX + frameInsets.Left + local.X * _dpiScale;
+            double screenY = _lastPhysY + frameInsets.Top + local.Y * _dpiScale;
+
+            return new POINT
+            {
+                X = (int)Math.Round(screenX),
+                Y = (int)Math.Round(screenY)
+            };
+        }
+
+        /// <summary>
+        /// During touch drag, move the window IMMEDIATELY from the pointer event handler
+        /// instead of waiting for the render loop. This eliminates the one-frame delay
+        /// that causes the feedback loop between local coordinates and window position.
+        /// The render loop's ApplyWindowBounds will be a no-op since _lastPhysX/Y already
+        /// matches the target bounds.
+        /// </summary>
+        private void ApplyTouchDragWindowMove(double targetPhysCenterX, double targetPhysCenterY, int physWidth)
+        {
+            int physX = (int)Math.Round(targetPhysCenterX - physWidth / 2.0);
+            int physY = (int)Math.Round(targetPhysCenterY);
+
+            if (physX != _lastPhysX || physY != _lastPhysY)
+            {
+                this.AppWindow.Move(new PointInt32(physX, physY));
+                _lastPhysX = physX;
+                _lastPhysY = physY;
+            }
+        }
+
+        private void InitTouchDragTracking(Microsoft.UI.Xaml.Input.PointerRoutedEventArgs e)
+        {
+            _isTouchDragging = true;
+        }
+
+        private void RestartTouchAutoCollapseTimer()
+        {
+            _touchAutoCollapseTimer.Stop();
+            if (_touchExpandedLatch)
+            {
+                _touchAutoCollapseTimer.Start();
+            }
+        }
+
+        private void TouchAutoCollapseTimer_Tick(object? sender, object e)
+        {
+            _touchAutoCollapseTimer.Stop();
+            if (_touchExpandedLatch)
+            {
+                _touchExpandedLatch = false;
+                SetHoverMode(HoverMode.None);
+            }
+        }
+
+        private void TouchLongPressTimer_Tick(object? sender, object e)
+        {
+            _touchLongPressTimer.Stop();
+            if (_isTouchTapCandidate && !_controller.IsDragging)
+            {
+                _isTouchTapCandidate = false;
+                IslandBorder.ContextFlyout?.ShowAt(RootGrid, new Microsoft.UI.Xaml.Controls.Primitives.FlyoutShowOptions
+                {
+                    Position = _touchDownPosition
+                });
+            }
+        }
+
+        private void ToggleTouchExpansion()
+        {
+            if (_touchExpandedLatch)
+            {
+                _touchExpandedLatch = false;
+                _touchAutoCollapseTimer.Stop();
+                SetHoverMode(HoverMode.None);
+            }
+            else
+            {
+                _touchExpandedLatch = true;
+                SetHoverMode(HoverMode.PointerActive);
+                RestartTouchAutoCollapseTimer();
+            }
+        }
+
+        private void OnLineTouchActivated()
+        {
+            DispatcherQueue?.TryEnqueue(() =>
+            {
+                if (_isClosed) return;
+                _touchExpandedLatch = true;
+                SetHoverMode(HoverMode.LineActive);
+                UpdateShadowState();
+                RestartTouchAutoCollapseTimer();
+            });
         }
 
         private double GetDisplayedProgress(MediaSessionSnapshot? displayedSession)

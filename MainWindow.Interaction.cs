@@ -3,6 +3,7 @@ using Microsoft.UI.Xaml.Controls;
 using Microsoft.UI.Xaml.Media;
 using System;
 using Windows.Graphics;
+using Microsoft.UI.Input;
 using wisland.Helpers;
 using wisland.Models;
 namespace wisland
@@ -16,8 +17,12 @@ namespace wisland
                 return;
             }
 
+            _lastPointerDeviceType = e.Pointer.PointerDeviceType;
+            _lastPointerScreenPos = GetPointerScreenPosition(e);
+
             if (e.OriginalSource is DependencyObject origin && IsWithinButton(origin))
             {
+                if (IsTouch) RestartTouchAutoCollapseTimer();
                 return;
             }
 
@@ -32,29 +37,101 @@ namespace wisland
                 return;
             }
 
-            _controller.IsDragging = true;
-            RootGrid.CapturePointer(e.Pointer);
+            if (IsTouch)
+            {
+                _touchDownTimestamp = e.GetCurrentPoint(RootGrid).Timestamp;
+                _touchDownPosition = e.GetCurrentPoint(RootGrid).Position;
+                _isTouchTapCandidate = true;
+                _isTouchSwiping = false;
+                _swipeCumulativeX = 0;
+                RootGrid.CapturePointer(e.Pointer);
+                _touchLongPressTimer.Start();
 
-            GetCursorPos(out _dragStartScreenPos);
-            Logger.Debug($"Drag started at screen ({_dragStartScreenPos.X}, {_dragStartScreenPos.Y})");
+                InitTouchDragTracking(e);
+                _dragStartScreenPos = GetDragScreenPosition(e);
+                Logger.Debug($"Touch down at screen ({_dragStartScreenPos.X}, {_dragStartScreenPos.Y})");
 
-            double physCenterX = _lastPhysX + (_lastPhysW / 2.0);
-            double physTopY = _lastPhysY;
+                double physCenterX = _lastPhysX + (_lastPhysW / 2.0);
+                double physTopY = _lastPhysY;
+                _dragPhysicalOffsetX = _dragStartScreenPos.X - physCenterX;
+                _dragPhysicalOffsetY = _dragStartScreenPos.Y - physTopY;
+                RestartTouchAutoCollapseTimer();
+            }
+            else
+            {
+                _controller.IsDragging = true;
+                RootGrid.CapturePointer(e.Pointer);
 
-            _dragPhysicalOffsetX = _dragStartScreenPos.X - physCenterX;
-            _dragPhysicalOffsetY = _dragStartScreenPos.Y - physTopY;
+                _dragStartScreenPos = GetDragScreenPosition(e);
+                Logger.Debug($"Drag started at screen ({_dragStartScreenPos.X}, {_dragStartScreenPos.Y})");
 
-            UpdateState();
+                double physCenterX = _lastPhysX + (_lastPhysW / 2.0);
+                double physTopY = _lastPhysY;
+                _dragPhysicalOffsetX = _dragStartScreenPos.X - physCenterX;
+                _dragPhysicalOffsetY = _dragStartScreenPos.Y - physTopY;
+                UpdateState();
+            }
         }
 
         private void RootGrid_PointerMoved(object sender, Microsoft.UI.Xaml.Input.PointerRoutedEventArgs e)
         {
+            _lastPointerDeviceType = e.Pointer.PointerDeviceType;
+
+            if (IsTouch && _isTouchTapCandidate)
+            {
+                var currentPoint = e.GetCurrentPoint(RootGrid).Position;
+                double dx = currentPoint.X - _touchDownPosition.X;
+                double dy = currentPoint.Y - _touchDownPosition.Y;
+                double distance = Math.Sqrt(dx * dx + dy * dy);
+
+                if (distance > IslandConfig.TouchTapMaxDistanceDip)
+                {
+                    _isTouchTapCandidate = false;
+                    _touchLongPressTimer.Stop();
+
+                    bool isExpanded = _controller.Current.ExpandedOpacity > IslandConfig.HitTestOpacityThreshold;
+                    if (isExpanded && Math.Abs(dx) > Math.Abs(dy))
+                    {
+                        _isTouchSwiping = true;
+                        _swipeCumulativeX = dx;
+                    }
+                    else
+                    {
+                        InitTouchDragTracking(e);
+                        _controller.IsDragging = true;
+                        UpdateState();
+                    }
+                }
+                return;
+            }
+
+            if (IsTouch && _isTouchSwiping)
+            {
+                var currentPoint = e.GetCurrentPoint(RootGrid).Position;
+                double dx = currentPoint.X - _touchDownPosition.X;
+                _swipeCumulativeX = dx;
+
+                if (Math.Abs(_swipeCumulativeX) >= IslandConfig.SwipeThresholdDip)
+                {
+                    ContentTransitionDirection direction = _swipeCumulativeX < 0
+                        ? ContentTransitionDirection.Forward
+                        : ContentTransitionDirection.Backward;
+
+                    TryCycleDisplayedSession(direction);
+                    _touchDownPosition = currentPoint;
+                    _swipeCumulativeX = 0;
+                    RestartTouchAutoCollapseTimer();
+                }
+                return;
+            }
+
             if (!_controller.IsDragging)
             {
                 return;
             }
 
-            GetCursorPos(out var currentPos);
+            var currentPos = GetDragScreenPosition(e);
+            _lastPointerScreenPos = currentPos;
 
             double targetPhysCenterX = currentPos.X - _dragPhysicalOffsetX;
             double targetPhysCenterY = currentPos.Y - _dragPhysicalOffsetY;
@@ -70,6 +147,14 @@ namespace wisland
 
             _dpiScale = targetDpiScale;
             SetActiveDisplayAnchorFromDrag(workArea, targetPhysCenterX, targetPhysCenterY, currentPhysHeight);
+
+            // For touch: move window IMMEDIATELY to break the feedback loop.
+            // The render loop's ApplyWindowBounds will be a no-op for position.
+            if (IsTouch && _isTouchDragging)
+            {
+                ApplyTouchDragWindowMove(targetPhysCenterX, targetPhysCenterY, currentPhysWidth);
+            }
+
             _controller.HandleDrag(
                 (targetPhysCenterX - workArea.X) / targetDpiScale,
                 (targetPhysCenterY - workArea.Y) / targetDpiScale);
@@ -77,12 +162,37 @@ namespace wisland
 
         private void RootGrid_PointerReleased(object sender, Microsoft.UI.Xaml.Input.PointerRoutedEventArgs e)
         {
+            _lastPointerDeviceType = e.Pointer.PointerDeviceType;
+            _lastPointerScreenPos = GetPointerScreenPosition(e);
+            _touchLongPressTimer.Stop();
+
+            if (IsTouch && _isTouchSwiping)
+            {
+                _isTouchSwiping = false;
+                _swipeCumulativeX = 0;
+                RootGrid.ReleasePointerCapture(e.Pointer);
+                return;
+            }
+
+            if (IsTouch && _isTouchTapCandidate)
+            {
+                _isTouchTapCandidate = false;
+                RootGrid.ReleasePointerCapture(e.Pointer);
+                ulong elapsedMicroseconds = e.GetCurrentPoint(RootGrid).Timestamp - _touchDownTimestamp;
+                if (elapsedMicroseconds <= (ulong)IslandConfig.TouchTapMaxDurationMs * 1000)
+                {
+                    ToggleTouchExpansion();
+                }
+                return;
+            }
+
             if (!_controller.IsDragging)
             {
                 return;
             }
 
             _controller.IsDragging = false;
+            _isTouchDragging = false;
             RootGrid.ReleasePointerCapture(e.Pointer);
             _controller.FinalizeDrag();
             UpdateState();
@@ -93,6 +203,15 @@ namespace wisland
 
         private void RootGrid_PointerEntered(object sender, Microsoft.UI.Xaml.Input.PointerRoutedEventArgs e)
         {
+            _lastPointerDeviceType = e.Pointer.PointerDeviceType;
+            _lastPointerScreenPos = GetPointerScreenPosition(e);
+
+            if (IsTouch)
+            {
+                _hoverDebounceTimer.Stop();
+                return;
+            }
+
             _hoverDebounceTimer.Stop();
 
             if (HasBlockingSurfaceOpen)
@@ -120,6 +239,15 @@ namespace wisland
 
         private void RootGrid_PointerExited(object sender, Microsoft.UI.Xaml.Input.PointerRoutedEventArgs e)
         {
+            _lastPointerDeviceType = e.Pointer.PointerDeviceType;
+
+            if (IsTouch)
+            {
+                _hoverDebounceTimer.Stop();
+                _dockedHoverDelayTimer.Stop();
+                return;
+            }
+
             if (HasBlockingSurfaceOpen)
             {
                 _hoverDebounceTimer.Stop();
@@ -166,8 +294,14 @@ namespace wisland
                 return;
             }
 
-            GetCursorPos(out var cursorPoint);
-            if (IsCursorWithinIslandBounds(cursorPoint, 0))
+            if (_touchExpandedLatch)
+            {
+                SetHoverMode(HoverMode.PointerActive);
+                RestartTouchAutoCollapseTimer();
+                return;
+            }
+
+            if (IsCursorWithinIslandBounds(_lastPointerScreenPos, 0))
             {
                 SetHoverMode(HoverMode.PointerActive);
                 return;

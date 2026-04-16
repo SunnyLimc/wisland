@@ -294,8 +294,14 @@ namespace wisland
                 return;
             }
 
-            GetCursorPos(out var cursorPoint);
-            if (IsCursorWithinIslandBounds(cursorPoint, 0))
+            if (_touchExpandedLatch)
+            {
+                SetHoverMode(HoverMode.PointerActive);
+                RestartTouchAutoCollapseTimer();
+                return;
+            }
+
+            if (IsCursorWithinIslandBounds(_lastPointerScreenPos, 0))
             {
                 SetHoverMode(HoverMode.PointerActive);
                 return;
