@@ -40,7 +40,10 @@ namespace wisland.Services
         private bool _isDisposed;
 
         public MediaService()
-            => _waitingExpiryTimer = new Timer(OnWaitingExpiryTimer);
+        {
+            _waitingExpiryTimer = new Timer(OnWaitingExpiryTimer);
+            _stabilizationTimer = new Timer(OnStabilizationTimer);
+        }
 
         public IReadOnlyList<MediaSessionSnapshot> Sessions
         {
@@ -235,6 +238,7 @@ namespace wisland.Services
             {
                 Logger.Debug($"SkipNext requested for session '{sessionKey}'");
                 ArmTransportContinuation(sessionKey);
+                ArmSkipStabilization(sessionKey);
                 GlobalSystemMediaTransportControlsSession? session = GetSession(sessionKey);
                 if (session != null)
                 {
@@ -257,6 +261,7 @@ namespace wisland.Services
             {
                 Logger.Debug($"SkipPrevious requested for session '{sessionKey}'");
                 ArmTransportContinuation(sessionKey);
+                ArmSkipStabilization(sessionKey);
                 GlobalSystemMediaTransportControlsSession? session = GetSession(sessionKey);
                 if (session != null)
                 {
@@ -284,6 +289,8 @@ namespace wisland.Services
 
             _waitingExpiryTimer.Change(Timeout.Infinite, Timeout.Infinite);
             _waitingExpiryTimer.Dispose();
+            _stabilizationTimer.Change(Timeout.Infinite, Timeout.Infinite);
+            _stabilizationTimer.Dispose();
 
             CancellationTokenSource? refreshBurstCts;
             lock (_gate)

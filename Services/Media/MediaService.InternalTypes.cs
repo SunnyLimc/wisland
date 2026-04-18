@@ -54,6 +54,17 @@ namespace wisland.Services
             public bool PendingHasTimeline { get; set; }
             public double PendingPositionSeconds { get; set; }
             public double PendingDurationSeconds { get; set; }
+
+            // Stabilization state machine. When StabilizationReason != None, snapshots
+            // emitted for this source are frozen at FrozenSnapshot instead of reflecting
+            // the latest raw fields. Raw fields continue to be updated as GSMTC events
+            // arrive, but emission to subscribers is suppressed until the gate releases.
+            public MediaSessionStabilizationReason StabilizationReason { get; set; }
+            public DateTimeOffset StabilizationArmedAtUtc { get; set; }
+            public DateTimeOffset StabilizationExpiresAtUtc { get; set; }
+            public string StabilizationBaselineTitle { get; set; } = string.Empty;
+            public string StabilizationBaselineArtist { get; set; } = string.Empty;
+            public MediaSessionSnapshot FrozenSnapshot { get; set; }
         }
 
         private readonly record struct PrefetchedSessionState(

@@ -352,6 +352,10 @@ namespace wisland.Services
                 return TryFinalizePendingReconnect_NoLock(tracked, nowUtc);
             }
 
+            // Prime natural-ending stabilization if the current state is near end-of-track
+            // and the incoming metadata differs from what we're currently showing.
+            TryArmNaturalEndingStabilization_NoLock(tracked, nextTitle, nextArtist, nowUtc);
+
             if (string.Equals(tracked.Title, nextTitle, StringComparison.Ordinal)
                 && string.Equals(tracked.Artist, nextArtist, StringComparison.Ordinal))
             {
@@ -361,7 +365,7 @@ namespace wisland.Services
             tracked.Title = nextTitle;
             tracked.Artist = nextArtist;
             tracked.LastActivityUtc = nowUtc;
-            return true;
+            return EvaluateStabilizationAfterWrite_NoLock(tracked, nowUtc);
         }
 
         private bool ApplyPlaybackState_NoLock(
@@ -382,7 +386,7 @@ namespace wisland.Services
 
             tracked.PlaybackStatus = nextStatus;
             tracked.LastActivityUtc = nowUtc;
-            return true;
+            return EvaluateStabilizationAfterWrite_NoLock(tracked, nowUtc);
         }
 
         private bool ApplyTimelineState_NoLock(
@@ -421,7 +425,7 @@ namespace wisland.Services
                 tracked.LastActivityUtc = nowUtc;
             }
 
-            return true;
+            return EvaluateStabilizationAfterWrite_NoLock(tracked, nowUtc);
         }
 
         private bool TryFinalizePendingReconnect_NoLock(TrackedSource tracked, DateTimeOffset nowUtc)
@@ -486,7 +490,11 @@ namespace wisland.Services
             tracked.LastActivityUtc = nowUtc;
             ResetPendingReconnect_NoLock(tracked);
             ClearTransportContinuationIfSatisfied_NoLock(tracked);
-            return hasChanges;
+            if (!hasChanges)
+            {
+                return false;
+            }
+            return EvaluateStabilizationAfterWrite_NoLock(tracked, nowUtc);
         }
 
         private void ResetPendingReconnect_NoLock(TrackedSource tracked)

@@ -29,6 +29,7 @@
     <Compile Include="..\Helpers\SessionPickerPlacementResolver.cs" Link="Helpers\SessionPickerPlacementResolver.cs" />
     <Compile Include="..\Models\MediaSessionPresence.cs" Link="Models\MediaSessionPresence.cs" />
     <Compile Include="..\Models\MediaSessionSnapshot.cs" Link="Models\MediaSessionSnapshot.cs" />
+    <Compile Include="..\Models\MediaSessionStabilizationReason.cs" Link="Models\MediaSessionStabilizationReason.cs" />
     <Compile Include="..\Models\SessionPickerRowModel.cs" Link="Models\SessionPickerRowModel.cs" />
     <Compile Include="..\Models\IslandConfig.cs" Link="Models\IslandConfig.cs" />
     <Compile Include="..\Models\IslandState.cs" Link="Models\IslandState.cs" />

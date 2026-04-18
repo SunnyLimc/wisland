@@ -20,9 +20,11 @@ namespace wisland.Models
         DateTimeOffset LastActivityUtc,
         MediaSessionPresence Presence,
         DateTimeOffset LastSeenUtc,
-        DateTimeOffset? MissingSinceUtc)
+        DateTimeOffset? MissingSinceUtc,
+        MediaSessionStabilizationReason StabilizationReason = MediaSessionStabilizationReason.None)
     {
         public bool IsPlaying => PlaybackStatus == GlobalSystemMediaTransportControlsSessionPlaybackStatus.Playing;
         public bool IsWaitingForReconnect => Presence == MediaSessionPresence.WaitingForReconnect;
+        public bool IsStabilizing => StabilizationReason != MediaSessionStabilizationReason.None;
     }
 }

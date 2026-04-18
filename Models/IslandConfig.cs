@@ -101,6 +101,9 @@ namespace wisland.Models
         public const int MediaRefreshBurstDurationMs = 3000;
         public const int MediaRefreshBurstIntervalMs = 250;
         public const int SkipTransitionTimeoutMs = 10000;
+        public const int NaturalEndingTransitionTimeoutMs = 3000;
+        public const double NaturalEndingDetectionThresholdSeconds = 10.0;
+        public const double SkipTransitionFreshTrackPositionSeconds = 3.0;
         public const int SelectionLockDurationMs = 10000;
         public const double SessionPickerOverlayWidth = 312.0;
         public const int SessionPickerOverlayMaxVisibleItems = 4;

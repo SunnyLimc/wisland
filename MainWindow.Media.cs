@@ -21,10 +21,6 @@ namespace wisland
         private DateTimeOffset? _selectionLockUntilUtc;
         private string? _lastDisplayedContentIdentity;
         private string? _lastDisplayedProgressIdentity;
-        private MediaSessionSnapshot? _transportWaitingSnapshot;
-        private DateTimeOffset? _transportWaitingStartedUtc;
-        private DateTimeOffset? _transportWaitingUntilUtc;
-        private bool _isSkipTransitionOverrideActive;
         private readonly List<string> _sessionVisualOrderKeys = new();
         private CancellationTokenSource? _aiResolveCts;
         private string? _lastAiResolveContentIdentity;
@@ -222,15 +218,7 @@ namespace wisland
 
         private IReadOnlyList<MediaSessionSnapshot> GetPriorityOrderedSessions()
         {
-            List<MediaSessionSnapshot> sessions = _mediaService.Sessions.ToList();
-            ApplySkipTransitionOverride(sessions);
-            MediaSessionSnapshot? transportWaiting = GetTransportWaitingFallbackSnapshot(sessions);
-            if (transportWaiting.HasValue)
-            {
-                sessions.Add(transportWaiting.Value);
-            }
-
-            return sessions
+            return _mediaService.Sessions
                 .OrderBy(session => GetSessionPriorityRank(session))
                 .ThenByDescending(session => session.LastActivityUtc)
                 .ThenBy(session => session.SourceName, StringComparer.OrdinalIgnoreCase)
@@ -273,15 +261,7 @@ namespace wisland
                 _selectedSessionKey,
                 hasManualLock,
                 DateTimeOffset.UtcNow);
-            DateTimeOffset? nextAutoFocusDueUtc = focusDecision.PendingAutoSwitchDueUtc;
-            if (_isSkipTransitionOverrideActive
-                && _transportWaitingUntilUtc.HasValue
-                && (!nextAutoFocusDueUtc.HasValue || _transportWaitingUntilUtc.Value < nextAutoFocusDueUtc.Value))
-            {
-                nextAutoFocusDueUtc = _transportWaitingUntilUtc.Value;
-            }
-
-            SyncAutoFocusTimer(nextAutoFocusDueUtc);
+            SyncAutoFocusTimer(focusDecision.PendingAutoSwitchDueUtc);
 
             MediaSessionSnapshot displayedSession = focusDecision.DisplayedSession ?? prioritySessions[0];
             IReadOnlyList<MediaSessionSnapshot> orderedSessions = GetVisualOrderedSessions(prioritySessions);
@@ -312,7 +292,6 @@ namespace wisland
         {
             try
             {
-                RegisterTransportWaitingFallback();
                 RegisterPendingMediaTransitionDirection(ContentTransitionDirection.Forward);
                 await _mediaService.SkipNextAsync(_displayedSessionKey);
             }
@@ -323,7 +302,6 @@ namespace wisland
         {
             try
             {
-                RegisterTransportWaitingFallback();
                 RegisterPendingMediaTransitionDirection(ContentTransitionDirection.Backward);
                 await _mediaService.SkipPreviousAsync(_displayedSessionKey);
             }
@@ -611,30 +589,6 @@ namespace wisland
             _pendingMediaTransitionTimestamp = 0;
         }
 
-        private static bool TryFindSession(
-            IReadOnlyList<MediaSessionSnapshot> sessions,
-            string? sessionKey,
-            out MediaSessionSnapshot session,
-            out int index)
-        {
-            if (!string.IsNullOrWhiteSpace(sessionKey))
-            {
-                for (int i = 0; i < sessions.Count; i++)
-                {
-                    if (string.Equals(sessions[i].SessionKey, sessionKey, StringComparison.Ordinal))
-                    {
-                        session = sessions[i];
-                        index = i;
-                        return true;
-                    }
-                }
-            }
-
-            session = default;
-            index = -1;
-            return false;
-        }
-
         private static int FindSessionIndex(IReadOnlyList<MediaSessionSnapshot> sessions, string? sessionKey)
         {
             if (string.IsNullOrWhiteSpace(sessionKey))
@@ -670,189 +624,8 @@ namespace wisland
             };
         }
 
-        private void RegisterTransportWaitingFallback()
-        {
-            DateTimeOffset nowUtc = DateTimeOffset.UtcNow;
-
-            if (_transportWaitingSnapshot.HasValue
-                && _transportWaitingUntilUtc.HasValue
-                && _transportWaitingUntilUtc.Value > nowUtc)
-            {
-                _transportWaitingUntilUtc = nowUtc.AddMilliseconds(IslandConfig.SkipTransitionTimeoutMs);
-                Logger.Debug($"Transport waiting fallback extended, grace={IslandConfig.SkipTransitionTimeoutMs}ms");
-                return;
-            }
-
-            MediaSessionSnapshot? displayedSession = GetDisplayedMediaSessionSnapshot();
-            if (!displayedSession.HasValue)
-            {
-                return;
-            }
-
-            _transportWaitingSnapshot = displayedSession.Value with
-            {
-                Presence = MediaSessionPresence.WaitingForReconnect,
-                MissingSinceUtc = nowUtc,
-                LastSeenUtc = nowUtc
-            };
-            _transportWaitingStartedUtc = nowUtc;
-            _transportWaitingUntilUtc = nowUtc.AddMilliseconds(IslandConfig.SkipTransitionTimeoutMs);
-            Logger.Debug($"Transport waiting fallback armed for session={displayedSession.Value.SessionKey}, grace={IslandConfig.SkipTransitionTimeoutMs}ms");
-        }
-
-        private MediaSessionSnapshot? GetTransportWaitingFallbackSnapshot(IReadOnlyList<MediaSessionSnapshot> sessions)
-        {
-            if (!_transportWaitingUntilUtc.HasValue
-                || !_transportWaitingSnapshot.HasValue)
-            {
-                return null;
-            }
-
-            DateTimeOffset nowUtc = DateTimeOffset.UtcNow;
-            if (_transportWaitingUntilUtc.Value <= nowUtc)
-            {
-                ClearTransportWaitingFallback();
-                return null;
-            }
-
-            string sessionKey = _transportWaitingSnapshot.Value.SessionKey;
-            if (TryFindSession(sessions, sessionKey, out MediaSessionSnapshot authoritativeSession, out _))
-            {
-                if (ShouldClearTransportWaitingFallback(authoritativeSession))
-                {
-                    ClearTransportWaitingFallback();
-                }
-
-                return null;
-            }
-
-            return _transportWaitingSnapshot.Value with
-            {
-                MissingSinceUtc = _transportWaitingStartedUtc ?? _transportWaitingSnapshot.Value.MissingSinceUtc ?? nowUtc,
-                LastSeenUtc = nowUtc
-            };
-        }
-
-        private void ClearTransportWaitingFallback()
-        {
-            _transportWaitingSnapshot = null;
-            _transportWaitingStartedUtc = null;
-            _transportWaitingUntilUtc = null;
-        }
-
-        private bool ShouldClearTransportWaitingFallback(MediaSessionSnapshot authoritativeSession)
-        {
-            if (!_transportWaitingSnapshot.HasValue)
-            {
-                return true;
-            }
-
-            if (authoritativeSession.IsWaitingForReconnect)
-            {
-                return true;
-            }
-
-            if (authoritativeSession.MissingSinceUtc.HasValue)
-            {
-                return false;
-            }
-
-            MediaSessionSnapshot armedSnapshot = _transportWaitingSnapshot.Value;
-            bool metadataChanged =
-                !string.Equals(authoritativeSession.Title, armedSnapshot.Title, StringComparison.Ordinal)
-                || !string.Equals(authoritativeSession.Artist, armedSnapshot.Artist, StringComparison.Ordinal);
-            if (metadataChanged && HasConcreteTransportMetadata(authoritativeSession))
-            {
-                return true;
-            }
-
-            return false;
-        }
-
-        private static bool HasConcreteTransportMetadata(MediaSessionSnapshot session)
-            => !string.IsNullOrWhiteSpace(session.Title)
-                && !string.Equals(session.Title, MediaService.UnknownTrackTitle, StringComparison.Ordinal);
-
-        /// <summary>
-        /// During a user-initiated skip transition, if the same app returns new metadata
-        /// in a non-playing state (e.g. Chrome showing another tab's paused media while
-        /// the real next track loads), replace the real session snapshot with the armed
-        /// fallback so the island keeps showing the previous track until the new track
-        /// arrives as Playing, or the timeout expires.
-        /// </summary>
-        private void ApplySkipTransitionOverride(List<MediaSessionSnapshot> sessions)
-        {
-            if (!_transportWaitingSnapshot.HasValue
-                || !_transportWaitingUntilUtc.HasValue)
-            {
-                return;
-            }
-
-            if (_transportWaitingUntilUtc.Value <= DateTimeOffset.UtcNow)
-            {
-                return;
-            }
-
-            _isSkipTransitionOverrideActive = false;
-            string sessionKey = _transportWaitingSnapshot.Value.SessionKey;
-            MediaSessionSnapshot armedSnapshot = _transportWaitingSnapshot.Value;
-
-            for (int i = 0; i < sessions.Count; i++)
-            {
-                if (!string.Equals(sessions[i].SessionKey, sessionKey, StringComparison.Ordinal))
-                {
-                    continue;
-                }
-
-                MediaSessionSnapshot realSession = sessions[i];
-                if (realSession.IsWaitingForReconnect)
-                {
-                    return;
-                }
-
-                bool metadataChanged =
-                    !string.Equals(realSession.Title, armedSnapshot.Title, StringComparison.Ordinal)
-                    || !string.Equals(realSession.Artist, armedSnapshot.Artist, StringComparison.Ordinal);
-
-                if (metadataChanged && !realSession.IsPlaying)
-                {
-                    Logger.Trace($"Skip transition override active for '{sessionKey}': suppressing '{realSession.Title}' (paused), keeping '{armedSnapshot.Title}'");
-                    sessions[i] = armedSnapshot with
-                    {
-                        Presence = MediaSessionPresence.Active,
-                        MissingSinceUtc = null,
-                        LastSeenUtc = realSession.LastSeenUtc,
-                        LastActivityUtc = realSession.LastActivityUtc,
-                        IsSystemCurrent = realSession.IsSystemCurrent
-                    };
-
-                    _isSkipTransitionOverrideActive = true;
-
-                    if (_pendingMediaTransitionDirection != ContentTransitionDirection.None)
-                    {
-                        _pendingMediaTransitionTimestamp = Environment.TickCount64;
-                    }
-                }
-
-                return;
-            }
-        }
-
-        private bool ShouldShowTransportSwitchingHint(MediaSessionSnapshot session)
-        {
-            if (!_transportWaitingSnapshot.HasValue
-                || !_transportWaitingUntilUtc.HasValue
-                || _transportWaitingUntilUtc.Value <= DateTimeOffset.UtcNow
-                || !session.MissingSinceUtc.HasValue)
-            {
-                return false;
-            }
-
-            return string.Equals(
-                _transportWaitingSnapshot.Value.SessionKey,
-                session.SessionKey,
-                StringComparison.Ordinal);
-        }
+        private static bool ShouldShowTransportSwitchingHint(MediaSessionSnapshot session)
+            => session.IsStabilizing;
 
         private static string? CreateContentIdentity(MediaSessionSnapshot? session, bool showTransportSwitchingHint)
             => session.HasValue

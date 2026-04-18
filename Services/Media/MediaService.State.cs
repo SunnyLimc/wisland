@@ -127,21 +127,26 @@ namespace wisland.Services
             => FormattableString.Invariant($"media-source-{_nextSessionOrdinal++}");
 
         private static MediaSessionSnapshot CreateSnapshot(TrackedSource tracked)
-            => new(
-                tracked.SessionKey,
-                tracked.SourceAppId,
-                tracked.SourceName,
-                tracked.Title,
-                tracked.Artist,
-                tracked.PlaybackStatus,
-                tracked.Progress,
-                tracked.HasTimeline,
-                tracked.DurationSeconds,
-                tracked.IsSystemCurrent,
-                tracked.LastActivityUtc,
-                tracked.Presence,
-                tracked.LastSeenUtc,
-                tracked.MissingSinceUtc);
+        {
+            if (tracked.StabilizationReason != MediaSessionStabilizationReason.None)
+            {
+                // Emit the frozen pre-transition snapshot, but keep a few identity/
+                // presence fields synced with the live source so downstream consumers
+                // (focus arbiter, session picker) treat it as the same live session.
+                MediaSessionSnapshot frozen = tracked.FrozenSnapshot;
+                return frozen with
+                {
+                    IsSystemCurrent = tracked.IsSystemCurrent,
+                    LastActivityUtc = tracked.LastActivityUtc,
+                    LastSeenUtc = tracked.LastSeenUtc,
+                    Presence = tracked.Presence,
+                    MissingSinceUtc = tracked.MissingSinceUtc,
+                    StabilizationReason = tracked.StabilizationReason
+                };
+            }
+
+            return CreateRawSnapshot(tracked);
+        }
 
         private static string CreateTrackSignature(string title, string artist)
             => string.Concat(title, "\u001f", artist);
