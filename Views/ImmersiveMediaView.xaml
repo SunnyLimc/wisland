@@ -53,6 +53,17 @@
     <Grid x:Name="RootGrid">
         <!-- Background layer: gradient from album art colors -->
         <Grid x:Name="BackgroundLayer">
+            <!-- Outgoing gradient (fades out during transition) -->
+            <Border x:Name="GradientBackgroundOutgoing" CornerRadius="0" Opacity="0">
+                <Border.Background>
+                    <LinearGradientBrush StartPoint="0,0" EndPoint="1,1">
+                        <GradientStop x:Name="OutgoingGradientStop0" Color="#FF282832" Offset="0.0" />
+                        <GradientStop x:Name="OutgoingGradientStop1" Color="#FF191923" Offset="0.6" />
+                        <GradientStop x:Name="OutgoingGradientStop2" Color="#FF20202A" Offset="1.0" />
+                    </LinearGradientBrush>
+                </Border.Background>
+            </Border>
+            <!-- Active gradient -->
             <Border x:Name="GradientBackground" CornerRadius="0">
                 <Border.Background>
                     <LinearGradientBrush StartPoint="0,0" EndPoint="1,1">
@@ -128,6 +139,10 @@
                             Background="#20FFFFFF">
                         <Border x:Name="AlbumArtBorder" CornerRadius="10">
                             <Grid>
+                                <Image x:Name="AlbumArtImageOutgoing"
+                                       Stretch="UniformToFill"
+                                       Width="80" Height="80"
+                                       Opacity="0" />
                                 <Image x:Name="AlbumArtImage"
                                        Stretch="UniformToFill"
                                        Width="80" Height="80" />
