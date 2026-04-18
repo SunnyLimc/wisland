@@ -481,12 +481,19 @@ namespace wisland.Services
 
                     hasChanges = ApplyMediaProperties_NoLock(tracked, nextTitle, nextArtist, nowUtc);
 
-                    // Always update thumbnail and treat a new reference as a change
-                    // (GSMTC may update thumbnail independently from title/artist)
+                    // Always update the raw thumbnail reference so it is current
+                    // when stabilization eventually releases, but only treat it as
+                    // a visible state change when the stabilization gate is open.
+                    // Otherwise a thumbnail-only change during a skip transition
+                    // would bypass the gate and dispatch an intermediate snapshot
+                    // (e.g. Chrome briefly reporting another tab's paused media).
                     if (!ReferenceEquals(tracked.Thumbnail, nextThumbnail))
                     {
                         tracked.Thumbnail = nextThumbnail;
-                        hasChanges = true;
+                        if (tracked.StabilizationReason == MediaSessionStabilizationReason.None)
+                        {
+                            hasChanges = true;
+                        }
                     }
 
                     if (hasChanges)

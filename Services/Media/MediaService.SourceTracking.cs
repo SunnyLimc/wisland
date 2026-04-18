@@ -366,7 +366,7 @@ namespace wisland.Services
             tracked.Title = nextTitle;
             tracked.Artist = nextArtist;
             tracked.LastActivityUtc = nowUtc;
-            return EvaluateStabilizationAfterWrite_NoLock(tracked, nowUtc);
+            return EvaluateStabilizationAfterWrite_NoLock(tracked, nowUtc, isMetadataWrite: true);
         }
 
         private bool ApplyPlaybackState_NoLock(

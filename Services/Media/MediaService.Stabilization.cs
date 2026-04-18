@@ -46,10 +46,20 @@ namespace wisland.Services
                 if (tracked.StabilizationReason == MediaSessionStabilizationReason.SkipTransition
                     && tracked.StabilizationExpiresAtUtc > nowUtc)
                 {
-                    // Extend timeout for a consecutive skip; preserve baseline + frozen.
+                    // Re-arm for consecutive skip: update baseline + frozen to the
+                    // current raw state so fresh-track detection compares against
+                    // the most recent resolved track, not the original one.  This
+                    // prevents the hold shortening from collapsing the extended
+                    // timeout and keeps intermediate Chrome tab metadata suppressed.
                     tracked.StabilizationExpiresAtUtc = nowUtc.AddMilliseconds(IslandConfig.SkipTransitionTimeoutMs);
+                    tracked.StabilizationBaselineTitle = tracked.Title;
+                    tracked.StabilizationBaselineArtist = tracked.Artist;
+                    tracked.FrozenSnapshot = CreateRawSnapshot(tracked) with
+                    {
+                        StabilizationReason = tracked.StabilizationReason
+                    };
                     RescheduleStabilizationTimer_NoLock(nowUtc);
-                    Logger.Debug($"Skip stabilization extended for '{sessionKey}'");
+                    Logger.Debug($"Skip stabilization re-armed for '{sessionKey}' (baseline='{tracked.Title}')");
                     return;
                 }
 
@@ -157,8 +167,14 @@ namespace wisland.Services
         /// Called AFTER a raw field write in Apply*_NoLock.
         /// Returns true if subscribers should be notified (stabilization is idle or just released).
         /// Returns false to suppress emission while the gate is closed.
+        /// <paramref name="isMetadataWrite"/> indicates the write was a title/artist change.
+        /// When a non-metadata write (timeline/playback) first triggers fresh-track
+        /// detection, the release is deferred via a short hold so the correct metadata
+        /// has time to arrive (Chrome may report another tab's paused metadata before
+        /// the real track's metadata). A subsequent metadata write that still satisfies
+        /// fresh-track conditions releases immediately.
         /// </summary>
-        private bool EvaluateStabilizationAfterWrite_NoLock(TrackedSource tracked, DateTimeOffset nowUtc)
+        private bool EvaluateStabilizationAfterWrite_NoLock(TrackedSource tracked, DateTimeOffset nowUtc, bool isMetadataWrite = false)
         {
             if (tracked.StabilizationReason == MediaSessionStabilizationReason.None)
             {
@@ -168,8 +184,33 @@ namespace wisland.Services
             if (ShouldReleaseStabilization_NoLock(tracked, nowUtc))
             {
                 bool expired = tracked.StabilizationExpiresAtUtc <= nowUtc;
-                ClearStabilization_NoLock(tracked, releaseReason: expired ? "expired" : "fresh-track");
-                return true;
+                if (expired)
+                {
+                    ClearStabilization_NoLock(tracked, releaseReason: "expired");
+                    return true;
+                }
+
+                // For metadata writes the title/artist we see IS the latest from
+                // GSMTC, so it is safe to release immediately.  For non-metadata
+                // writes (timeline position reset, playback status change) the
+                // current title may still be stale intermediate data (e.g. Chrome
+                // briefly reporting another tab).  Shorten the expiry to a brief
+                // hold so the real metadata can arrive before we surface anything.
+                if (isMetadataWrite)
+                {
+                    ClearStabilization_NoLock(tracked, releaseReason: "fresh-track");
+                    return true;
+                }
+
+                DateTimeOffset holdUntilUtc = nowUtc.AddMilliseconds(IslandConfig.StabilizationMetadataConfirmationHoldMs);
+                if (holdUntilUtc < tracked.StabilizationExpiresAtUtc)
+                {
+                    tracked.StabilizationExpiresAtUtc = holdUntilUtc;
+                    RescheduleStabilizationTimer_NoLock(nowUtc);
+                    Logger.Debug($"Stabilization fresh-track hold for '{tracked.SessionKey}': waiting {IslandConfig.StabilizationMetadataConfirmationHoldMs}ms for metadata confirmation (title='{tracked.Title}')");
+                }
+
+                return false;
             }
 
             // Gate closed: raw fields changed but UI must keep seeing the frozen snapshot.
