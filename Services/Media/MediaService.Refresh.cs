@@ -338,6 +338,24 @@ namespace wisland.Services
             return result;
         }
 
+        /// <summary>
+        /// GSMTC reports TimelineProperties.Position as a cached value that is only
+        /// refreshed when the OS polls the source. For a playing session, the real
+        /// position at "now" is <c>Position + (Now - LastUpdatedTime)</c>. Without
+        /// this adjustment the bar snaps backward to the last-cached sample every
+        /// time a TimelinePropertiesChanged event fires or we re-query the session
+        /// (e.g. after session switch-back).
+        /// </summary>
+        private static double AdjustTimelinePositionForWallClock(
+            double positionSeconds, double durationSeconds, DateTimeOffset lastUpdatedTime)
+        {
+            if (lastUpdatedTime == default) return positionSeconds;
+            double elapsed = (DateTimeOffset.UtcNow - lastUpdatedTime).TotalSeconds;
+            if (elapsed <= 0 || elapsed > 12 * 3600) return positionSeconds;
+            double adjusted = positionSeconds + elapsed;
+            return durationSeconds > 0 ? Math.Min(adjusted, durationSeconds) : adjusted;
+        }
+
         private static async Task<PrefetchedSessionState> CaptureSessionStateAsync(GlobalSystemMediaTransportControlsSession session)
         {
             try
@@ -350,6 +368,12 @@ namespace wisland.Services
                 bool hasTimeline = timeline != null && timeline.EndTime.TotalSeconds > 0;
                 double positionSeconds = hasTimeline ? timeline!.Position.TotalSeconds : 0;
                 double durationSeconds = hasTimeline ? timeline!.EndTime.TotalSeconds : 0;
+                if (hasTimeline
+                    && playbackStatus == GlobalSystemMediaTransportControlsSessionPlaybackStatus.Playing)
+                {
+                    positionSeconds = AdjustTimelinePositionForWallClock(
+                        positionSeconds, durationSeconds, timeline!.LastUpdatedTime);
+                }
 
                 GlobalSystemMediaTransportControlsSessionMediaProperties? mediaProperties =
                     await session.TryGetMediaPropertiesAsync();
@@ -528,6 +552,16 @@ namespace wisland.Services
                 bool hasTimeline = timeline != null && timeline.EndTime.TotalSeconds > 0;
                 double nextPositionSeconds = hasTimeline ? timeline!.Position.TotalSeconds : 0;
                 double nextDurationSeconds = hasTimeline ? timeline!.EndTime.TotalSeconds : 0;
+                if (hasTimeline)
+                {
+                    var playbackStatus = session.GetPlaybackInfo()?.PlaybackStatus
+                        ?? GlobalSystemMediaTransportControlsSessionPlaybackStatus.Closed;
+                    if (playbackStatus == GlobalSystemMediaTransportControlsSessionPlaybackStatus.Playing)
+                    {
+                        nextPositionSeconds = AdjustTimelinePositionForWallClock(
+                            nextPositionSeconds, nextDurationSeconds, timeline!.LastUpdatedTime);
+                    }
+                }
                 DateTimeOffset nowUtc = DateTimeOffset.UtcNow;
                 ServiceChangeResult changeResult = default;
                 bool hasChanges = false;

@@ -301,14 +301,37 @@ namespace wisland.Services
         /// internally by CreateSnapshot.
         /// </summary>
         private static MediaSessionSnapshot CreateRawSnapshot(TrackedSource tracked)
-            => new(
+        {
+            // Wall-clock catch-up: the UI render loop (which drives Tick) is suspended
+            // when the island is idle or another session is displayed, so a backgrounded
+            // session's CurrentPositionSeconds can become stale. Extrapolate from the
+            // last-known anchor using wall-clock elapsed so switchback shows true
+            // current progress instead of snapping back to the anchor value.
+            double effectivePosition = tracked.CurrentPositionSeconds;
+            double effectiveProgress = tracked.Progress;
+            if (tracked.HasTimeline
+                && tracked.DurationSeconds > 0
+                && tracked.PlaybackStatus == GlobalSystemMediaTransportControlsSessionPlaybackStatus.Playing
+                && tracked.Presence == MediaSessionPresence.Active
+                && !tracked.HasPendingReconnect
+                && tracked.PositionUpdatedUtc != default)
+            {
+                double elapsed = (DateTimeOffset.UtcNow - tracked.PositionUpdatedUtc).TotalSeconds;
+                if (elapsed > 0 && elapsed < 12 * 3600)
+                {
+                    effectivePosition = Math.Min(tracked.DurationSeconds, tracked.CurrentPositionSeconds + elapsed);
+                    effectiveProgress = effectivePosition / tracked.DurationSeconds;
+                }
+            }
+
+            return new MediaSessionSnapshot(
                 tracked.SessionKey,
                 tracked.SourceAppId,
                 tracked.SourceName,
                 tracked.Title,
                 tracked.Artist,
                 tracked.PlaybackStatus,
-                tracked.Progress,
+                effectiveProgress,
                 tracked.HasTimeline,
                 tracked.DurationSeconds,
                 tracked.IsSystemCurrent,
@@ -318,5 +341,6 @@ namespace wisland.Services
                 tracked.MissingSinceUtc,
                 MediaSessionStabilizationReason.None,
                 tracked.Thumbnail);
+        }
     }
 }

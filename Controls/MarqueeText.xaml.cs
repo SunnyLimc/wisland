@@ -1,24 +1,25 @@
 using System;
-using System.Numerics;
-using Microsoft.UI.Composition;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
-using Microsoft.UI.Xaml.Hosting;
 using Microsoft.UI.Xaml.Media;
+using Microsoft.UI.Xaml.Media.Animation;
 using Microsoft.UI.Text;
+using Windows.Foundation;
 using Windows.UI.Text;
 
 namespace wisland.Controls
 {
     /// <summary>
-    /// A text element that automatically scrolls horizontally when content overflows.
+    /// Horizontal marquee text control.
     /// Cycle: idle pause → scroll to end → end pause → scroll back → repeat.
-    /// Uses a hidden ScrollViewer so the TextBlock renders at full natural width.
+    /// Uses RenderTransform (TranslateTransform) for scrolling so the offset
+    /// survives layout passes (composition Offset is clobbered by layout).
+    /// Uses a custom <see cref="UnboundedWidthPanel"/> host so the inner
+    /// TextBlock is measured with infinity and its ActualWidth reflects the
+    /// true natural text width.
     /// </summary>
     public sealed partial class MarqueeText : UserControl
     {
-        // ── Dependency properties ──────────────────────────────────────
-
         public static readonly DependencyProperty TextProperty =
             DependencyProperty.Register(nameof(Text), typeof(string), typeof(MarqueeText),
                 new PropertyMetadata(string.Empty, OnTextChanged));
@@ -75,21 +76,18 @@ namespace wisland.Controls
             set => SetValue(MarqueeForegroundProperty, value);
         }
 
-        /// <summary>Scroll speed in device-independent pixels per second.</summary>
         public double ScrollSpeed
         {
             get => (double)GetValue(ScrollSpeedProperty);
             set => SetValue(ScrollSpeedProperty, value);
         }
 
-        /// <summary>Pause before the first scroll starts (and between full cycles).</summary>
         public TimeSpan IdlePause
         {
             get => (TimeSpan)GetValue(IdlePauseProperty);
             set => SetValue(IdlePauseProperty, value);
         }
 
-        /// <summary>Pause when scrolled to the end before scrolling back.</summary>
         public TimeSpan EndPause
         {
             get => (TimeSpan)GetValue(EndPauseProperty);
@@ -102,40 +100,39 @@ namespace wisland.Controls
             set => SetValue(HorizontalTextAlignmentProperty, value);
         }
 
-        // ── Internal state ─────────────────────────────────────────────
-
-        private Compositor? _compositor;
-        private Visual? _contentVisual;
+        private bool _isLoaded;
         private bool _isScrolling;
+        private bool _reEvaluateQueued;
         private MarqueePhase _phase = MarqueePhase.Idle;
         private DispatcherTimer? _pauseTimer;
+        private Storyboard? _activeScrollStoryboard;
         private double _overflowAmount;
+        private int _cycleGeneration;
 
         private enum MarqueePhase { Idle, ScrollingToEnd, PauseAtEnd, ScrollingBack }
-
-        // ── Lifecycle ──────────────────────────────────────────────────
 
         public MarqueeText()
         {
             this.InitializeComponent();
             Loaded += OnLoaded;
             Unloaded += OnUnloaded;
-            SizeChanged += OnSizeChanged;
+            Viewport.SizeChanged += OnViewportSizeChanged;
+            InnerText.SizeChanged += OnInnerTextSizeChanged;
         }
 
-        /// <summary>Provides read access to the inner <see cref="TextBlock"/>.</summary>
         internal TextBlock InnerTextBlock => InnerText;
 
         private void OnLoaded(object sender, RoutedEventArgs e)
         {
-            _compositor = ElementCompositionPreview.GetElementVisual(InnerText).Compositor;
-            _contentVisual = ElementCompositionPreview.GetElementVisual(InnerText);
-
-            InnerText.SizeChanged += OnTextBlockSizeChanged;
-            Evaluate();
+            _isLoaded = true;
+            QueueReEvaluate();
         }
 
-        // ── Property change handlers ───────────────────────────────────
+        private void OnUnloaded(object sender, RoutedEventArgs e)
+        {
+            _isLoaded = false;
+            StopScrolling();
+        }
 
         private static void OnTextChanged(DependencyObject d, DependencyPropertyChangedEventArgs e)
         {
@@ -145,131 +142,169 @@ namespace wisland.Controls
         private void OnTextUpdated()
         {
             StopScrolling();
-            Evaluate();
+            QueueReEvaluate();
         }
 
-        private void OnSizeChanged(object sender, SizeChangedEventArgs e)
+        private void OnViewportSizeChanged(object sender, SizeChangedEventArgs e)
         {
-            Evaluate();
+            ApplyViewportClip(e.NewSize);
+            QueueReEvaluate();
         }
 
-        private void OnTextBlockSizeChanged(object sender, SizeChangedEventArgs e)
+        private void OnInnerTextSizeChanged(object sender, SizeChangedEventArgs e)
         {
-            // Re-evaluate when text layout changes.
-            if (!_isScrolling)
+            QueueReEvaluate();
+        }
+
+        private void ApplyViewportClip(Size size)
+        {
+            if (size.Width <= 0 || size.Height <= 0)
+            {
+                Viewport.Clip = null;
+                return;
+            }
+            Viewport.Clip = new RectangleGeometry
+            {
+                Rect = new Rect(0, 0, size.Width, size.Height)
+            };
+        }
+
+        private void QueueReEvaluate()
+        {
+            if (!_isLoaded) return;
+            if (_reEvaluateQueued) return;
+            _reEvaluateQueued = true;
+            _ = DispatcherQueue.TryEnqueue(() =>
+            {
+                _reEvaluateQueued = false;
                 Evaluate();
+            });
         }
-
-        private void OnUnloaded(object sender, RoutedEventArgs e)
-        {
-            StopScrolling();
-        }
-
-        // ── Core evaluation ────────────────────────────────────────────
 
         private void Evaluate()
         {
-            if (_contentVisual is null || _compositor is null) return;
-
-            double viewportWidth = Scroller.ViewportWidth;
-            double textWidth = Scroller.ExtentWidth;
-
+            if (!_isLoaded) return;
+            double viewportWidth = Viewport.ActualWidth;
+            double textWidth = InnerText.ActualWidth;
             if (viewportWidth <= 0 || textWidth <= 0) return;
 
-            _overflowAmount = textWidth - viewportWidth;
-
-            if (_overflowAmount <= 0)
+            double overflow = textWidth - viewportWidth;
+            if (overflow <= 0.5)
             {
                 StopScrolling();
-                _contentVisual.Offset = Vector3.Zero;
+                TextTranslate.X = 0;
+                _overflowAmount = 0;
                 return;
             }
 
-            // Text overflows — start scroll cycle.
             if (!_isScrolling)
             {
-                _contentVisual.Offset = Vector3.Zero;
+                _overflowAmount = overflow;
+                TextTranslate.X = 0;
                 StartIdlePause();
+                return;
             }
-        }
 
-        // ── Scroll cycle ──────────────────────────────────────────────
+            _overflowAmount = overflow;
+        }
 
         private void StartIdlePause()
         {
             _isScrolling = true;
             _phase = MarqueePhase.Idle;
-            StartPauseTimer(IdlePause, OnIdlePauseComplete);
+            int generation = ++_cycleGeneration;
+            StartPauseTimer(IdlePause, (_, _) =>
+            {
+                if (generation != _cycleGeneration) return;
+                StopPauseTimer();
+                ScrollToEnd(generation);
+            });
         }
 
-        private void OnIdlePauseComplete(object? sender, object e)
+        private void ScrollToEnd(int generation)
         {
-            StopPauseTimer();
-            ScrollToEnd();
-        }
-
-        private void ScrollToEnd()
-        {
-            if (_contentVisual is null || _compositor is null) return;
+            if (generation != _cycleGeneration || !_isLoaded) return;
+            if (_overflowAmount <= 0.5)
+            {
+                OnCycleAbort();
+                return;
+            }
 
             _phase = MarqueePhase.ScrollingToEnd;
-            double durationSeconds = _overflowAmount / ScrollSpeed;
+            double durationSeconds = Math.Max(0.2, _overflowAmount / Math.Max(1.0, ScrollSpeed));
+            double target = -_overflowAmount;
 
-            var animation = _compositor.CreateScalarKeyFrameAnimation();
-            animation.InsertKeyFrame(0f, 0f);
-            animation.InsertKeyFrame(1f, (float)-_overflowAmount,
-                _compositor.CreateCubicBezierEasingFunction(new Vector2(0.2f, 0f), new Vector2(0.6f, 1f)));
-            animation.Duration = TimeSpan.FromSeconds(durationSeconds);
-
-            var batch = _compositor.CreateScopedBatch(CompositionBatchTypes.Animation);
-            batch.Completed += OnScrollToEndComplete;
-            _contentVisual.StartAnimation("Offset.X", animation);
-            batch.End();
-        }
-
-        private void OnScrollToEndComplete(object? sender, CompositionBatchCompletedEventArgs args)
-        {
-            if (_phase != MarqueePhase.ScrollingToEnd) return;
-            _phase = MarqueePhase.PauseAtEnd;
-            StartPauseTimer(EndPause, OnEndPauseComplete);
-        }
-
-        private void OnEndPauseComplete(object? sender, object e)
-        {
-            StopPauseTimer();
-            ScrollBack();
-        }
-
-        private void ScrollBack()
-        {
-            if (_contentVisual is null || _compositor is null) return;
-
-            _phase = MarqueePhase.ScrollingBack;
-            double durationSeconds = _overflowAmount / (ScrollSpeed * 1.4);
-
-            var animation = _compositor.CreateScalarKeyFrameAnimation();
-            animation.InsertKeyFrame(0f, (float)-_overflowAmount);
-            animation.InsertKeyFrame(1f, 0f,
-                _compositor.CreateCubicBezierEasingFunction(new Vector2(0.3f, 0f), new Vector2(0.5f, 1f)));
-            animation.Duration = TimeSpan.FromSeconds(durationSeconds);
-
-            var batch = _compositor.CreateScopedBatch(CompositionBatchTypes.Animation);
-            batch.Completed += OnScrollBackComplete;
-            _contentVisual.StartAnimation("Offset.X", animation);
-            batch.End();
-        }
-
-        private void OnScrollBackComplete(object? sender, CompositionBatchCompletedEventArgs args)
-        {
-            if (_phase != MarqueePhase.ScrollingBack) return;
-
-            if (_isScrolling && _overflowAmount > 0)
+            var storyboard = CreateTranslateStoryboard(0, target, durationSeconds,
+                new CubicEase { EasingMode = EasingMode.EaseInOut });
+            _activeScrollStoryboard = storyboard;
+            storyboard.Completed += (_, _) =>
             {
-                StartIdlePause();
-            }
+                if (generation != _cycleGeneration) return;
+                if (_phase != MarqueePhase.ScrollingToEnd) return;
+                _phase = MarqueePhase.PauseAtEnd;
+                StartPauseTimer(EndPause, (_, _) =>
+                {
+                    if (generation != _cycleGeneration) return;
+                    StopPauseTimer();
+                    ScrollBack(generation);
+                });
+            };
+            storyboard.Begin();
         }
 
-        // ── Timer helpers ──────────────────────────────────────────────
+        private void ScrollBack(int generation)
+        {
+            if (generation != _cycleGeneration || !_isLoaded) return;
+            _phase = MarqueePhase.ScrollingBack;
+            double durationSeconds = Math.Max(0.15, _overflowAmount / Math.Max(1.0, ScrollSpeed * 1.4));
+            double start = -_overflowAmount;
+
+            var storyboard = CreateTranslateStoryboard(start, 0, durationSeconds,
+                new CubicEase { EasingMode = EasingMode.EaseInOut });
+            _activeScrollStoryboard = storyboard;
+            storyboard.Completed += (_, _) =>
+            {
+                if (generation != _cycleGeneration) return;
+                if (_phase != MarqueePhase.ScrollingBack) return;
+                if (_overflowAmount > 0.5) StartIdlePause();
+                else OnCycleAbort();
+            };
+            storyboard.Begin();
+        }
+
+        private Storyboard CreateTranslateStoryboard(double from, double to, double durationSeconds, EasingFunctionBase easing)
+        {
+            TextTranslate.X = from;
+            var animation = new DoubleAnimation
+            {
+                From = from,
+                To = to,
+                Duration = new Duration(TimeSpan.FromSeconds(durationSeconds)),
+                EasingFunction = easing,
+                EnableDependentAnimation = true
+            };
+            Storyboard.SetTarget(animation, TextTranslate);
+            Storyboard.SetTargetProperty(animation, "X");
+            var sb = new Storyboard();
+            sb.Children.Add(animation);
+            return sb;
+        }
+
+        private void OnCycleAbort()
+        {
+            StopActiveStoryboard();
+            TextTranslate.X = 0;
+            _isScrolling = false;
+            _phase = MarqueePhase.Idle;
+        }
+
+        private void StopActiveStoryboard()
+        {
+            if (_activeScrollStoryboard is null) return;
+            try { _activeScrollStoryboard.Stop(); }
+            catch { }
+            _activeScrollStoryboard = null;
+        }
 
         private void StartPauseTimer(TimeSpan duration, EventHandler<object> handler)
         {
@@ -286,25 +321,21 @@ namespace wisland.Controls
             _pauseTimer = null;
         }
 
-        /// <summary>Stop the entire scroll cycle and reset offset.</summary>
         public void StopScrolling()
         {
+            _cycleGeneration++;
             _isScrolling = false;
             _phase = MarqueePhase.Idle;
+            _overflowAmount = 0;
             StopPauseTimer();
-
-            if (_contentVisual is not null)
-            {
-                _contentVisual.StopAnimation("Offset.X");
-                _contentVisual.Offset = Vector3.Zero;
-            }
+            StopActiveStoryboard();
+            if (TextTranslate is not null) TextTranslate.X = 0;
         }
 
-        /// <summary>Restart the scroll evaluation (call after text or size changes).</summary>
         public void Reset()
         {
             StopScrolling();
-            Evaluate();
+            QueueReEvaluate();
         }
     }
 }

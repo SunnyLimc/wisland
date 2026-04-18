@@ -57,7 +57,8 @@
                 <views:ImmersiveMediaView x:Name="ImmersiveContent" Opacity="0" IsHitTestVisible="False"
                                           BackClick="SkipPrevious_Click"
                                           PlayPauseClick="PlayPause_Click"
-                                          ForwardClick="SkipNext_Click" />
+                                          ForwardClick="SkipNext_Click"
+                                          SeekRequested="ImmersiveContent_SeekRequested" />
             </Grid>
         </Border>
     </Grid>

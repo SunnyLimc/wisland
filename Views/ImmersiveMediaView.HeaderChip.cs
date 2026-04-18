@@ -1,0 +1,1397 @@
+// This file is the immersive-view copy of the classic ExpandedMediaView header
+// chip. It is an intentional near-verbatim duplicate so the two views can evolve
+// independently while sharing the exact same visual behavior (hover/press/focus
+// composition layers, label crossfade, chip-width morph, avatar strip motion).
+// Any change to the chip choreography should be mirrored in ExpandedMediaView.
+
+using System;
+using System.Collections.Generic;
+using System.Numerics;
+using Microsoft.UI;
+using Microsoft.UI.Composition;
+using Microsoft.UI.Xaml;
+using Microsoft.UI.Xaml.Controls;
+using Microsoft.UI.Xaml.Hosting;
+using Microsoft.UI.Xaml.Input;
+using Microsoft.UI.Xaml.Media;
+using Microsoft.UI.Xaml.Media.Animation;
+using Microsoft.UI.Xaml.Shapes;
+using Windows.Foundation;
+using Windows.UI;
+using wisland.Controls;
+using wisland.Helpers;
+using wisland.Models;
+
+namespace wisland.Views
+{
+    public sealed partial class ImmersiveMediaView
+    {
+        private const int HeaderAvatarVisibleCount = 3;
+        private const float HeaderAvatarSize = 16.0f;
+        private const float HeaderAvatarCenterPoint = HeaderAvatarSize * 0.5f;
+        private const float HeaderAvatarSlotStep = 10.0f;
+        private const float HeaderAvatarSelectedScale = 1.0f;
+        private const float HeaderAvatarNormalScale = 0.82f;
+        private static readonly float[] AvatarSlotOffsets =
+        {
+            0.0f,
+            HeaderAvatarSlotStep,
+            HeaderAvatarSlotStep * 2.0f
+        };
+
+        private DirectionalContentTransitionCoordinator? _headerLabelTransition;
+        private readonly HeaderTextSnapshot[] _headerTextSnapshots = new HeaderTextSnapshot[2];
+        private AvatarStripSnapshot _avatarStripSnapshot = AvatarStripSnapshot.Empty;
+        private Border[]? _headerAvatarBorders;
+        private Image[]? _headerAvatarImages;
+        private TextBlock[]? _headerAvatarFallbacks;
+        private TextBlock[]? _headerLabels;
+        private FontIcon[]? _headerExpandGlyphs;
+        private readonly Visual[] _headerExpandGlyphVisuals = new Visual[2];
+        private readonly long[] _avatarLoadTokens = new long[4];
+        private readonly RectangleGeometry _headerAvatarViewportClip = new();
+
+        // Cached measurement elements
+        private StackPanel? _measureLabelStack;
+        private TextBlock? _measureLabel;
+        private FontIcon? _measureExpandIcon;
+
+        // Chip palette (immersive: always light-on-dark).
+        private Color _chipMainColor = Microsoft.UI.Colors.White;
+        private Color _chipSubColor = Color.FromArgb(230, 230, 230, 240);
+
+        private Compositor? _avatarCompositor;
+        private readonly Visual[] _headerAvatarVisuals = new Visual[4];
+        private CubicBezierEasingFunction? _avatarMoveEasing;
+        private CubicBezierEasingFunction? _avatarEnterEasing;
+        private CubicBezierEasingFunction? _avatarExitEasing;
+        private long _avatarTransitionToken;
+        private Visual? _headerLabelShiftVisual;
+        private CubicBezierEasingFunction? _headerLabelShiftGrowEasing;
+        private CubicBezierEasingFunction? _headerLabelShiftShrinkEasing;
+        private Storyboard? _headerChipWidthStoryboard;
+        private double _headerChipWidth = double.NaN;
+        private Visual? _headerChipVisual;
+        private Visual? _headerChipHoverVisual;
+        private Visual? _headerChipPressVisual;
+        private Visual? _headerChipFocusVisual;
+        private CubicBezierEasingFunction? _headerChipHoverEasing;
+        private CubicBezierEasingFunction? _headerChipPressEasing;
+        private CubicBezierEasingFunction? _headerExpandGlyphEasing;
+        private CubicBezierEasingFunction? _headerExpandGlyphScaleEasing;
+        private bool _isHeaderChipPointerOver;
+        private bool _isHeaderChipPressed;
+        private bool _isHeaderChipHoverActive;
+        private bool _isHeaderChipPressActive;
+        private bool _isHeaderChipFocusActive;
+        private bool _isSessionPickerExpanded;
+
+        private void InitializeHeaderChipArrays()
+        {
+            _headerAvatarBorders = new[]
+            {
+                HeaderAvatarPresenter0,
+                HeaderAvatarPresenter1,
+                HeaderAvatarPresenter2,
+                HeaderAvatarPresenter3
+            };
+
+            _headerAvatarImages = new[]
+            {
+                HeaderAvatarPresenter0Image,
+                HeaderAvatarPresenter1Image,
+                HeaderAvatarPresenter2Image,
+                HeaderAvatarPresenter3Image
+            };
+
+            _headerAvatarFallbacks = new[]
+            {
+                HeaderAvatarPresenter0Fallback,
+                HeaderAvatarPresenter1Fallback,
+                HeaderAvatarPresenter2Fallback,
+                HeaderAvatarPresenter3Fallback
+            };
+
+            _headerLabels = new[]
+            {
+                HeaderLabelPrimary,
+                HeaderLabelSecondary
+            };
+
+            _headerExpandGlyphs = new[]
+            {
+                HeaderExpandGlyphPrimary,
+                HeaderExpandGlyphSecondary
+            };
+
+            _headerLabelTransition = new DirectionalContentTransitionCoordinator(
+                HeaderLabelViewport,
+                HeaderLabelSlotPrimary,
+                HeaderLabelSlotSecondary,
+                IslandConfig.HeaderChipTransitionProfile);
+
+            HeaderAvatarViewport.Clip = _headerAvatarViewportClip;
+            _headerTextSnapshots[0] = ReadHeaderTextSnapshotFromSlot(0);
+            _headerTextSnapshots[1] = ReadHeaderTextSnapshotFromSlot(1);
+
+            SessionHeaderButton.PointerEntered += SessionHeaderButton_PointerEntered;
+            SessionHeaderButton.PointerExited += SessionHeaderButton_PointerExited;
+            SessionHeaderButton.PointerPressed += SessionHeaderButton_PointerPressed;
+            SessionHeaderButton.PointerReleased += SessionHeaderButton_PointerReleased;
+            SessionHeaderButton.PointerCanceled += SessionHeaderButton_PointerCanceled;
+            SessionHeaderButton.PointerCaptureLost += SessionHeaderButton_PointerCaptureLost;
+            SessionHeaderButton.GotFocus += SessionHeaderButton_GotFocus;
+            SessionHeaderButton.LostFocus += SessionHeaderButton_LostFocus;
+            SessionHeaderButton.IsEnabled = false;
+            SessionHeaderButton.IsTabStop = false;
+        }
+
+        private void InitializeHeaderChipAtLoad()
+        {
+            _headerLabelTransition!.Initialize();
+            _headerLabelTransition.UpdateViewportBounds();
+            InitializeHeaderLabelShiftMotion();
+            InitializeHeaderAvatarStrip();
+            ApplyAvatarIconSubpixelCorrection();
+            UpdateHeaderAvatarViewportWidth(_avatarStripSnapshot);
+            UpdateHeaderAvatarViewportBounds();
+            ApplyAvatarStripSnapshotImmediately(_avatarStripSnapshot);
+            EnsureHeaderChipWidthInitialized(MeasureHeaderChipWidth(
+                _headerTextSnapshots[_headerLabelTransition.ActiveSlotIndex],
+                _avatarStripSnapshot));
+            InitializeHeaderChipInteractionMotion();
+            InitializeHeaderExpandGlyphMotion();
+            ApplyHeaderColors();
+            UpdateHeaderChipActionability(useTransitions: false);
+        }
+
+        // Event handlers
+        private void HeaderLabelViewport_SizeChanged(object sender, SizeChangedEventArgs e)
+        {
+            _headerLabelTransition?.UpdateViewportBounds();
+            UpdateHeaderExpandGlyphBounds();
+        }
+
+        private void HeaderAvatarViewport_SizeChanged(object sender, SizeChangedEventArgs e)
+            => UpdateHeaderAvatarViewportBounds();
+
+        private void HeaderChipBorder_SizeChanged(object sender, SizeChangedEventArgs e)
+            => UpdateHeaderChipInteractionBounds();
+
+        private void SessionHeaderButton_PointerEntered(object sender, PointerRoutedEventArgs e)
+        {
+            _isHeaderChipPointerOver = true;
+            UpdateHeaderChipInteractionState(useTransitions: true);
+        }
+
+        private void SessionHeaderButton_PointerExited(object sender, PointerRoutedEventArgs e)
+        {
+            _isHeaderChipPointerOver = false;
+            _isHeaderChipPressed = false;
+            UpdateHeaderChipInteractionState(useTransitions: true);
+        }
+
+        private void SessionHeaderButton_PointerPressed(object sender, PointerRoutedEventArgs e)
+        {
+            if (!_canOpenSessionPicker) return;
+            _isHeaderChipPointerOver = true;
+            _isHeaderChipPressed = true;
+            UpdateHeaderChipInteractionState(useTransitions: true);
+        }
+
+        private void SessionHeaderButton_PointerReleased(object sender, PointerRoutedEventArgs e)
+        {
+            _isHeaderChipPressed = false;
+            UpdateHeaderChipInteractionState(useTransitions: true);
+        }
+
+        private void SessionHeaderButton_PointerCanceled(object sender, PointerRoutedEventArgs e)
+        {
+            _isHeaderChipPressed = false;
+            UpdateHeaderChipInteractionState(useTransitions: true);
+        }
+
+        private void SessionHeaderButton_PointerCaptureLost(object sender, PointerRoutedEventArgs e)
+        {
+            _isHeaderChipPressed = false;
+            UpdateHeaderChipInteractionState(useTransitions: true);
+        }
+
+        private void SessionHeaderButton_GotFocus(object sender, RoutedEventArgs e)
+            => UpdateHeaderChipInteractionState(useTransitions: true);
+
+        private void SessionHeaderButton_LostFocus(object sender, RoutedEventArgs e)
+            => UpdateHeaderChipInteractionState(useTransitions: true);
+
+        private void OnSessionHeader_Click(object sender, RoutedEventArgs e)
+        {
+            if (_canOpenSessionPicker)
+            {
+                SessionPickerToggleRequested?.Invoke(this, EventArgs.Empty);
+            }
+        }
+
+        private bool ApplyHeaderTextSnapshot(
+            HeaderTextSnapshot snapshot,
+            AvatarStripSnapshot avatarSnapshot,
+            ContentTransitionDirection direction)
+        {
+            HeaderTextSnapshot currentSnapshot = _headerTextSnapshots[_headerLabelTransition!.ActiveSlotIndex];
+            AvatarStripSnapshot currentAvatarSnapshot = _avatarStripSnapshot;
+            double currentContentWidth = MeasureHeaderContentWidth(currentSnapshot, currentAvatarSnapshot);
+            double targetContentWidth = MeasureHeaderContentWidth(snapshot, avatarSnapshot);
+            double targetWidth = MeasureHeaderChipWidth(snapshot, avatarSnapshot);
+            bool textChanged = !currentSnapshot.Equals(snapshot);
+            bool contentWidthChanged = Math.Abs(currentContentWidth - targetContentWidth) >= 0.5;
+            if (!textChanged && !contentWidthChanged)
+            {
+                EnsureHeaderChipWidthInitialized(targetWidth);
+                return false;
+            }
+
+            if (!textChanged)
+            {
+                AnimateHeaderChipWidth(targetWidth, currentContentWidth, targetContentWidth, animateLabelShift: false);
+                return true;
+            }
+
+            if (direction == ContentTransitionDirection.None)
+            {
+                AnimateHeaderChipWidth(targetWidth, currentContentWidth, targetContentWidth, animateLabelShift: false);
+                _headerLabelTransition.Crossfade(slotIndex => ApplyHeaderTextSnapshotToSlot(slotIndex, snapshot));
+                return true;
+            }
+
+            AnimateHeaderChipWidth(targetWidth, currentContentWidth, targetContentWidth, animateLabelShift: false);
+            _headerLabelTransition.Transition(direction, slotIndex => ApplyHeaderTextSnapshotToSlot(slotIndex, snapshot));
+            return true;
+        }
+
+        private bool ApplyAvatarStripSnapshot(AvatarStripSnapshot snapshot, ContentTransitionDirection direction)
+        {
+            AvatarStripSnapshot currentSnapshot = _avatarStripSnapshot;
+            if (currentSnapshot.Equals(snapshot)) return false;
+
+            if (TryStartAvatarStripTransition(currentSnapshot, snapshot, direction))
+            {
+                _avatarStripSnapshot = snapshot;
+                return true;
+            }
+
+            _avatarStripSnapshot = snapshot;
+            ApplyAvatarStripSnapshotImmediately(snapshot);
+            return true;
+        }
+
+        private void InitializeHeaderChipInteractionMotion()
+        {
+            if (_headerChipVisual != null) return;
+
+            ElementCompositionPreview.SetIsTranslationEnabled(HeaderChipRoot, true);
+            _headerChipVisual = ElementCompositionPreview.GetElementVisual(HeaderChipRoot);
+            _headerChipHoverVisual = ElementCompositionPreview.GetElementVisual(HeaderChipHoverLayer);
+            _headerChipPressVisual = ElementCompositionPreview.GetElementVisual(HeaderChipPressLayer);
+            _headerChipFocusVisual = ElementCompositionPreview.GetElementVisual(HeaderChipFocusRing);
+
+            Compositor compositor = _headerChipVisual.Compositor;
+            _headerChipHoverEasing = compositor.CreateCubicBezierEasingFunction(
+                new Vector2(0.18f, 1.0f),
+                new Vector2(0.28f, 1.0f));
+            _headerChipPressEasing = compositor.CreateCubicBezierEasingFunction(
+                new Vector2(0.32f, 0.0f),
+                new Vector2(0.18f, 1.0f));
+
+            _headerChipVisual.Scale = Vector3.One;
+            HeaderChipRoot.Translation = Vector3.Zero;
+            _headerChipHoverVisual.Opacity = 0.0f;
+            _headerChipPressVisual.Opacity = 0.0f;
+            _headerChipFocusVisual.Opacity = 0.0f;
+            UpdateHeaderChipInteractionBounds();
+        }
+
+        private void InitializeHeaderExpandGlyphMotion()
+        {
+            if (_headerExpandGlyphVisuals[0] != null) return;
+
+            Compositor compositor = _headerChipVisual?.Compositor
+                ?? ElementCompositionPreview.GetElementVisual(HeaderExpandGlyphPrimary).Compositor;
+
+            _headerExpandGlyphEasing = compositor.CreateCubicBezierEasingFunction(
+                new Vector2(0.22f, 0.92f),
+                new Vector2(0.18f, 1.0f));
+            _headerExpandGlyphScaleEasing = compositor.CreateCubicBezierEasingFunction(
+                new Vector2(0.2f, 0.9f),
+                new Vector2(0.16f, 1.0f));
+
+            for (int slotIndex = 0; slotIndex < _headerExpandGlyphs!.Length; slotIndex++)
+            {
+                FontIcon glyph = _headerExpandGlyphs[slotIndex];
+                Visual visual = ElementCompositionPreview.GetElementVisual(glyph);
+                _headerExpandGlyphVisuals[slotIndex] = visual;
+                visual.RotationAxis = new Vector3(0.0f, 0.0f, 1.0f);
+                visual.Scale = Vector3.One;
+                visual.Opacity = 1.0f;
+            }
+
+            UpdateHeaderExpandGlyphBounds();
+            ApplyHeaderExpandGlyphStateToAllSlots(useTransitions: false, IslandConfig.HeaderExpandGlyphToggleDurationMs);
+        }
+
+        private void UpdateHeaderChipActionability(bool useTransitions)
+        {
+            SessionHeaderButton.IsEnabled = _canOpenSessionPicker;
+            SessionHeaderButton.IsTabStop = _canOpenSessionPicker;
+            if (!_canOpenSessionPicker)
+            {
+                _isHeaderChipPointerOver = false;
+                _isHeaderChipPressed = false;
+            }
+            UpdateHeaderChipInteractionState(useTransitions);
+        }
+
+        private void UpdateHeaderChipInteractionBounds()
+        {
+            if (_headerChipVisual == null) return;
+            _headerChipVisual.CenterPoint = new Vector3(
+                (float)(HeaderChipBorder.ActualWidth * 0.5),
+                (float)(HeaderChipBorder.ActualHeight * 0.5),
+                0.0f);
+        }
+
+        private void UpdateHeaderChipInteractionState(bool useTransitions)
+        {
+            InitializeHeaderChipInteractionMotion();
+            if (_headerChipVisual == null
+                || _headerChipHoverVisual == null
+                || _headerChipPressVisual == null
+                || _headerChipFocusVisual == null)
+            {
+                return;
+            }
+
+            bool isHoverActive = _canOpenSessionPicker && _isHeaderChipPointerOver;
+            bool isPressActive = _canOpenSessionPicker && _isHeaderChipPressed && _isHeaderChipPointerOver;
+            bool isFocusActive = _canOpenSessionPicker && SessionHeaderButton.FocusState == FocusState.Keyboard;
+
+            Vector3 targetScale = isPressActive
+                ? new Vector3(IslandConfig.HeaderChipPressedScale, IslandConfig.HeaderChipPressedScale, 1.0f)
+                : isHoverActive
+                    ? new Vector3(IslandConfig.HeaderChipHoverScale, IslandConfig.HeaderChipHoverScale, 1.0f)
+                    : Vector3.One;
+            Vector3 targetTranslation = isPressActive
+                ? Vector3.Zero
+                : isHoverActive
+                    ? new Vector3(0.0f, IslandConfig.HeaderChipHoverTranslateY, 0.0f)
+                    : Vector3.Zero;
+
+            bool usePressMotion = _isHeaderChipPressActive || isPressActive;
+            TimeSpan motionDuration = TimeSpan.FromMilliseconds(
+                usePressMotion ? IslandConfig.HeaderChipPressDurationMs : IslandConfig.HeaderChipHoverDurationMs);
+            CompositionEasingFunction motionEasing = usePressMotion ? _headerChipPressEasing! : _headerChipHoverEasing!;
+
+            if (!useTransitions)
+            {
+                StopHeaderChipInteractionAnimations();
+                _headerChipVisual.Scale = targetScale;
+                HeaderChipRoot.Translation = targetTranslation;
+                _headerChipHoverVisual.Opacity = isHoverActive ? 1.0f : 0.0f;
+                _headerChipPressVisual.Opacity = isPressActive ? 1.0f : 0.0f;
+                _headerChipFocusVisual.Opacity = isFocusActive ? 1.0f : 0.0f;
+            }
+            else
+            {
+                _headerChipVisual.StartAnimation("Scale",
+                    CreateHeaderChipVectorAnimation(targetScale, motionDuration, motionEasing));
+                _headerChipVisual.StartAnimation("Translation",
+                    CreateHeaderChipVectorAnimation(targetTranslation, motionDuration, motionEasing));
+                _headerChipHoverVisual.StartAnimation("Opacity",
+                    CreateHeaderChipOpacityAnimation(
+                        isHoverActive ? 1.0f : 0.0f,
+                        TimeSpan.FromMilliseconds(IslandConfig.HeaderChipHoverDurationMs),
+                        _headerChipHoverEasing!));
+                _headerChipPressVisual.StartAnimation("Opacity",
+                    CreateHeaderChipOpacityAnimation(
+                        isPressActive ? 1.0f : 0.0f,
+                        TimeSpan.FromMilliseconds(IslandConfig.HeaderChipPressDurationMs),
+                        _headerChipPressEasing!));
+                _headerChipFocusVisual.StartAnimation("Opacity",
+                    CreateHeaderChipOpacityAnimation(
+                        isFocusActive ? 1.0f : 0.0f,
+                        TimeSpan.FromMilliseconds(IslandConfig.HeaderChipHoverDurationMs),
+                        _headerChipHoverEasing!));
+            }
+
+            _isHeaderChipHoverActive = isHoverActive;
+            _isHeaderChipPressActive = isPressActive;
+            _isHeaderChipFocusActive = isFocusActive;
+        }
+
+        private void StopHeaderChipInteractionAnimations()
+        {
+            if (_headerChipVisual == null
+                || _headerChipHoverVisual == null
+                || _headerChipPressVisual == null
+                || _headerChipFocusVisual == null)
+            {
+                return;
+            }
+
+            _headerChipVisual.StopAnimation("Scale");
+            _headerChipVisual.StopAnimation("Translation");
+            _headerChipHoverVisual.StopAnimation("Opacity");
+            _headerChipPressVisual.StopAnimation("Opacity");
+            _headerChipFocusVisual.StopAnimation("Opacity");
+        }
+
+        private void UpdateHeaderExpandGlyphBounds()
+        {
+            if (_headerExpandGlyphs == null) return;
+            for (int slotIndex = 0; slotIndex < _headerExpandGlyphs.Length; slotIndex++)
+            {
+                Visual? visual = _headerExpandGlyphVisuals[slotIndex];
+                if (visual == null) continue;
+                FontIcon glyph = _headerExpandGlyphs[slotIndex];
+                float width = (float)Math.Max(glyph.ActualWidth, glyph.FontSize);
+                float height = (float)Math.Max(glyph.ActualHeight, glyph.FontSize);
+                visual.CenterPoint = new Vector3(width * 0.5f, height * 0.5f, 0.0f);
+            }
+        }
+
+        private void ApplyHeaderExpandGlyphStateToAllSlots(bool useTransitions, int durationMs)
+        {
+            InitializeHeaderExpandGlyphMotion();
+            for (int slotIndex = 0; slotIndex < _headerExpandGlyphs!.Length; slotIndex++)
+            {
+                ApplyHeaderExpandGlyphStateToSlot(slotIndex, useTransitions, durationMs);
+            }
+        }
+
+        private void ApplyHeaderExpandGlyphStateToSlot(int slotIndex, bool useTransitions, int durationMs)
+        {
+            InitializeHeaderExpandGlyphMotion();
+            Visual? visual = _headerExpandGlyphVisuals[slotIndex];
+            if (visual == null) return;
+
+            StopHeaderExpandGlyphAnimations(slotIndex);
+            UpdateHeaderExpandGlyphBounds();
+
+            float targetRotation = _isSessionPickerExpanded ? 180.0f : 0.0f;
+
+            if (!useTransitions || _headerExpandGlyphs![slotIndex].Visibility != Visibility.Visible)
+            {
+                visual.RotationAngleInDegrees = targetRotation;
+                visual.Scale = Vector3.One;
+                visual.Opacity = 1.0f;
+                return;
+            }
+
+            TimeSpan duration = TimeSpan.FromMilliseconds(durationMs);
+            visual.StartAnimation("RotationAngleInDegrees",
+                CreateHeaderExpandGlyphRotationAnimation(targetRotation, duration));
+            visual.StartAnimation("Scale",
+                CreateHeaderExpandGlyphScaleAnimation(_isSessionPickerExpanded, duration));
+        }
+
+        private void StopHeaderExpandGlyphAnimations(int slotIndex)
+        {
+            Visual? visual = _headerExpandGlyphVisuals[slotIndex];
+            if (visual == null) return;
+            visual.StopAnimation("RotationAngleInDegrees");
+            visual.StopAnimation("Scale");
+        }
+
+        private Vector3KeyFrameAnimation CreateHeaderChipVectorAnimation(
+            Vector3 target, TimeSpan duration, CompositionEasingFunction easing)
+        {
+            var animation = _headerChipVisual!.Compositor.CreateVector3KeyFrameAnimation();
+            animation.Duration = duration;
+            animation.InsertKeyFrame(1.0f, target, easing);
+            return animation;
+        }
+
+        private ScalarKeyFrameAnimation CreateHeaderChipOpacityAnimation(
+            float target, TimeSpan duration, CompositionEasingFunction easing)
+        {
+            var animation = _headerChipVisual!.Compositor.CreateScalarKeyFrameAnimation();
+            animation.Duration = duration;
+            animation.InsertKeyFrame(1.0f, target, easing);
+            return animation;
+        }
+
+        private ScalarKeyFrameAnimation CreateHeaderExpandGlyphRotationAnimation(float target, TimeSpan duration)
+        {
+            var animation = _headerExpandGlyphVisuals[0]!.Compositor.CreateScalarKeyFrameAnimation();
+            animation.Duration = duration;
+            animation.InsertKeyFrame(1.0f, target, _headerExpandGlyphEasing);
+            return animation;
+        }
+
+        private Vector3KeyFrameAnimation CreateHeaderExpandGlyphScaleAnimation(bool isExpanded, TimeSpan duration)
+        {
+            var animation = _headerExpandGlyphVisuals[0]!.Compositor.CreateVector3KeyFrameAnimation();
+            animation.Duration = duration;
+            float middleScale = isExpanded
+                ? IslandConfig.HeaderExpandGlyphOpenPeakScale
+                : IslandConfig.HeaderExpandGlyphCloseDipScale;
+            Vector3 middle = new(middleScale, middleScale, 1.0f);
+            animation.InsertKeyFrame(0.58f, middle, _headerExpandGlyphScaleEasing);
+            animation.InsertKeyFrame(1.0f, Vector3.One, _headerExpandGlyphScaleEasing);
+            return animation;
+        }
+
+        private void InitializeHeaderLabelShiftMotion()
+        {
+            if (_headerLabelShiftVisual != null) return;
+            ElementCompositionPreview.SetIsTranslationEnabled(HeaderLabelViewport, true);
+            _headerLabelShiftVisual = ElementCompositionPreview.GetElementVisual(HeaderLabelViewport);
+            Compositor compositor = _headerLabelShiftVisual.Compositor;
+            _headerLabelShiftGrowEasing = compositor.CreateCubicBezierEasingFunction(
+                new Vector2(0.18f, 1.0f), new Vector2(0.28f, 1.0f));
+            _headerLabelShiftShrinkEasing = compositor.CreateCubicBezierEasingFunction(
+                new Vector2(0.32f, 0.0f), new Vector2(0.18f, 1.0f));
+        }
+
+        private void EnsureHeaderChipWidthInitialized(double targetWidth)
+        {
+            if (!double.IsNaN(_headerChipWidth)) return;
+            double width = targetWidth > 0 ? targetWidth : HeaderChipBorder.ActualWidth;
+            if (width > 0)
+            {
+                _headerChipWidth = width;
+                HeaderChipBorder.Width = width;
+                ResetHeaderLabelShift();
+            }
+        }
+
+        private void SetHeaderChipWidthImmediately(double targetWidth)
+        {
+            StopHeaderChipWidthAnimation();
+            _headerChipWidth = targetWidth;
+            HeaderChipBorder.Width = targetWidth;
+            ResetHeaderLabelShift();
+        }
+
+        private void AnimateHeaderChipWidth(
+            double targetWidth, double currentContentWidth, double targetContentWidth, bool animateLabelShift)
+        {
+            if (targetWidth <= 0) return;
+            if (!IsLoaded)
+            {
+                SetHeaderChipWidthImmediately(targetWidth);
+                return;
+            }
+
+            double currentWidth = _headerChipWidthStoryboard != null
+                ? HeaderChipBorder.ActualWidth
+                : (!double.IsNaN(_headerChipWidth) ? _headerChipWidth : HeaderChipBorder.ActualWidth);
+
+            if (currentWidth <= 0 || Math.Abs(currentWidth - targetWidth) < 0.5)
+            {
+                SetHeaderChipWidthImmediately(targetWidth);
+                return;
+            }
+
+            StopHeaderChipWidthAnimation();
+            HeaderChipBorder.Width = currentWidth;
+
+            var storyboard = new Storyboard();
+            var animation = CreateHeaderChipWidthAnimation(currentWidth, targetWidth);
+            Storyboard.SetTarget(animation, HeaderChipBorder);
+            Storyboard.SetTargetProperty(animation, nameof(Width));
+            storyboard.Children.Add(animation);
+
+            double shiftDelta = (targetContentWidth - currentContentWidth) * 0.5;
+            if (animateLabelShift && Math.Abs(shiftDelta) >= 0.5)
+            {
+                StartHeaderLabelShiftAnimation(shiftDelta, targetWidth > currentWidth);
+            }
+            else
+            {
+                ResetHeaderLabelShift();
+            }
+
+            storyboard.Completed += (_, _) =>
+            {
+                HeaderChipBorder.Width = targetWidth;
+                _headerChipWidth = targetWidth;
+                ResetHeaderLabelShift();
+                if (ReferenceEquals(_headerChipWidthStoryboard, storyboard))
+                {
+                    _headerChipWidthStoryboard = null;
+                }
+            };
+
+            _headerChipWidth = targetWidth;
+            _headerChipWidthStoryboard = storyboard;
+            storyboard.Begin();
+        }
+
+        private void StopHeaderChipWidthAnimation()
+        {
+            _headerChipWidthStoryboard?.Stop();
+            _headerChipWidthStoryboard = null;
+            StopHeaderLabelShiftAnimation();
+        }
+
+        private DoubleAnimationUsingKeyFrames CreateHeaderChipWidthAnimation(double currentWidth, double targetWidth)
+        {
+            bool isGrowing = targetWidth > currentWidth;
+            double delta = targetWidth - currentWidth;
+            TimeSpan duration = TimeSpan.FromMilliseconds(IslandConfig.HeaderChipSizeTransitionDurationMs);
+            DoubleAnimationUsingKeyFrames animation = new()
+            {
+                Duration = duration,
+                EnableDependentAnimation = true
+            };
+
+            animation.KeyFrames.Add(new DiscreteDoubleKeyFrame
+            {
+                KeyTime = KeyTime.FromTimeSpan(TimeSpan.Zero),
+                Value = currentWidth
+            });
+
+            if (isGrowing)
+            {
+                animation.KeyFrames.Add(new SplineDoubleKeyFrame
+                {
+                    KeyTime = KeyTime.FromTimeSpan(TimeSpan.FromMilliseconds(
+                        IslandConfig.HeaderChipSizeTransitionDurationMs * IslandConfig.HeaderChipGrowSettleProgress)),
+                    Value = currentWidth + (delta * IslandConfig.HeaderChipGrowSettleRatio),
+                    KeySpline = CreateKeySpline(0.18, 1.0, 0.28, 1.0)
+                });
+            }
+            else
+            {
+                animation.KeyFrames.Add(new DiscreteDoubleKeyFrame
+                {
+                    KeyTime = KeyTime.FromTimeSpan(TimeSpan.FromMilliseconds(
+                        IslandConfig.HeaderChipSizeTransitionDurationMs * IslandConfig.HeaderChipShrinkDelayProgress)),
+                    Value = currentWidth
+                });
+            }
+
+            animation.KeyFrames.Add(new SplineDoubleKeyFrame
+            {
+                KeyTime = KeyTime.FromTimeSpan(duration),
+                Value = targetWidth,
+                KeySpline = isGrowing
+                    ? CreateKeySpline(0.18, 1.0, 0.28, 1.0)
+                    : CreateKeySpline(0.32, 0.0, 0.18, 1.0)
+            });
+
+            return animation;
+        }
+
+        private void StartHeaderLabelShiftAnimation(double shiftDelta, bool isGrowing)
+        {
+            InitializeHeaderLabelShiftMotion();
+            if (_headerLabelShiftVisual == null) return;
+
+            StopHeaderLabelShiftAnimation();
+            HeaderLabelViewport.Translation = new Vector3((float)shiftDelta, 0.0f, 0.0f);
+            _headerLabelShiftVisual.StartAnimation("Translation",
+                CreateHeaderLabelShiftAnimation((float)shiftDelta, isGrowing));
+        }
+
+        private void StopHeaderLabelShiftAnimation()
+        {
+            if (_headerLabelShiftVisual == null) return;
+            _headerLabelShiftVisual.StopAnimation("Translation");
+            HeaderLabelViewport.Translation = Vector3.Zero;
+        }
+
+        private void ResetHeaderLabelShift()
+        {
+            InitializeHeaderLabelShiftMotion();
+            StopHeaderLabelShiftAnimation();
+        }
+
+        private Vector3KeyFrameAnimation CreateHeaderLabelShiftAnimation(float shiftDelta, bool isGrowing)
+        {
+            var animation = _headerLabelShiftVisual!.Compositor.CreateVector3KeyFrameAnimation();
+            Vector3 start = new(shiftDelta, 0.0f, 0.0f);
+            TimeSpan duration = TimeSpan.FromMilliseconds(IslandConfig.HeaderChipSizeTransitionDurationMs);
+            animation.Duration = duration;
+
+            if (isGrowing)
+            {
+                animation.InsertKeyFrame(0.0f, start);
+                animation.InsertKeyFrame(IslandConfig.HeaderLabelShiftGrowDelayProgress, start);
+                animation.InsertKeyFrame(1.0f, Vector3.Zero, _headerLabelShiftGrowEasing!);
+            }
+            else
+            {
+                animation.InsertKeyFrame(0.0f, start);
+                animation.InsertKeyFrame(IslandConfig.HeaderChipShrinkDelayProgress, start);
+                animation.InsertKeyFrame(IslandConfig.HeaderLabelShiftShrinkSettleProgress,
+                    Vector3.Zero, _headerLabelShiftShrinkEasing!);
+                animation.InsertKeyFrame(1.0f, Vector3.Zero);
+            }
+
+            return animation;
+        }
+
+        private void InitializeHeaderAvatarStrip()
+        {
+            if (_avatarCompositor != null) return;
+            for (int i = 0; i < _headerAvatarBorders!.Length; i++)
+            {
+                Visual visual = ElementCompositionPreview.GetElementVisual(_headerAvatarBorders[i]);
+                visual.CenterPoint = new Vector3(HeaderAvatarCenterPoint, HeaderAvatarCenterPoint, 0.0f);
+                _headerAvatarVisuals[i] = visual;
+            }
+
+            _avatarCompositor = _headerAvatarVisuals[0].Compositor;
+            _avatarMoveEasing = _avatarCompositor.CreateCubicBezierEasingFunction(
+                new Vector2(0.18f, 1.0f), new Vector2(0.32f, 1.0f));
+            _avatarEnterEasing = _avatarCompositor.CreateCubicBezierEasingFunction(
+                new Vector2(0.18f, 1.0f), new Vector2(0.28f, 1.0f));
+            _avatarExitEasing = _avatarCompositor.CreateCubicBezierEasingFunction(
+                new Vector2(0.42f, 0.0f), new Vector2(0.92f, 0.52f));
+        }
+
+        private void ApplyAvatarIconSubpixelCorrection()
+        {
+            var transform = new TranslateTransform { X = -0.25, Y = -0.25 };
+            for (int i = 0; i < _headerAvatarImages!.Length; i++)
+            {
+                _headerAvatarImages[i].RenderTransform = transform;
+            }
+        }
+
+        private void UpdateHeaderAvatarViewportWidth(AvatarStripSnapshot snapshot)
+        {
+            double width = MeasureHeaderAvatarViewportWidth(snapshot);
+            HeaderAvatarViewport.Width = width;
+            HeaderAvatarViewport.Visibility = width > 0 ? Visibility.Visible : Visibility.Collapsed;
+        }
+
+        private void UpdateHeaderAvatarViewportBounds()
+        {
+            _headerAvatarViewportClip.Rect = new Rect(
+                0, 0, HeaderAvatarViewport.ActualWidth, HeaderAvatarViewport.ActualHeight);
+
+            if (_avatarCompositor == null) return;
+            for (int i = 0; i < _headerAvatarVisuals.Length; i++)
+            {
+                _headerAvatarVisuals[i].CenterPoint = new Vector3(HeaderAvatarCenterPoint, HeaderAvatarCenterPoint, 0.0f);
+            }
+        }
+
+        private bool TryStartAvatarStripTransition(
+            AvatarStripSnapshot currentSnapshot,
+            AvatarStripSnapshot nextSnapshot,
+            ContentTransitionDirection direction)
+        {
+            InitializeHeaderAvatarStrip();
+            StopAvatarStripTransition();
+
+            List<HeaderAvatarSnapshot> currentAvatars = GetVisibleHeaderAvatars(currentSnapshot);
+            List<HeaderAvatarSnapshot> nextAvatars = GetVisibleHeaderAvatars(nextSnapshot);
+            if (currentAvatars.Count == 0 || nextAvatars.Count == 0) return false;
+
+            Dictionary<string, int> presenterBySessionKey = new(StringComparer.Ordinal);
+            HashSet<string> nextSessionKeys = new(StringComparer.Ordinal);
+            for (int i = 0; i < currentAvatars.Count; i++)
+                presenterBySessionKey[currentAvatars[i].SessionKey] = i;
+            for (int i = 0; i < nextAvatars.Count; i++)
+                nextSessionKeys.Add(nextAvatars[i].SessionKey);
+
+            int enteringCount = 0;
+            int exitingCount = 0;
+            for (int i = 0; i < nextAvatars.Count; i++)
+                if (!presenterBySessionKey.ContainsKey(nextAvatars[i].SessionKey))
+                    enteringCount++;
+            for (int i = 0; i < currentAvatars.Count; i++)
+                if (!nextSessionKeys.Contains(currentAvatars[i].SessionKey))
+                    exitingCount++;
+
+            if (enteringCount > 1 || exitingCount > 1) return false;
+
+            List<AvatarPresenterAnimation> animations = new(currentAvatars.Count + nextAvatars.Count);
+            for (int oldSlot = 0; oldSlot < currentAvatars.Count; oldSlot++)
+            {
+                if (!nextSessionKeys.Contains(currentAvatars[oldSlot].SessionKey))
+                {
+                    animations.Add(CreateExitingAvatarAnimation(currentAvatars[oldSlot], oldSlot, direction));
+                }
+            }
+
+            bool usesOverlayPresenter = false;
+            for (int newSlot = 0; newSlot < nextAvatars.Count; newSlot++)
+            {
+                HeaderAvatarSnapshot avatar = nextAvatars[newSlot];
+                if (presenterBySessionKey.TryGetValue(avatar.SessionKey, out int presenterIndex))
+                {
+                    HeaderAvatarSnapshot currentAvatar = currentAvatars[presenterIndex];
+                    animations.Add(CreateMovingAvatarAnimation(
+                        presenterIndex, presenterIndex, newSlot,
+                        currentAvatar.IsSelected, avatar.IsSelected));
+                }
+                else
+                {
+                    if (usesOverlayPresenter) return false;
+                    usesOverlayPresenter = true;
+                    ApplyAvatarToPresenter(3, avatar);
+                    animations.Add(CreateEnteringAvatarAnimation(3, newSlot, avatar.IsSelected, direction));
+                }
+            }
+
+            if (animations.Count == 0) return false;
+
+            HeaderAvatarOverflowFade.Visibility = nextSnapshot.ShowOverflowFade ? Visibility.Visible : Visibility.Collapsed;
+
+            long transitionToken = ++_avatarTransitionToken;
+            CompositionScopedBatch batch = _avatarCompositor!.CreateScopedBatch(CompositionBatchTypes.Animation);
+            batch.Completed += (_, _) =>
+            {
+                if (transitionToken != _avatarTransitionToken) return;
+                ApplyAvatarStripSnapshotImmediately(nextSnapshot);
+            };
+
+            for (int i = 0; i < animations.Count; i++)
+            {
+                StartAvatarPresenterAnimation(animations[i]);
+            }
+
+            batch.End();
+            return true;
+        }
+
+        private void StopAvatarStripTransition()
+        {
+            _avatarTransitionToken++;
+            if (_avatarCompositor == null) return;
+            for (int i = 0; i < _headerAvatarVisuals.Length; i++)
+                StopAvatarPresenterAnimations(i);
+            ApplyAvatarStripSnapshotImmediately(_avatarStripSnapshot);
+        }
+
+        private void ApplyAvatarStripSnapshotImmediately(AvatarStripSnapshot snapshot)
+        {
+            InitializeHeaderAvatarStrip();
+            UpdateHeaderAvatarViewportWidth(snapshot);
+
+            StopAvatarPresenterAnimations(3);
+            ApplyAvatarToPresenter(3, HeaderAvatarSnapshot.Hidden);
+            ResetAvatarPresenterVisual(3, 2, isSelected: false, visible: false);
+
+            List<HeaderAvatarSnapshot> visibleAvatars = GetVisibleHeaderAvatars(snapshot);
+            for (int slotIndex = 0; slotIndex < 3; slotIndex++)
+            {
+                StopAvatarPresenterAnimations(slotIndex);
+                HeaderAvatarSnapshot avatar = slotIndex < visibleAvatars.Count
+                    ? visibleAvatars[slotIndex]
+                    : HeaderAvatarSnapshot.Hidden;
+                ApplyAvatarToPresenter(slotIndex, avatar);
+                ResetAvatarPresenterVisual(slotIndex, slotIndex, avatar.IsSelected, avatar.IsVisible);
+            }
+
+            HeaderAvatarOverflowFade.Visibility = snapshot.ShowOverflowFade ? Visibility.Visible : Visibility.Collapsed;
+        }
+
+        private void StartAvatarPresenterAnimation(AvatarPresenterAnimation animation)
+        {
+            Border border = _headerAvatarBorders![animation.PresenterIndex];
+            Visual visual = _headerAvatarVisuals[animation.PresenterIndex];
+
+            border.Visibility = Visibility.Visible;
+            Canvas.SetZIndex(border,
+                GetAvatarAnimationZIndex(
+                    animation.StartSlot, animation.EndSlot,
+                    animation.StartIsSelected, animation.EndIsSelected));
+
+            visual.Offset = new Vector3(animation.StartOffset, 0.0f, 0.0f);
+            visual.Scale = new Vector3(animation.StartScale, animation.StartScale, 1.0f);
+            visual.Opacity = animation.StartOpacity;
+
+            visual.StartAnimation("Offset", CreateAvatarOffsetAnimation(animation));
+            visual.StartAnimation("Scale", CreateAvatarScaleAnimation(animation));
+
+            ScalarKeyFrameAnimation? opacityAnimation = CreateAvatarOpacityAnimation(animation);
+            if (opacityAnimation != null)
+            {
+                visual.StartAnimation("Opacity", opacityAnimation);
+            }
+            else
+            {
+                visual.StopAnimation("Opacity");
+                visual.Opacity = animation.EndOpacity;
+            }
+        }
+
+        private Vector3KeyFrameAnimation CreateAvatarOffsetAnimation(AvatarPresenterAnimation animation)
+        {
+            var transition = _avatarCompositor!.CreateVector3KeyFrameAnimation();
+            Vector3 start = new(animation.StartOffset, 0.0f, 0.0f);
+            Vector3 end = new(animation.EndOffset, 0.0f, 0.0f);
+            switch (animation.Kind)
+            {
+                case AvatarAnimationKind.Entering:
+                    transition.InsertKeyFrame(IslandConfig.HeaderAvatarEntryDelayProgress, start);
+                    transition.InsertKeyFrame(1.0f, end, _avatarEnterEasing!);
+                    break;
+                case AvatarAnimationKind.Exiting:
+                    transition.InsertKeyFrame(0.74f, Vector3.Lerp(start, end, 0.88f), _avatarExitEasing!);
+                    transition.InsertKeyFrame(1.0f, end, _avatarExitEasing!);
+                    break;
+                default:
+                    transition.InsertKeyFrame(1.0f, end, _avatarMoveEasing!);
+                    break;
+            }
+            transition.Duration = TimeSpan.FromMilliseconds(IslandConfig.HeaderAvatarTransitionDurationMs);
+            return transition;
+        }
+
+        private Vector3KeyFrameAnimation CreateAvatarScaleAnimation(AvatarPresenterAnimation animation)
+        {
+            var transition = _avatarCompositor!.CreateVector3KeyFrameAnimation();
+            Vector3 start = new(animation.StartScale, animation.StartScale, 1.0f);
+            Vector3 end = new(animation.EndScale, animation.EndScale, 1.0f);
+            switch (animation.Kind)
+            {
+                case AvatarAnimationKind.Entering:
+                    transition.InsertKeyFrame(IslandConfig.HeaderAvatarEntryDelayProgress, start);
+                    transition.InsertKeyFrame(1.0f, end, _avatarEnterEasing!);
+                    break;
+                case AvatarAnimationKind.Exiting:
+                    transition.InsertKeyFrame(1.0f, end, _avatarExitEasing!);
+                    break;
+                default:
+                    transition.InsertKeyFrame(1.0f, end, _avatarMoveEasing!);
+                    break;
+            }
+            transition.Duration = TimeSpan.FromMilliseconds(IslandConfig.HeaderAvatarTransitionDurationMs);
+            return transition;
+        }
+
+        private ScalarKeyFrameAnimation? CreateAvatarOpacityAnimation(AvatarPresenterAnimation animation)
+        {
+            if (animation.Kind == AvatarAnimationKind.Moving) return null;
+
+            var transition = _avatarCompositor!.CreateScalarKeyFrameAnimation();
+            if (animation.Kind == AvatarAnimationKind.Entering)
+            {
+                transition.InsertKeyFrame(IslandConfig.HeaderAvatarEntryDelayProgress, 0.0f);
+                transition.InsertKeyFrame(0.78f, 0.82f, _avatarEnterEasing!);
+                transition.InsertKeyFrame(1.0f, 1.0f, _avatarEnterEasing!);
+            }
+            else
+            {
+                transition.InsertKeyFrame(0.12f, 1.0f);
+                transition.InsertKeyFrame(IslandConfig.HeaderAvatarExitFadeEndProgress, 0.0f, _avatarExitEasing!);
+                transition.InsertKeyFrame(1.0f, 0.0f);
+            }
+            transition.Duration = TimeSpan.FromMilliseconds(IslandConfig.HeaderAvatarTransitionDurationMs);
+            return transition;
+        }
+
+        private void ResetAvatarPresenterVisual(int presenterIndex, int slotIndex, bool isSelected, bool visible)
+        {
+            Visual visual = _headerAvatarVisuals[presenterIndex];
+            visual.Offset = new Vector3(AvatarSlotOffsets[slotIndex], 0.0f, 0.0f);
+            float scale = GetAvatarScale(isSelected);
+            visual.Scale = new Vector3(scale, scale, 1.0f);
+            visual.Opacity = visible ? 1.0f : 0.0f;
+            _headerAvatarBorders![presenterIndex].Visibility = visible ? Visibility.Visible : Visibility.Collapsed;
+            Canvas.SetZIndex(_headerAvatarBorders[presenterIndex],
+                visible ? GetAvatarSlotZIndex(slotIndex, isSelected) : 0);
+        }
+
+        private void StopAvatarPresenterAnimations(int presenterIndex)
+        {
+            if (_avatarCompositor == null) return;
+            Visual visual = _headerAvatarVisuals[presenterIndex];
+            visual.StopAnimation("Offset");
+            visual.StopAnimation("Scale");
+            visual.StopAnimation("Opacity");
+        }
+
+        private double MeasureHeaderChipWidth(HeaderTextSnapshot snapshot, AvatarStripSnapshot avatarSnapshot)
+        {
+            Thickness padding = HeaderChipContentRoot.Margin;
+            Thickness borderThickness = HeaderChipBorder.BorderThickness;
+            double chromeWidth = padding.Left + padding.Right + borderThickness.Left + borderThickness.Right;
+            return Math.Ceiling(MeasureHeaderContentWidth(snapshot, avatarSnapshot) + chromeWidth) + 1;
+        }
+
+        private double MeasureHeaderContentWidth(HeaderTextSnapshot snapshot, AvatarStripSnapshot avatarSnapshot)
+        {
+            if (_measureLabelStack == null)
+            {
+                _measureExpandIcon = new FontIcon
+                {
+                    Glyph = HeaderExpandGlyphPrimary.Glyph,
+                    FontSize = HeaderExpandGlyphPrimary.FontSize
+                };
+                _measureLabel = new TextBlock
+                {
+                    FontSize = HeaderLabelPrimary.FontSize,
+                    FontWeight = HeaderLabelPrimary.FontWeight,
+                    TextTrimming = TextTrimming.CharacterEllipsis,
+                    MaxWidth = HeaderLabelPrimary.MaxWidth
+                };
+                _measureLabelStack = new StackPanel
+                {
+                    Orientation = Orientation.Horizontal,
+                    Spacing = 4
+                };
+                _measureLabelStack.Children.Add(_measureLabel);
+                _measureLabelStack.Children.Add(_measureExpandIcon);
+            }
+
+            _measureLabel!.Text = snapshot.Label;
+            _measureExpandIcon!.Visibility = snapshot.ShowExpandHint ? Visibility.Visible : Visibility.Collapsed;
+            _measureLabelStack.Measure(new Size(double.PositiveInfinity, double.PositiveInfinity));
+            double avatarWidth = MeasureHeaderAvatarViewportWidth(avatarSnapshot);
+            double gapWidth = avatarWidth > 0 ? HeaderChipContentRoot.ColumnSpacing : 0.0;
+            return Math.Ceiling(avatarWidth + gapWidth + _measureLabelStack.DesiredSize.Width);
+        }
+
+        private HeaderTextSnapshot CreateMediaHeaderTextSnapshot(
+            MediaSessionSnapshot? session, int sessionCount, bool showTransportSwitchingHint)
+        {
+            if (!session.HasValue)
+            {
+                return new HeaderTextSnapshot(Loc.GetString("AppName"), ShowExpandHint: false);
+            }
+            return new HeaderTextSnapshot(
+                GetHeaderLabel(session.Value, showTransportSwitchingHint),
+                ShowExpandHint: sessionCount > 1);
+        }
+
+        private AvatarStripSnapshot CreateMediaAvatarStripSnapshot(
+            MediaSessionSnapshot? session, int displayIndex,
+            IReadOnlyList<MediaSessionSnapshot> availableSessions)
+        {
+            if (!session.HasValue) return AvatarStripSnapshot.Empty;
+            HeaderAvatarSnapshot[] avatars = GetVisibleHeaderAvatars(availableSessions, displayIndex);
+            return new AvatarStripSnapshot(
+                ShowOverflowFade: ShouldShowAvatarOverflowFade(availableSessions.Count, displayIndex),
+                First: avatars[0], Second: avatars[1], Third: avatars[2]);
+        }
+
+        private HeaderAvatarSnapshot[] GetVisibleHeaderAvatars(
+            IReadOnlyList<MediaSessionSnapshot> sessions, int displayIndex)
+        {
+            HeaderAvatarSnapshot[] avatars =
+            {
+                HeaderAvatarSnapshot.Hidden,
+                HeaderAvatarSnapshot.Hidden,
+                HeaderAvatarSnapshot.Hidden
+            };
+            if (sessions.Count == 0) return avatars;
+
+            (int startIndex, int selectedVisibleIndex, int visibleCount) = ResolveAvatarWindow(
+                sessions.Count, displayIndex);
+            for (int i = 0; i < visibleCount; i++)
+            {
+                MediaSessionSnapshot session = sessions[startIndex + i];
+                avatars[i] = new HeaderAvatarSnapshot(
+                    session.SessionKey, session.SourceAppId, session.SourceName,
+                    IsSelected: i == selectedVisibleIndex, true);
+            }
+            return avatars;
+        }
+
+        private static List<HeaderAvatarSnapshot> GetVisibleHeaderAvatars(AvatarStripSnapshot snapshot)
+        {
+            List<HeaderAvatarSnapshot> avatars = new(3);
+            if (snapshot.First.IsVisible) avatars.Add(snapshot.First);
+            if (snapshot.Second.IsVisible) avatars.Add(snapshot.Second);
+            if (snapshot.Third.IsVisible) avatars.Add(snapshot.Third);
+            return avatars;
+        }
+
+        private static double MeasureHeaderAvatarViewportWidth(AvatarStripSnapshot snapshot)
+        {
+            int visibleCount = GetVisibleHeaderAvatars(snapshot).Count;
+            if (visibleCount <= 0) return 0.0;
+            return Math.Ceiling(HeaderAvatarSize + (HeaderAvatarSlotStep * (visibleCount - 1)));
+        }
+
+        private static (int StartIndex, int SelectedVisibleIndex, int VisibleCount) ResolveAvatarWindow(
+            int sessionCount, int displayIndex)
+        {
+            if (sessionCount <= 0) return (0, -1, 0);
+            int clampedDisplayIndex = Math.Clamp(displayIndex, 0, sessionCount - 1);
+            if (sessionCount <= HeaderAvatarVisibleCount)
+                return (0, clampedDisplayIndex, sessionCount);
+            if (clampedDisplayIndex <= 0)
+                return (0, 0, HeaderAvatarVisibleCount);
+            if (clampedDisplayIndex >= sessionCount - 1)
+                return (sessionCount - HeaderAvatarVisibleCount, HeaderAvatarVisibleCount - 1, HeaderAvatarVisibleCount);
+            return (clampedDisplayIndex - 1, 1, HeaderAvatarVisibleCount);
+        }
+
+        private static bool ShouldShowAvatarOverflowFade(int sessionCount, int displayIndex)
+        {
+            if (sessionCount <= HeaderAvatarVisibleCount) return false;
+            (int startIndex, _, int visibleCount) = ResolveAvatarWindow(sessionCount, displayIndex);
+            return startIndex + visibleCount < sessionCount;
+        }
+
+        private void ApplyHeaderTextSnapshotToSlot(int slotIndex, HeaderTextSnapshot snapshot)
+        {
+            _headerTextSnapshots[slotIndex] = snapshot;
+            _headerLabels![slotIndex].Text = snapshot.Label;
+            _headerExpandGlyphs![slotIndex].Visibility = snapshot.ShowExpandHint
+                ? Visibility.Visible : Visibility.Collapsed;
+            ApplyHeaderExpandGlyphStateToSlot(
+                slotIndex, useTransitions: false,
+                durationMs: IslandConfig.HeaderExpandGlyphToggleDurationMs);
+        }
+
+        private void ApplyAvatarToPresenter(int presenterIndex, HeaderAvatarSnapshot avatar)
+        {
+            Border border = _headerAvatarBorders![presenterIndex];
+            Image image = _headerAvatarImages![presenterIndex];
+            TextBlock fallback = _headerAvatarFallbacks![presenterIndex];
+
+            _avatarLoadTokens[presenterIndex]++;
+            image.Source = null;
+            image.Visibility = Visibility.Collapsed;
+
+            if (!avatar.IsVisible)
+            {
+                border.Visibility = Visibility.Collapsed;
+                fallback.Visibility = Visibility.Collapsed;
+                fallback.Text = string.Empty;
+                return;
+            }
+
+            border.Visibility = Visibility.Visible;
+            fallback.Visibility = Visibility.Visible;
+            fallback.Text = GetSourceMonogram(avatar.SourceName);
+
+            if (!string.IsNullOrWhiteSpace(avatar.SourceAppId))
+            {
+                long token = _avatarLoadTokens[presenterIndex];
+                _ = LoadAvatarIconAsync(presenterIndex, avatar.SourceAppId, token);
+            }
+        }
+
+        private async System.Threading.Tasks.Task LoadAvatarIconAsync(
+            int presenterIndex, string sourceAppId, long token)
+        {
+            ImageSource? icon = await IconResolver.ResolveAsync(sourceAppId);
+            if (_avatarLoadTokens[presenterIndex] != token || icon == null) return;
+
+            Image image = _headerAvatarImages![presenterIndex];
+            TextBlock fallback = _headerAvatarFallbacks![presenterIndex];
+            image.Source = icon;
+            image.Visibility = Visibility.Visible;
+            fallback.Visibility = Visibility.Collapsed;
+        }
+
+        private void ApplyHeaderColors()
+        {
+            // Immersive style: chip surface is translucent white on the dark album-art
+            // background. We don't call InteractionSurfacePalette.Create here because
+            // the classic palette assumes a light background; the immersive chip needs
+            // explicit alpha values tuned for legibility on dark gradients.
+            Color borderCol = Color.FromArgb(64, 255, 255, 255);
+            Color bgCol = Color.FromArgb(56, 255, 255, 255);
+            Color hoverBgCol = Color.FromArgb(28, 255, 255, 255);
+            Color hoverBorderCol = Color.FromArgb(72, 255, 255, 255);
+            Color pressBgCol = Color.FromArgb(44, 255, 255, 255);
+            Color pressBorderCol = Color.FromArgb(96, 255, 255, 255);
+            Color focusRingCol = Color.FromArgb(170, 255, 255, 255);
+
+            Color avatarFillColor = Color.FromArgb(56, 255, 255, 255);
+            Color avatarBorderColor = Color.FromArgb(90, 255, 255, 255);
+
+            HeaderChipBorder.BorderBrush = new SolidColorBrush(borderCol);
+            HeaderChipBorder.Background = new SolidColorBrush(bgCol);
+            HeaderChipHoverLayer.Background = new SolidColorBrush(hoverBgCol);
+            HeaderChipHoverLayer.BorderBrush = new SolidColorBrush(hoverBorderCol);
+            HeaderChipPressLayer.Background = new SolidColorBrush(pressBgCol);
+            HeaderChipPressLayer.BorderBrush = new SolidColorBrush(pressBorderCol);
+            HeaderChipFocusRing.BorderBrush = new SolidColorBrush(focusRingCol);
+
+            HeaderLabelPrimary.Foreground = new SolidColorBrush(_chipMainColor);
+            HeaderLabelSecondary.Foreground = new SolidColorBrush(_chipMainColor);
+
+            SolidColorBrush expandGlyphBrush = new(Color.FromArgb(210, 255, 255, 255));
+            HeaderExpandGlyphPrimary.Foreground = expandGlyphBrush;
+            HeaderExpandGlyphSecondary.Foreground = expandGlyphBrush;
+
+            for (int presenterIndex = 0; presenterIndex < _headerAvatarBorders!.Length; presenterIndex++)
+            {
+                _headerAvatarBorders[presenterIndex].Background = new SolidColorBrush(avatarFillColor);
+                _headerAvatarBorders[presenterIndex].BorderBrush = new SolidColorBrush(avatarBorderColor);
+                _headerAvatarBorders[presenterIndex].BorderThickness = new Thickness(1);
+                _headerAvatarFallbacks![presenterIndex].Foreground = new SolidColorBrush(_chipMainColor);
+            }
+
+            HeaderAvatarOverflowFade.Fill = CreateOverflowFadeBrush(bgCol);
+        }
+
+        private HeaderTextSnapshot ReadHeaderTextSnapshotFromSlot(int slotIndex)
+            => new(
+                _headerLabels![slotIndex].Text,
+                ShowExpandHint: _headerExpandGlyphs![slotIndex].Visibility == Visibility.Visible);
+
+        private static string GetHeaderLabel(MediaSessionSnapshot session, bool showTransportSwitchingHint)
+            => showTransportSwitchingHint
+                ? Loc.GetString("Media/Switching")
+                : session.IsWaitingForReconnect
+                    ? Loc.GetString("Media/Waiting")
+                    : session.PlaybackStatus switch
+                    {
+                        Windows.Media.Control.GlobalSystemMediaTransportControlsSessionPlaybackStatus.Playing => Loc.GetString("Media/NowPlaying"),
+                        Windows.Media.Control.GlobalSystemMediaTransportControlsSessionPlaybackStatus.Paused => Loc.GetString("Media/Paused"),
+                        _ => Loc.GetString("Media/MediaFallback")
+                    };
+
+        private static string GetSourceMonogram(string sourceName)
+        {
+            foreach (char c in sourceName)
+            {
+                if (char.IsLetterOrDigit(c))
+                    return char.ToUpperInvariant(c).ToString();
+            }
+            return "M";
+        }
+
+        private static Brush CreateOverflowFadeBrush(Color backgroundColor)
+        {
+            LinearGradientBrush brush = new()
+            {
+                StartPoint = new Point(0, 0.5),
+                EndPoint = new Point(1, 0.5)
+            };
+            brush.GradientStops.Add(new GradientStop
+            {
+                Color = Color.FromArgb(0, backgroundColor.R, backgroundColor.G, backgroundColor.B),
+                Offset = 0
+            });
+            brush.GradientStops.Add(new GradientStop
+            {
+                Color = backgroundColor,
+                Offset = 1
+            });
+            return brush;
+        }
+
+        private static KeySpline CreateKeySpline(double x1, double y1, double x2, double y2)
+            => new()
+            {
+                ControlPoint1 = new Point(x1, y1),
+                ControlPoint2 = new Point(x2, y2)
+            };
+
+        private static float GetAvatarScale(bool isSelected)
+            => isSelected ? HeaderAvatarSelectedScale : HeaderAvatarNormalScale;
+
+        private static int GetAvatarSlotZIndex(int slotIndex, bool isSelected)
+            => isSelected ? 40 : 30 - (slotIndex * 10);
+
+        private static int GetAvatarAnimationZIndex(
+            int startSlot, int endSlot, bool startIsSelected, bool endIsSelected)
+        {
+            int startZ = startSlot >= 0 && startSlot < HeaderAvatarVisibleCount
+                ? GetAvatarSlotZIndex(startSlot, startIsSelected) : 0;
+            int endZ = endSlot >= 0 && endSlot < HeaderAvatarVisibleCount
+                ? GetAvatarSlotZIndex(endSlot, endIsSelected) : 0;
+            return Math.Max(startZ, endZ);
+        }
+
+        private static AvatarPresenterAnimation CreateMovingAvatarAnimation(
+            int presenterIndex, int startSlot, int endSlot, bool startIsSelected, bool endIsSelected)
+            => new(
+                PresenterIndex: presenterIndex,
+                StartSlot: startSlot, EndSlot: endSlot,
+                StartOffset: AvatarSlotOffsets[startSlot], EndOffset: AvatarSlotOffsets[endSlot],
+                StartScale: GetAvatarScale(startIsSelected), EndScale: GetAvatarScale(endIsSelected),
+                StartOpacity: 1.0f, EndOpacity: 1.0f,
+                StartIsSelected: startIsSelected, EndIsSelected: endIsSelected,
+                Kind: AvatarAnimationKind.Moving);
+
+        private static AvatarPresenterAnimation CreateEnteringAvatarAnimation(
+            int presenterIndex, int endSlot, bool endIsSelected, ContentTransitionDirection direction)
+        {
+            float endOffset = AvatarSlotOffsets[endSlot];
+            float offsetDelta = direction switch
+            {
+                ContentTransitionDirection.Forward => IslandConfig.HeaderAvatarEnterTravel,
+                ContentTransitionDirection.Backward => -IslandConfig.HeaderAvatarEnterTravel,
+                _ => 0.0f
+            };
+            float endScale = GetAvatarScale(endIsSelected);
+            return new AvatarPresenterAnimation(
+                PresenterIndex: presenterIndex,
+                StartSlot: endSlot, EndSlot: endSlot,
+                StartOffset: endOffset + offsetDelta, EndOffset: endOffset,
+                StartScale: endScale * IslandConfig.HeaderAvatarEnterScaleMultiplier, EndScale: endScale,
+                StartOpacity: 0.0f, EndOpacity: 1.0f,
+                StartIsSelected: endIsSelected, EndIsSelected: endIsSelected,
+                Kind: AvatarAnimationKind.Entering);
+        }
+
+        private static AvatarPresenterAnimation CreateExitingAvatarAnimation(
+            HeaderAvatarSnapshot avatar, int startSlot, ContentTransitionDirection direction)
+        {
+            float startOffset = AvatarSlotOffsets[startSlot];
+            float offsetDelta = direction switch
+            {
+                ContentTransitionDirection.Forward => -IslandConfig.HeaderAvatarExitTravel,
+                ContentTransitionDirection.Backward => IslandConfig.HeaderAvatarExitTravel,
+                _ => 0.0f
+            };
+            float startScale = GetAvatarScale(avatar.IsSelected);
+            return new AvatarPresenterAnimation(
+                PresenterIndex: startSlot,
+                StartSlot: startSlot, EndSlot: -1,
+                StartOffset: startOffset, EndOffset: startOffset + offsetDelta,
+                StartScale: startScale, EndScale: startScale * IslandConfig.HeaderAvatarExitScaleMultiplier,
+                StartOpacity: 1.0f, EndOpacity: 0.0f,
+                StartIsSelected: avatar.IsSelected, EndIsSelected: false,
+                Kind: AvatarAnimationKind.Exiting);
+        }
+
+        // --- Chip snapshot records (duplicated from ExpandedMediaView by design) ---
+
+        private readonly record struct HeaderTextSnapshot(string Label, bool ShowExpandHint);
+
+        private readonly record struct AvatarStripSnapshot(
+            bool ShowOverflowFade,
+            HeaderAvatarSnapshot First,
+            HeaderAvatarSnapshot Second,
+            HeaderAvatarSnapshot Third)
+        {
+            public static AvatarStripSnapshot Empty { get; } = new(
+                ShowOverflowFade: false,
+                First: HeaderAvatarSnapshot.Hidden,
+                Second: HeaderAvatarSnapshot.Hidden,
+                Third: HeaderAvatarSnapshot.Hidden);
+        }
+
+        private readonly record struct HeaderAvatarSnapshot(
+            string SessionKey,
+            string SourceAppId,
+            string SourceName,
+            bool IsSelected,
+            bool IsVisible)
+        {
+            public static HeaderAvatarSnapshot Hidden { get; } =
+                new(string.Empty, string.Empty, string.Empty, false, false);
+        }
+
+        private readonly record struct AvatarPresenterAnimation(
+            int PresenterIndex,
+            int StartSlot, int EndSlot,
+            float StartOffset, float EndOffset,
+            float StartScale, float EndScale,
+            float StartOpacity, float EndOpacity,
+            bool StartIsSelected, bool EndIsSelected,
+            AvatarAnimationKind Kind);
+
+        private enum AvatarAnimationKind
+        {
+            Moving,
+            Entering,
+            Exiting
+        }
+    }
+}

@@ -24,6 +24,7 @@ namespace wisland.Services
                 LastActivityUtc = nowUtc;
                 LastSeenUtc = nowUtc;
                 Presence = MediaSessionPresence.Active;
+                PositionUpdatedUtc = nowUtc;
                 PendingTitle = UnknownTrackTitle;
                 PendingArtist = UnknownArtistName;
                 PendingPlaybackStatus = GlobalSystemMediaTransportControlsSessionPlaybackStatus.Closed;
@@ -45,6 +46,14 @@ namespace wisland.Services
             public DateTimeOffset? MissingSinceUtc { get; set; }
             public MediaSessionPresence Presence { get; set; }
             public double CurrentPositionSeconds { get; set; }
+            /// <summary>
+            /// Wall-clock timestamp at which <see cref="CurrentPositionSeconds"/> was last written.
+            /// Used to compute the effective (auto-advanced) position on read without relying
+            /// on the UI render loop's Tick cadence. The render loop is suspended when the island
+            /// is idle or displaying a different session, so Tick-based accumulation freezes for
+            /// backgrounded sessions. Wall-clock anchoring fills that gap.
+            /// </summary>
+            public DateTimeOffset PositionUpdatedUtc { get; set; }
             public double DurationSeconds { get; set; }
             public DateTimeOffset? LastDisplayedUtc { get; set; }
             public DateTimeOffset? LastSystemCurrentUtc { get; set; }

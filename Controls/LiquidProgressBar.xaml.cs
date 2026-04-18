@@ -71,6 +71,17 @@ namespace wisland.Controls
             }
         }
 
+        public void SnapToZero()
+        {
+            _currentProgressWidth = HorizontalInset;
+            _previousProgressWidth = HorizontalInset;
+            _targetProgressWidth = HorizontalInset;
+            _smoothedVelocity = 0;
+            _shouldSnapToTargetWidth = true;
+            _lastRenderedVelocity = -1;
+            _lastRenderedWidth = -1;
+        }
+
         public void SetShimmerActive(bool isActive)
         {
             bool targetState = _isEffectVisible && isActive;

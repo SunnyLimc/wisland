@@ -416,6 +416,7 @@ namespace wisland.Services
 
             tracked.HasTimeline = hasTimeline;
             tracked.CurrentPositionSeconds = positionSeconds;
+            tracked.PositionUpdatedUtc = nowUtc;
             tracked.DurationSeconds = durationSeconds;
             tracked.Progress = hasTimeline && durationSeconds > 0
                 ? positionSeconds / durationSeconds
@@ -481,6 +482,7 @@ namespace wisland.Services
             {
                 tracked.HasTimeline = tracked.PendingHasTimeline;
                 tracked.CurrentPositionSeconds = tracked.PendingPositionSeconds;
+                tracked.PositionUpdatedUtc = nowUtc;
                 tracked.DurationSeconds = tracked.PendingDurationSeconds;
                 tracked.Progress = tracked.PendingHasTimeline && tracked.PendingDurationSeconds > 0
                     ? tracked.PendingPositionSeconds / tracked.PendingDurationSeconds
@@ -643,6 +645,7 @@ namespace wisland.Services
                 target.PlaybackStatus = candidate.PlaybackStatus;
                 target.HasTimeline = candidate.HasTimeline;
                 target.CurrentPositionSeconds = candidate.CurrentPositionSeconds;
+                target.PositionUpdatedUtc = candidate.PositionUpdatedUtc == default ? nowUtc : candidate.PositionUpdatedUtc;
                 target.DurationSeconds = candidate.DurationSeconds;
                 target.Progress = candidate.Progress;
                 ClearTransportContinuationIfSatisfied_NoLock(target);

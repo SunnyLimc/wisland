@@ -319,6 +319,19 @@ namespace wisland
             catch (Exception ex) { Logger.Warn($"SkipPrevious failed: {ex.Message}"); }
         }
 
+        private async void ImmersiveContent_SeekRequested(object? sender, double ratio)
+        {
+            try
+            {
+                MediaSessionSnapshot? displayed = _mediaService.GetSessionSnapshot(_displayedSessionKey);
+                if (!displayed.HasValue) return;
+                if (!displayed.Value.HasTimeline || displayed.Value.DurationSeconds <= 0) return;
+                double target = Math.Clamp(ratio, 0, 1) * displayed.Value.DurationSeconds;
+                await _mediaService.SeekAsync(_displayedSessionKey, target);
+            }
+            catch (Exception ex) { Logger.Warn($"Seek failed: {ex.Message}"); }
+        }
+
         private void RootGrid_PointerWheelChanged(object sender, Microsoft.UI.Xaml.Input.PointerRoutedEventArgs e)
         {
             if (_isClosed
@@ -566,6 +579,10 @@ namespace wisland
                 return;
             }
 
+            // Snap the bar to zero immediately so the new session's position can
+            // start growing from 0 on the next frame — avoids the 2-3 second drain
+            // physics that made it look like the bar wasn't moving.
+            IslandProgressBar.SnapToZero();
             _isMediaProgressResetPending = true;
             _hideMediaProgressWhenResetCompletes = hideAfterReset;
             UpdateRenderLoopState();
