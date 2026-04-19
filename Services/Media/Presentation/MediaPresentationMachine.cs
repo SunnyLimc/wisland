@@ -105,7 +105,11 @@ namespace wisland.Services.Media.Presentation
 
             if (evt is GsmtcSessionsChangedEvent sessionsChanged)
             {
-                _context.Sessions = sessionsChanged.Sessions;
+                // Apply visual stability to whatever ordering the caller supplied
+                // (typically priority-ordered by MainWindow). Stability means
+                // previously-seen session keys keep their visual slot; new keys
+                // are inserted at their priority-anchor. Removed keys drop out.
+                _context.Sessions = ApplyVisualOrdering(sessionsChanged.Sessions);
             }
 
             // Seed CurrentDisplayedSessionKey so policies (manual lock, arbiter)
@@ -480,6 +484,75 @@ namespace wisland.Services.Media.Presentation
         }
 
         // --- Utility --------------------------------------------------------
+
+        /// <summary>Preserved session-key order so newly arriving sessions don't
+        /// reshuffle positions the user is already tracking. Mutated only inside
+        /// <see cref="ApplyVisualOrdering"/>, which runs on the worker thread.</summary>
+        private readonly List<string> _visualOrderKeys = new();
+
+        private IReadOnlyList<MediaSessionSnapshot> ApplyVisualOrdering(
+            IReadOnlyList<MediaSessionSnapshot> prioritySessions)
+        {
+            if (prioritySessions.Count == 0)
+            {
+                _visualOrderKeys.Clear();
+                return prioritySessions;
+            }
+
+            Dictionary<string, MediaSessionSnapshot> sessionsByKey = new(StringComparer.Ordinal);
+            for (int i = 0; i < prioritySessions.Count; i++)
+            {
+                sessionsByKey[prioritySessions[i].SessionKey] = prioritySessions[i];
+            }
+
+            HashSet<string> activeKeys = new(sessionsByKey.Keys, StringComparer.Ordinal);
+            _visualOrderKeys.RemoveAll(key => !activeKeys.Contains(key));
+
+            HashSet<string> visualKeySet = new(_visualOrderKeys, StringComparer.Ordinal);
+            for (int priorityIndex = 0; priorityIndex < prioritySessions.Count; priorityIndex++)
+            {
+                string sessionKey = prioritySessions[priorityIndex].SessionKey;
+                if (visualKeySet.Contains(sessionKey)) continue;
+
+                int insertIndex = ResolveVisualInsertIndex(prioritySessions, priorityIndex, visualKeySet);
+                _visualOrderKeys.Insert(insertIndex, sessionKey);
+                visualKeySet.Add(sessionKey);
+            }
+
+            var result = new List<MediaSessionSnapshot>(_visualOrderKeys.Count);
+            foreach (string key in _visualOrderKeys)
+            {
+                if (sessionsByKey.TryGetValue(key, out var snap))
+                {
+                    result.Add(snap);
+                }
+            }
+            return result;
+        }
+
+        private int ResolveVisualInsertIndex(
+            IReadOnlyList<MediaSessionSnapshot> prioritySessions,
+            int priorityIndex,
+            HashSet<string> visualKeySet)
+        {
+            for (int index = priorityIndex - 1; index >= 0; index--)
+            {
+                string previousKey = prioritySessions[index].SessionKey;
+                if (!visualKeySet.Contains(previousKey)) continue;
+                int previousVisualIndex = _visualOrderKeys.FindIndex(
+                    k => string.Equals(k, previousKey, StringComparison.Ordinal));
+                if (previousVisualIndex >= 0) return previousVisualIndex + 1;
+            }
+            for (int index = priorityIndex + 1; index < prioritySessions.Count; index++)
+            {
+                string nextKey = prioritySessions[index].SessionKey;
+                if (!visualKeySet.Contains(nextKey)) continue;
+                int nextVisualIndex = _visualOrderKeys.FindIndex(
+                    k => string.Equals(k, nextKey, StringComparison.Ordinal));
+                if (nextVisualIndex >= 0) return nextVisualIndex;
+            }
+            return _visualOrderKeys.Count;
+        }
 
         private static MediaTrackFingerprint BuildFingerprint(MediaSessionSnapshot session)
             // P3: ThumbnailHash is xxhash64(first 4KB) populated asynchronously by

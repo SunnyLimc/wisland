@@ -21,7 +21,6 @@ namespace wisland
         private string? _lastDisplayedProgressIdentity;
         private MediaTrackFingerprint _lastDisplayedFingerprint = MediaTrackFingerprint.Empty;
         private MediaPresentationFrame? _latestFrame;
-        private readonly List<string> _sessionVisualOrderKeys = new();
         private CancellationTokenSource? _aiResolveCts;
         private MediaTrackFingerprint _lastAiResolveFingerprint = MediaTrackFingerprint.Empty;
         private string? _lastAiOverrideLookupIdentity;
@@ -38,9 +37,10 @@ namespace wisland
                     _presentationMachine.FrameProduced += OnFrameProduced;
                 }
                 await _mediaService.InitializeAsync();
-                // Bootstrap: feed the machine the initial session list so it can
-                // emit the first frame. Legacy SyncMediaUI will run on that frame.
-                _presentationMachine?.Dispatch(new GsmtcSessionsChangedEvent(_mediaService.Sessions));
+                // Bootstrap: feed the machine the initial priority-ordered
+                // session list so it can apply visual stability and emit the
+                // first frame. Legacy SyncMediaUI will run on that frame.
+                _presentationMachine?.Dispatch(new GsmtcSessionsChangedEvent(GetPriorityOrderedSessions()));
                 SyncMediaUI();
                 UpdateRenderLoopState();
             }
@@ -54,7 +54,7 @@ namespace wisland
         {
             DispatcherQueue?.TryEnqueue(() =>
             {
-                _presentationMachine?.Dispatch(new GsmtcSessionsChangedEvent(_mediaService.Sessions));
+                _presentationMachine?.Dispatch(new GsmtcSessionsChangedEvent(GetPriorityOrderedSessions()));
                 UpdateRenderLoopState();
             });
         }
@@ -280,7 +280,6 @@ namespace wisland
             if (prioritySessions.Count == 0)
             {
                 ClearManualSelectionLockInternal();
-                _sessionVisualOrderKeys.Clear();
                 SyncAutoFocusTimer(null);
                 return new DisplayedMediaContext(
                     DisplayedSession: null,
@@ -312,7 +311,14 @@ namespace wisland
             SyncAutoFocusTimer(focusDecision.PendingAutoSwitchDueUtc);
 
             MediaSessionSnapshot displayedSession = focusDecision.DisplayedSession ?? prioritySessions[0];
-            IReadOnlyList<MediaSessionSnapshot> orderedSessions = GetVisualOrderedSessions(prioritySessions);
+            // Visual stability is now owned by MediaPresentationMachine and
+            // arrives via _latestFrame.OrderedSessions. Fall back to the
+            // priority list if no frame has been produced yet (e.g. very first
+            // paint before the machine's bootstrap frame lands).
+            IReadOnlyList<MediaSessionSnapshot> orderedSessions =
+                _latestFrame?.OrderedSessions?.Count > 0
+                    ? _latestFrame.OrderedSessions
+                    : prioritySessions;
             int displayIndex = FindSessionIndex(orderedSessions, displayedSession.SessionKey);
             if (displayIndex < 0)
             {
@@ -444,7 +450,10 @@ namespace wisland
 
         private ContentTransitionDirection GetDirectionToSession(string sessionKey)
         {
-            IReadOnlyList<MediaSessionSnapshot> orderedSessions = GetVisualOrderedSessions(GetPriorityOrderedSessions());
+            IReadOnlyList<MediaSessionSnapshot> orderedSessions =
+                _latestFrame?.OrderedSessions?.Count > 0
+                    ? _latestFrame.OrderedSessions
+                    : GetPriorityOrderedSessions();
             int currentIndex = FindSessionIndex(orderedSessions, _displayedSessionKey);
             int targetIndex = FindSessionIndex(orderedSessions, sessionKey);
 
@@ -456,78 +465,6 @@ namespace wisland
             return targetIndex > currentIndex
                 ? ContentTransitionDirection.Forward
                 : ContentTransitionDirection.Backward;
-        }
-
-        private IReadOnlyList<MediaSessionSnapshot> GetVisualOrderedSessions(IReadOnlyList<MediaSessionSnapshot> prioritySessions)
-        {
-            if (prioritySessions.Count == 0)
-            {
-                _sessionVisualOrderKeys.Clear();
-                return prioritySessions;
-            }
-
-            Dictionary<string, MediaSessionSnapshot> sessionsByKey = prioritySessions.ToDictionary(
-                session => session.SessionKey,
-                StringComparer.Ordinal);
-
-            HashSet<string> activeKeys = new(sessionsByKey.Keys, StringComparer.Ordinal);
-            _sessionVisualOrderKeys.RemoveAll(sessionKey => !activeKeys.Contains(sessionKey));
-
-            HashSet<string> visualKeySet = new(_sessionVisualOrderKeys, StringComparer.Ordinal);
-            for (int priorityIndex = 0; priorityIndex < prioritySessions.Count; priorityIndex++)
-            {
-                string sessionKey = prioritySessions[priorityIndex].SessionKey;
-                if (visualKeySet.Contains(sessionKey))
-                {
-                    continue;
-                }
-
-                int insertIndex = ResolveVisualInsertIndex(prioritySessions, priorityIndex, visualKeySet);
-                _sessionVisualOrderKeys.Insert(insertIndex, sessionKey);
-                visualKeySet.Add(sessionKey);
-            }
-
-            return _sessionVisualOrderKeys
-                .Where(sessionsByKey.ContainsKey)
-                .Select(sessionKey => sessionsByKey[sessionKey])
-                .ToArray();
-        }
-
-        private int ResolveVisualInsertIndex(IReadOnlyList<MediaSessionSnapshot> prioritySessions, int priorityIndex, HashSet<string> visualKeySet)
-        {
-            for (int index = priorityIndex - 1; index >= 0; index--)
-            {
-                string previousKey = prioritySessions[index].SessionKey;
-                if (!visualKeySet.Contains(previousKey))
-                {
-                    continue;
-                }
-
-                int previousVisualIndex = _sessionVisualOrderKeys.FindIndex(
-                    sessionKey => string.Equals(sessionKey, previousKey, StringComparison.Ordinal));
-                if (previousVisualIndex >= 0)
-                {
-                    return previousVisualIndex + 1;
-                }
-            }
-
-            for (int index = priorityIndex + 1; index < prioritySessions.Count; index++)
-            {
-                string nextKey = prioritySessions[index].SessionKey;
-                if (!visualKeySet.Contains(nextKey))
-                {
-                    continue;
-                }
-
-                int nextVisualIndex = _sessionVisualOrderKeys.FindIndex(
-                    sessionKey => string.Equals(sessionKey, nextKey, StringComparison.Ordinal));
-                if (nextVisualIndex >= 0)
-                {
-                    return nextVisualIndex;
-                }
-            }
-
-            return _sessionVisualOrderKeys.Count;
         }
 
         private void SelectionLockTimer_Tick(object? sender, object e)
