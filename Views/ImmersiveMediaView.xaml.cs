@@ -33,7 +33,7 @@ namespace wisland.Views
         private bool _canOpenSessionPicker;
 
         private IRandomAccessStreamReference? _lastThumbnailRef;
-        private string? _lastAlbumArtIdentity; // Content-based key for album art change detection
+        private MediaTrackFingerprint _lastAlbumArtFingerprint; // Fingerprint-based key for album art change detection
         private ImageSource? _previousAlbumArtSource; // Holds the old art for crossfade outgoing slot
         private string? _lastSourceIconIdentity;
         private bool _isBusyTransport; // True during transport switching grace period
@@ -196,10 +196,10 @@ namespace wisland.Views
             if (session.HasValue && !showBusyTransportState)
             {
                 var thumbnailRef = session.Value.Thumbnail;
-                string newIdentity = BuildAlbumArtIdentity(session.Value);
-                if (!string.Equals(_lastAlbumArtIdentity, newIdentity, StringComparison.Ordinal))
+                MediaTrackFingerprint newFingerprint = BuildAlbumArtFingerprint(session.Value);
+                if (!newFingerprint.Equals(_lastAlbumArtFingerprint))
                 {
-                    _lastAlbumArtIdentity = newIdentity;
+                    _lastAlbumArtFingerprint = newFingerprint;
                     _lastThumbnailRef = thumbnailRef;
                     if (thumbnailRef != null)
                     {
@@ -511,20 +511,28 @@ namespace wisland.Views
             return $"{minutes}:{seconds:D2}";
         }
 
-        private static string BuildAlbumArtIdentity(MediaSessionSnapshot session)
+        private static MediaTrackFingerprint BuildAlbumArtFingerprint(MediaSessionSnapshot session)
         {
-            // Content-based key so reissued IRandomAccessStreamReference objects with
-            // the same underlying art don't cause reloads. A track change (different
-            // title/artist) or a switch between a present/absent thumbnail will flip
-            // the key and trigger a reload.
-            bool hasThumb = session.Thumbnail != null;
-            return $"{session.SessionKey}|{session.Title}|{session.Artist}|{(hasThumb ? '1' : '0')}";
+            // Fingerprint-based key so reissued IRandomAccessStreamReference objects
+            // with the same underlying art don't cause reloads. A track change
+            // (different title/artist) or a content-hash change flips the fp and
+            // triggers a reload. When the thumbnail is absent we fall back to
+            // session+title+artist only (ThumbnailHash stays empty), which means a
+            // thumbnail arriving later will produce a hash and trigger a reload.
+            string hash = session.Thumbnail != null
+                ? (session.ThumbnailHash ?? string.Empty)
+                : string.Empty;
+            return new MediaTrackFingerprint(
+                session.SessionKey ?? string.Empty,
+                session.Title ?? string.Empty,
+                session.Artist ?? string.Empty,
+                hash);
         }
 
         private async void LoadAlbumArt(MediaSessionSnapshot session)
         {
             var targetRef = session.Thumbnail;
-            string targetIdentity = BuildAlbumArtIdentity(session);
+            MediaTrackFingerprint targetFingerprint = BuildAlbumArtFingerprint(session);
 
             // Save the previous art source SYNCHRONOUSLY before any await so rapid
             // switches don't corrupt the outgoing slot. This captures whatever is
@@ -535,8 +543,8 @@ namespace wisland.Views
             {
                 // --- Phase 1: Load everything in the background ---
                 BitmapImage? albumArt = await AlbumArtColorExtractor.LoadThumbnailAsync(targetRef);
-                if (!string.Equals(_lastAlbumArtIdentity, targetIdentity, StringComparison.Ordinal)) return;
-                if (_isBusyTransport) { _lastAlbumArtIdentity = null; return; }
+                if (!targetFingerprint.Equals(_lastAlbumArtFingerprint)) return;
+                if (_isBusyTransport) { _lastAlbumArtFingerprint = MediaTrackFingerprint.Empty; return; }
 
                 if (albumArt == null)
                 {
@@ -552,13 +560,13 @@ namespace wisland.Views
                 _previousAlbumArtSource = previousForThisLoad;
 
                 bool imageReady = await PreRealizeAlbumArtAsync(albumArt);
-                if (!string.Equals(_lastAlbumArtIdentity, targetIdentity, StringComparison.Ordinal)) return;
-                if (_isBusyTransport) { _lastAlbumArtIdentity = null; return; }
+                if (!targetFingerprint.Equals(_lastAlbumArtFingerprint)) return;
+                if (_isBusyTransport) { _lastAlbumArtFingerprint = MediaTrackFingerprint.Empty; return; }
                 if (!imageReady) return;
 
                 AlbumArtPalette? palette = await paletteTask;
-                if (!string.Equals(_lastAlbumArtIdentity, targetIdentity, StringComparison.Ordinal)) return;
-                if (_isBusyTransport) { _lastAlbumArtIdentity = null; return; }
+                if (!targetFingerprint.Equals(_lastAlbumArtFingerprint)) return;
+                if (_isBusyTransport) { _lastAlbumArtFingerprint = MediaTrackFingerprint.Empty; return; }
 
                 // --- Phase 3: Perform all crossfades atomically ---
                 CrossfadeAlbumArtFromPreRealized();
@@ -729,7 +737,7 @@ namespace wisland.Views
             AlbumArtFallback.Visibility = Visibility.Visible;
             ClearBlurSurface();
             _lastThumbnailRef = null;
-            _lastAlbumArtIdentity = null;
+            _lastAlbumArtFingerprint = MediaTrackFingerprint.Empty;
             _hasAlbumArt = false;
             ApplyDefaultBackgroundPalette();
 
