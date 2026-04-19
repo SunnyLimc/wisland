@@ -146,9 +146,18 @@ namespace wisland.Tests
             h.Frames.Clear();
 
             h.Machine.ProcessForTests(new UserSkipRequestedEvent(ContentTransitionDirection.Forward));
-            // Same session key but new title → fingerprint changed
+            // Same session key but new title → fingerprint changed. Valid
+            // intent forces Confirming (absorbs Chrome's brief wrong-tab
+            // flash). First frame = Confirming on OLD fp; once the settle
+            // timer fires, Steady+SlideForward on the new fp.
             h.Machine.ProcessForTests(new GsmtcSessionsChangedEvent(new[] { Session("s1", "Song B") }));
+            Assert.Single(h.Frames);
+            Assert.Equal(PresentationKind.Confirming, h.Frames[0].Kind);
+            Assert.Equal(FrameTransitionKind.None, h.Frames[0].Transition);
+            Assert.Equal("Song A", h.Frames[0].Fingerprint.Title);
+            h.Frames.Clear();
 
+            h.Machine.ProcessForTests(new MetadataSettleTimerFiredEvent());
             Assert.Single(h.Frames);
             Assert.Equal(FrameTransitionKind.SlideForward, h.Frames[0].Transition);
             Assert.Equal("Song B", h.Frames[0].Fingerprint.Title);
@@ -163,7 +172,12 @@ namespace wisland.Tests
 
             h.Machine.ProcessForTests(new UserSkipRequestedEvent(ContentTransitionDirection.Backward));
             h.Machine.ProcessForTests(new GsmtcSessionsChangedEvent(new[] { Session("s1", "Song B") }));
-
+            // Confirming frame first…
+            Assert.Single(h.Frames);
+            Assert.Equal(PresentationKind.Confirming, h.Frames[0].Kind);
+            h.Frames.Clear();
+            // …then the Slide after settle.
+            h.Machine.ProcessForTests(new MetadataSettleTimerFiredEvent());
             Assert.Single(h.Frames);
             Assert.Equal(FrameTransitionKind.SlideBackward, h.Frames[0].Transition);
         }
@@ -204,8 +218,13 @@ namespace wisland.Tests
             Assert.All(h.Frames, f => Assert.Equal(FrameTransitionKind.None, f.Transition));
             h.Frames.Clear();
 
-            // Real new track arrives → intent still valid, slide fires.
+            // Real new track arrives → intent still valid, routed through
+            // Confirming first, then Slide after settle.
             h.Machine.ProcessForTests(new GsmtcSessionsChangedEvent(new[] { Session("s1", "Song C") }));
+            Assert.Single(h.Frames);
+            Assert.Equal(PresentationKind.Confirming, h.Frames[0].Kind);
+            h.Frames.Clear();
+            h.Machine.ProcessForTests(new MetadataSettleTimerFiredEvent());
             Assert.Single(h.Frames);
             Assert.Equal(FrameTransitionKind.SlideForward, h.Frames[0].Transition);
         }
@@ -397,7 +416,12 @@ namespace wisland.Tests
 
             h.Machine.ProcessForTests(new UserSkipRequestedEvent(ContentTransitionDirection.Forward));
             h.Machine.ProcessForTests(new GsmtcSessionsChangedEvent(new[] { Session("s1", "Song B") }));
-
+            // Confirming first…
+            Assert.Single(h.Frames);
+            Assert.Equal(PresentationKind.Confirming, h.Frames[0].Kind);
+            h.Frames.Clear();
+            // …then Slide after settle consumes the intent.
+            h.Machine.ProcessForTests(new MetadataSettleTimerFiredEvent());
             Assert.Single(h.Frames);
             Assert.Equal(FrameTransitionKind.SlideForward, h.Frames[0].Transition);
             h.Frames.Clear();
@@ -430,6 +454,11 @@ namespace wisland.Tests
             Assert.Empty(h.Frames);
 
             h.Machine.ProcessForTests(new GsmtcSessionsChangedEvent(new[] { Session("s1", "Song D") }));
+            // Confirming first…
+            Assert.Single(h.Frames);
+            Assert.Equal(PresentationKind.Confirming, h.Frames[0].Kind);
+            h.Frames.Clear();
+            h.Machine.ProcessForTests(new MetadataSettleTimerFiredEvent());
             Assert.Single(h.Frames);
             Assert.Equal(FrameTransitionKind.SlideForward, h.Frames[0].Transition);
             Assert.Equal("Song D", h.Frames[0].Fingerprint.Title);
@@ -447,7 +476,11 @@ namespace wisland.Tests
             h.Machine.ProcessForTests(new UserSkipRequestedEvent(ContentTransitionDirection.Forward));
             h.Machine.ProcessForTests(new UserSkipRequestedEvent(ContentTransitionDirection.Backward));
             h.Machine.ProcessForTests(new GsmtcSessionsChangedEvent(new[] { Session("s1", "Song Prev") }));
-
+            // Confirming first…
+            Assert.Single(h.Frames);
+            Assert.Equal(PresentationKind.Confirming, h.Frames[0].Kind);
+            h.Frames.Clear();
+            h.Machine.ProcessForTests(new MetadataSettleTimerFiredEvent());
             Assert.Single(h.Frames);
             Assert.Equal(FrameTransitionKind.SlideBackward, h.Frames[0].Transition);
         }

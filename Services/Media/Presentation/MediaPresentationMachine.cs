@@ -398,15 +398,21 @@ namespace wisland.Services.Media.Presentation
             // update on the same track should not trigger a 250ms settle.
             bool identityChangedForConfirming =
                 !FingerprintIdentityEquals(fingerprint, _state.DisplayedFingerprint);
-            // User-initiated skips ALSO go through Confirming. The 250ms
-            // settle window is what prevents Chrome's brief paused-tab flash
-            // from leaking into the UI between stabilization release and the
-            // real next track arriving (§5.3). Earlier code bypassed
-            // Confirming when a valid intent was present under the mistaken
-            // assumption that the 250ms delay was user-perceptible; the
-            // actual "UI skip feels slow" complaint traced to a 10s
-            // stabilization hang (fixed separately in MediaService).
-            if (stabilizationJustEnded && fpChanged && identityChangedForConfirming && !firstFrame)
+            // A fresh, still-valid SwitchIntent signals "user just clicked
+            // skip and a switch is coming". When the first post-click fp
+            // change arrives we must ALWAYS absorb it through Confirming,
+            // even if MediaService released stabilization so fast we never
+            // observed a Switching kind transition. This prevents Chrome's
+            // brief paused-tab or wrong-tab flash from leaking onto the UI:
+            // if the initial candidate bounces to the real next track within
+            // the 250ms window, the draft resets and the user sees a single
+            // clean A->C transition rather than A->B->C.
+            bool intentForcesConfirming = _state.Intent.HasValue
+                && !_state.Intent.Value.IsExpired(_context.NowUtc)
+                && _state.Intent.Value.MatchesOrigin(_state.DisplayedFingerprint)
+                && kind == PresentationKind.Steady;
+            if ((stabilizationJustEnded || intentForcesConfirming)
+                && fpChanged && identityChangedForConfirming && !firstFrame)
             {
                 EnterConfirming(winner!.Value, fingerprint);
                 return;
