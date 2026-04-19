@@ -490,6 +490,8 @@ namespace wisland.Services
                     if (!ReferenceEquals(tracked.Thumbnail, nextThumbnail))
                     {
                         tracked.Thumbnail = nextThumbnail;
+                        // Hash is stale until the async compute below finishes.
+                        tracked.ThumbnailHash = string.Empty;
                         if (tracked.StabilizationReason == MediaSessionStabilizationReason.None)
                         {
                             hasChanges = true;
@@ -507,10 +509,88 @@ namespace wisland.Services
                 {
                     DispatchChange(changeResult);
                 }
+
+                // Kick off async thumbnail hashing after the visible dispatch.
+                // The hash result arrives on a later SessionsChanged event once it
+                // has been stored on the tracked source; its only consumer today
+                // is the MediaPresentationMachine's fingerprint.
+                if (nextThumbnail != null)
+                {
+                    _ = ComputeAndStoreThumbnailHashAsync(session, nextThumbnail);
+                }
             }
             catch (Exception ex)
             {
                 Logger.Error(ex, "Failed to update media properties");
+            }
+        }
+
+        private async Task ComputeAndStoreThumbnailHashAsync(
+            GlobalSystemMediaTransportControlsSession session,
+            Windows.Storage.Streams.IRandomAccessStreamReference thumbnailRef)
+        {
+            string hash;
+            try
+            {
+                using var stream = await thumbnailRef.OpenReadAsync();
+                if (stream == null)
+                {
+                    return;
+                }
+
+                // Hash the first 4KB per spec. Full-image hashing is overkill for
+                // dedup and adds latency; the first 4KB of a typical JPEG/PNG is
+                // distinct enough for album art diffing.
+                const int sampleSize = 4096;
+                long length = Math.Min(sampleSize, (long)stream.Size);
+                if (length <= 0)
+                {
+                    return;
+                }
+
+                var buffer = new Windows.Storage.Streams.Buffer((uint)length);
+                var read = await stream.ReadAsync(buffer, (uint)length, Windows.Storage.Streams.InputStreamOptions.None);
+                byte[] bytes = new byte[read.Length];
+                using (var reader = Windows.Storage.Streams.DataReader.FromBuffer(read))
+                {
+                    reader.ReadBytes(bytes);
+                }
+
+                ulong h = System.IO.Hashing.XxHash64.HashToUInt64(bytes);
+                hash = h.ToString("x16");
+            }
+            catch (Exception ex)
+            {
+                Logger.Trace($"Thumbnail hash compute failed: {ex.Message}");
+                return;
+            }
+
+            ServiceChangeResult changeResult = default;
+            bool dispatched = false;
+            lock (_gate)
+            {
+                if (_isDisposed || !_trackedSourcesBySession.TryGetValue(session, out TrackedSource? tracked))
+                {
+                    return;
+                }
+                // Bail if the thumbnail reference has been replaced since we
+                // started: a newer hash computation is (or will be) in flight.
+                if (!ReferenceEquals(tracked.Thumbnail, thumbnailRef))
+                {
+                    return;
+                }
+                if (string.Equals(tracked.ThumbnailHash, hash, StringComparison.Ordinal))
+                {
+                    return;
+                }
+                tracked.ThumbnailHash = hash;
+                changeResult = PrepareStateChange_NoLock();
+                dispatched = true;
+            }
+
+            if (dispatched)
+            {
+                DispatchChange(changeResult);
             }
         }
 

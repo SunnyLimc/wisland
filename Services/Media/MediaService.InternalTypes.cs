@@ -58,6 +58,15 @@ namespace wisland.Services
             public DateTimeOffset? LastDisplayedUtc { get; set; }
             public DateTimeOffset? LastSystemCurrentUtc { get; set; }
             public IRandomAccessStreamReference? Thumbnail { get; set; }
+            /// <summary>
+            /// xxhash64 (hex, 16 chars) of the first 4KB of the thumbnail stream. Computed
+            /// asynchronously after the Thumbnail reference updates. Empty until the first
+            /// async compute completes or when no thumbnail is present. Used by the
+            /// MediaPresentationMachine to build stable MediaTrackFingerprints so that two
+            /// streams that happen to reference different IRandomAccessStreamReference
+            /// instances but identical underlying bytes are considered the same track.
+            /// </summary>
+            public string ThumbnailHash { get; set; } = string.Empty;
             public bool HasPendingReconnect { get; set; }
             public string PendingTitle { get; set; }
             public string PendingArtist { get; set; }

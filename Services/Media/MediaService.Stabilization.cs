@@ -397,7 +397,8 @@ namespace wisland.Services
                 tracked.LastSeenUtc,
                 tracked.MissingSinceUtc,
                 MediaSessionStabilizationReason.None,
-                tracked.Thumbnail);
+                tracked.Thumbnail,
+                tracked.ThumbnailHash);
         }
     }
 }

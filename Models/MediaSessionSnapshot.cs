@@ -23,7 +23,8 @@ namespace wisland.Models
         DateTimeOffset LastSeenUtc,
         DateTimeOffset? MissingSinceUtc,
         MediaSessionStabilizationReason StabilizationReason = MediaSessionStabilizationReason.None,
-        IRandomAccessStreamReference? Thumbnail = null)
+        IRandomAccessStreamReference? Thumbnail = null,
+        string ThumbnailHash = "")
     {
         public bool IsPlaying => PlaybackStatus == GlobalSystemMediaTransportControlsSessionPlaybackStatus.Playing;
         public bool IsWaitingForReconnect => Presence == MediaSessionPresence.WaitingForReconnect;

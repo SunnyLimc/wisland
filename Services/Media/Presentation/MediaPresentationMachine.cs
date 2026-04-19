@@ -427,11 +427,15 @@ namespace wisland.Services.Media.Presentation
         // --- Utility --------------------------------------------------------
 
         private static MediaTrackFingerprint BuildFingerprint(MediaSessionSnapshot session)
-            // P2: ThumbnailHash empty; P3 populates xxhash64(first 4KB).
+            // P3: ThumbnailHash is xxhash64(first 4KB) populated asynchronously by
+            // MediaService after the thumbnail reference updates. Empty until the
+            // first compute completes; that is treated as its own fingerprint
+            // value so a hash arriving on a later dispatch surfaces as a fp
+            // change and can trigger the appropriate frame.
             => new(session.SessionKey ?? string.Empty,
                    session.Title ?? string.Empty,
                    session.Artist ?? string.Empty,
-                   string.Empty);
+                   session.ThumbnailHash ?? string.Empty);
 
         private static bool FingerprintEquals(MediaTrackFingerprint a, MediaTrackFingerprint b)
             => string.Equals(a.SessionKey, b.SessionKey, StringComparison.Ordinal)
