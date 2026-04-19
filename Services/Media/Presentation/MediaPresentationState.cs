@@ -32,5 +32,15 @@ namespace wisland.Services.Media.Presentation
 
         // Switch intent (replaces _pendingMediaTransitionDirection, longer deadline)
         public SwitchIntent? Intent;
+
+        // P3b-2: Confirming settle. Active when stabilization just ended with
+        // a fingerprint change; machine buffers the draft while the metadata
+        // is required to stay stable for MediaMetadataSettleMs. While
+        // IsConfirming is true, DisplayedFingerprint still holds the pre-change
+        // value so the UI visual doesn't flicker.
+        public bool IsConfirming;
+        public MediaSessionSnapshot? ConfirmingDraftSnapshot;
+        public MediaTrackFingerprint ConfirmingDraftFingerprint = MediaTrackFingerprint.Empty;
+        public DateTimeOffset ConfirmingFirstSeenUtc;
     }
 }

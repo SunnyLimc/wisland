@@ -230,12 +230,51 @@ namespace wisland.Tests
             }
             h.Frames.Clear();
 
-            // Stabilization releases with the real new track.
+            // Stabilization releases with the real new track. P3b-2 gates this
+            // through a Confirming settle: first frame is Kind=Confirming (no
+            // slide), then MetadataSettleTimerFired releases the Steady frame.
             h.Machine.ProcessForTests(new GsmtcSessionsChangedEvent(new[] { Session("s1", "Song B") }));
 
             Assert.Single(h.Frames);
+            Assert.Equal(PresentationKind.Confirming, h.Frames[0].Kind);
+            Assert.Equal(FrameTransitionKind.None, h.Frames[0].Transition);
+            Assert.Equal("Song A", h.Frames[0].Fingerprint.Title); // old fp held
+            h.Frames.Clear();
+
+            h.Machine.ProcessForTests(new MetadataSettleTimerFiredEvent());
+
+            Assert.Single(h.Frames);
+            Assert.Equal(PresentationKind.Steady, h.Frames[0].Kind);
             Assert.Equal(FrameTransitionKind.SlideForward, h.Frames[0].Transition);
             Assert.Equal("Song B", h.Frames[0].Fingerprint.Title);
+        }
+
+        [Fact]
+        public void ConfirmingResetsWhenDraftBouncesBeforeSettle()
+        {
+            using var h = NewHarness();
+            h.Machine.ProcessForTests(new GsmtcSessionsChangedEvent(new[] { Session("s1", "Song A") }));
+            h.Machine.ProcessForTests(new UserSkipRequestedEvent(ContentTransitionDirection.Forward));
+            h.Machine.ProcessForTests(new GsmtcSessionsChangedEvent(new[]
+            {
+                Session("s1", "Paused Tab", stabilization: MediaSessionStabilizationReason.SkipTransition)
+            }));
+            h.Frames.Clear();
+
+            // Stabilization releases with "Song B" → enter Confirming.
+            h.Machine.ProcessForTests(new GsmtcSessionsChangedEvent(new[] { Session("s1", "Song B") }));
+            Assert.Equal(PresentationKind.Confirming, h.Frames[^1].Kind);
+
+            // Draft bounces to "Song C" before settle. No new emission; still Confirming.
+            int framesBeforeBounce = h.Frames.Count;
+            h.Machine.ProcessForTests(new GsmtcSessionsChangedEvent(new[] { Session("s1", "Song C") }));
+            Assert.Equal(framesBeforeBounce, h.Frames.Count);
+
+            // Timer fires but draft is "Song C" → release with Song C.
+            h.Machine.ProcessForTests(new MetadataSettleTimerFiredEvent());
+            Assert.Equal(PresentationKind.Steady, h.Frames[^1].Kind);
+            Assert.Equal("Song C", h.Frames[^1].Fingerprint.Title);
+            Assert.Equal(FrameTransitionKind.SlideForward, h.Frames[^1].Transition);
         }
 
         // ---------------------------------------------------------------

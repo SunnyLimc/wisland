@@ -71,6 +71,7 @@ namespace wisland
         private readonly DispatcherTimer _dockedHoverDelayTimer;
         private readonly DispatcherTimer _selectionLockTimer;
         private readonly DispatcherTimer _autoFocusTimer;
+        private readonly DispatcherTimer _metadataSettleTimer;
 
         // --- Line Mode State ---
         private readonly ShellVisibilityService _shellVisibilityService = new();
@@ -165,6 +166,8 @@ namespace wisland
                 _selectionLockTimer.Tick += SelectionLockTimer_Tick;
                 _autoFocusTimer = new DispatcherTimer();
                 _autoFocusTimer.Tick += AutoFocusTimer_Tick;
+                _metadataSettleTimer = new DispatcherTimer();
+                _metadataSettleTimer.Tick += MetadataSettleTimer_Tick;
 
                 _touchLongPressTimer = new DispatcherTimer { Interval = TimeSpan.FromMilliseconds(IslandConfig.TouchLongPressMs) };
                 _touchLongPressTimer.Tick += TouchLongPressTimer_Tick;

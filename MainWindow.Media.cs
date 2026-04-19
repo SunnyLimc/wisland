@@ -28,6 +28,7 @@ namespace wisland
                     _presentationMachine.FrameProduced += OnFrameProduced;
                     _presentationMachine.AutoFocusTimerScheduleRequested += OnAutoFocusTimerScheduleRequested;
                     _presentationMachine.ManualLockExpiryScheduleRequested += OnManualLockExpiryScheduleRequested;
+                    _presentationMachine.MetadataSettleTimerScheduleRequested += OnMetadataSettleTimerScheduleRequested;
                 }
                 await _mediaService.InitializeAsync();
                 // Bootstrap: feed the machine the initial priority-ordered
@@ -393,6 +394,15 @@ namespace wisland
 
         private void OnManualLockExpiryScheduleRequested(DateTimeOffset? dueUtc)
             => RestartUiTimer(_selectionLockTimer, dueUtc);
+
+        private void OnMetadataSettleTimerScheduleRequested(DateTimeOffset? dueUtc)
+            => RestartUiTimer(_metadataSettleTimer, dueUtc);
+
+        private void MetadataSettleTimer_Tick(object? sender, object e)
+        {
+            _metadataSettleTimer?.Stop();
+            _presentationMachine?.Dispatch(new MetadataSettleTimerFiredEvent());
+        }
 
         private static void RestartUiTimer(Microsoft.UI.Xaml.DispatcherTimer timer, DateTimeOffset? dueUtc)
         {

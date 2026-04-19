@@ -75,6 +75,12 @@ namespace wisland.Services.Media.Presentation
         /// so the policy's OnEvent runs and expiry is published.</summary>
         public event Action<DateTimeOffset?>? ManualLockExpiryScheduleRequested;
 
+        /// <summary>Fired when the Confirming settle timer should be armed
+        /// (or restarted) at <c>dueUtc</c>. The host should restart its
+        /// DispatcherTimer to fire at that instant; the tick handler must
+        /// <see cref="Dispatch"/> <see cref="MetadataSettleTimerFiredEvent"/>.</summary>
+        public event Action<DateTimeOffset?>? MetadataSettleTimerScheduleRequested;
+
         /// <summary>Public snapshot of ManualSelectionLockPolicy's current
         /// decision. Intended for MainWindow's rendering-path queries
         /// (e.g. "is the user currently holding focus?").</summary>
@@ -171,7 +177,7 @@ namespace wisland.Services.Media.Presentation
                 case AutoFocusTimerFiredEvent:
                 case StabilizationTimerFiredEvent:
                 case MetadataSettleTimerFiredEvent:
-                    ReconcileDisplay();
+                    ReconcileDisplay(evt);
                     break;
                 case AiResolveCompletedEvent ai:
                     HandleAiResolveCompleted(ai);
@@ -192,7 +198,7 @@ namespace wisland.Services.Media.Presentation
                 evt.Direction,
                 _context.NowUtc + TimeSpan.FromMilliseconds(IslandConfig.SkipTransitionTimeoutMs));
             Logger.Debug($"[Machine] UserSkip {evt.Direction} captured. Origin={_state.DisplayedFingerprint.Title}/{_state.DisplayedFingerprint.SessionKey} deadline=+{IslandConfig.SkipTransitionTimeoutMs}ms");
-            ReconcileDisplay();
+            ReconcileDisplay(null);
         }
 
         private void HandleUserSelect(UserSelectSessionEvent evt)
@@ -202,7 +208,7 @@ namespace wisland.Services.Media.Presentation
                 evt.Direction,
                 _context.NowUtc + TimeSpan.FromMilliseconds(IslandConfig.SkipTransitionTimeoutMs));
             Logger.Debug($"[Machine] UserSelect '{evt.SessionKey}' dir={evt.Direction}");
-            ReconcileDisplay();
+            ReconcileDisplay(null);
         }
 
         private void HandleNotificationBegin(NotificationBeginEvent evt)
@@ -301,12 +307,28 @@ namespace wisland.Services.Media.Presentation
 
         // --- Core reconciliation --------------------------------------------
 
-        private void ReconcileDisplay()
+        private void ReconcileDisplay(PresentationEvent? trigger)
         {
             // Compute what the display should look like given the latest
             // arbiter decision + sessions.
             var winnerKey = _context.ArbitratedWinnerKey;
             MediaSessionSnapshot? winner = FindSession(_context.Sessions, winnerKey);
+
+            // P3b-2: if we're currently in a Confirming settle, service it
+            // before any other display logic. Overlay path still wins if a
+            // notification is active — notifications freeze the main visual
+            // and Confirming's draft continues to evolve only implicitly via
+            // the inner-state path.
+            if (_state.IsConfirming && !_state.IsNotifying)
+            {
+                if (ServiceConfirming(winner, trigger))
+                {
+                    return; // stayed in confirming (or bounced/reset) — no Steady emit
+                }
+                // ServiceConfirming returned false → it released Confirming.
+                // Fall through below to re-run the normal reconcile path so
+                // we evaluate kind/transition on the confirmed fingerprint.
+            }
 
             PresentationKind kind;
             MediaTrackFingerprint fingerprint;
@@ -362,6 +384,19 @@ namespace wisland.Services.Media.Presentation
                 return;
             }
 
+            // P3b-2: only when stabilization has just ended (previous kind was
+            // Switching) and fingerprint changed, detour into Confirming.
+            // Direct Steady→Steady fp changes (no stabilization, e.g. tests'
+            // simulated track replacement) still emit immediately.
+            bool stabilizationJustEnded =
+                _state.DisplayedKind == PresentationKind.Switching
+                && kind == PresentationKind.Steady;
+            if (stabilizationJustEnded && fpChanged && !firstFrame)
+            {
+                EnterConfirming(winner!.Value, fingerprint);
+                return;
+            }
+
             if (firstFrame && kind != PresentationKind.Empty)
             {
                 transition = FrameTransitionKind.Replace;
@@ -409,6 +444,122 @@ namespace wisland.Services.Media.Presentation
                     isFallback: isFallback,
                     notification: null);
             }
+        }
+
+        // P3b-2 helpers ------------------------------------------------------
+
+        private void EnterConfirming(MediaSessionSnapshot draft, MediaTrackFingerprint draftFp)
+        {
+            _state.IsConfirming = true;
+            _state.ConfirmingDraftSnapshot = draft;
+            _state.ConfirmingDraftFingerprint = draftFp;
+            _state.ConfirmingFirstSeenUtc = _context.NowUtc;
+            _state.DisplayedKind = PresentationKind.Confirming;
+
+            Logger.Debug($"[Machine] enter Confirming draft=[{DescribeFingerprint(draftFp)}] settleMs={IslandConfig.MediaMetadataSettleMs}");
+
+            _context.ScheduleMetadataSettleTimer(
+                _context.NowUtc + TimeSpan.FromMilliseconds(IslandConfig.MediaMetadataSettleMs));
+
+            // Emit a Confirming frame so the UI can update its chip text.
+            // Fingerprint stays at the displayed value so invariant #3 holds.
+            EmitFrame(
+                session: _state.DisplayedSnapshot,
+                orderedSessions: _context.Sessions,
+                kind: PresentationKind.Confirming,
+                transition: FrameTransitionKind.None,
+                fingerprint: _state.DisplayedFingerprint,
+                isFallback: false,
+                notification: null);
+        }
+
+        /// <summary>
+        /// Processes an event while IsConfirming is active.
+        /// Returns true if Confirming was preserved (no Steady release) and the
+        /// caller should NOT run the normal reconcile path; returns false after
+        /// releasing so the caller can emit the confirmed Steady frame.
+        /// </summary>
+        private bool ServiceConfirming(MediaSessionSnapshot? winner, PresentationEvent? trigger)
+        {
+            // Re-entering stabilization while confirming: drop draft.
+            if (!winner.HasValue || winner.Value.IsStabilizing)
+            {
+                Logger.Debug("[Machine] Confirming: winner re-entered stabilization, dropping draft");
+                ClearConfirming();
+                return false; // let normal path emit Switching
+            }
+
+            var rawFp = BuildFingerprint(winner.Value);
+            bool sameAsDraft = FingerprintEquals(rawFp, _state.ConfirmingDraftFingerprint);
+            bool timerFired = trigger is MetadataSettleTimerFiredEvent;
+            var elapsed = _context.NowUtc - _state.ConfirmingFirstSeenUtc;
+            var settle = TimeSpan.FromMilliseconds(IslandConfig.MediaMetadataSettleMs);
+
+            if (!sameAsDraft)
+            {
+                // Draft bounced — reset window with the new candidate.
+                Logger.Debug($"[Machine] Confirming: draft mismatch, resetting to [{DescribeFingerprint(rawFp)}]");
+                _state.ConfirmingDraftSnapshot = winner;
+                _state.ConfirmingDraftFingerprint = rawFp;
+                _state.ConfirmingFirstSeenUtc = _context.NowUtc;
+                _context.ScheduleMetadataSettleTimer(_context.NowUtc + settle);
+                return true;
+            }
+
+            if (!timerFired && elapsed < settle)
+            {
+                // Still settling. No-op.
+                return true;
+            }
+
+            // Release: consume draft as the new displayed fp.
+            Logger.Debug($"[Machine] Confirming: release after {elapsed.TotalMilliseconds:F0}ms, fp=[{DescribeFingerprint(rawFp)}]");
+
+            MediaTrackFingerprint draftFp = _state.ConfirmingDraftFingerprint;
+            MediaSessionSnapshot? draftSnap = _state.ConfirmingDraftSnapshot;
+            ClearConfirming();
+
+            FrameTransitionKind transition;
+            if (_state.Intent.HasValue
+                && !_state.Intent.Value.IsExpired(_context.NowUtc)
+                && _state.Intent.Value.MatchesOrigin(_state.DisplayedFingerprint))
+            {
+                transition = _state.Intent.Value.Direction switch
+                {
+                    ContentTransitionDirection.Forward => FrameTransitionKind.SlideForward,
+                    ContentTransitionDirection.Backward => FrameTransitionKind.SlideBackward,
+                    _ => FrameTransitionKind.Replace
+                };
+                _state.Intent = null;
+            }
+            else
+            {
+                transition = FrameTransitionKind.Replace;
+                if (_state.Intent.HasValue && _state.Intent.Value.IsExpired(_context.NowUtc))
+                    _state.Intent = null;
+            }
+
+            _state.DisplayedSnapshot = draftSnap;
+            _state.DisplayedKind = PresentationKind.Steady;
+            _state.DisplayedFingerprint = draftFp;
+            _state.Initialized = true;
+            EmitFrame(
+                session: draftSnap,
+                orderedSessions: _context.Sessions,
+                kind: PresentationKind.Steady,
+                transition: transition,
+                fingerprint: draftFp,
+                isFallback: false,
+                notification: null);
+            return true;
+        }
+
+        private void ClearConfirming()
+        {
+            _state.IsConfirming = false;
+            _state.ConfirmingDraftSnapshot = null;
+            _state.ConfirmingDraftFingerprint = MediaTrackFingerprint.Empty;
+            _state.ConfirmingFirstSeenUtc = default;
         }
 
         // --- Emit helper ----------------------------------------------------
@@ -617,6 +768,8 @@ namespace wisland.Services.Media.Presentation
         private void ScheduleMetadataSettleTimer(DateTimeOffset dueUtc)
         {
             Logger.Trace($"[Machine] ScheduleMetadataSettleTimer due={dueUtc:HH:mm:ss.fff}");
+            var local = dueUtc;
+            _dispatcherPoster.Post(() => MetadataSettleTimerScheduleRequested?.Invoke(local));
         }
 
         private void ScheduleAutoFocusTimer(DateTimeOffset? dueUtc)
