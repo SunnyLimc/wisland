@@ -11,12 +11,17 @@ namespace wisland.Views.Settings
     {
         private readonly SettingsService _settings;
         private readonly Action<BackdropType> _onBackdropChanged;
+        private readonly Action? _onImmersiveMediaChanged;
         private bool _suppressSelectionChanged;
 
-        public AppearancePage(SettingsService settings, Action<BackdropType> onBackdropChanged)
+        public AppearancePage(
+            SettingsService settings,
+            Action<BackdropType> onBackdropChanged,
+            Action? onImmersiveMediaChanged = null)
         {
             _settings = settings;
             _onBackdropChanged = onBackdropChanged;
+            _onImmersiveMediaChanged = onImmersiveMediaChanged;
             this.InitializeComponent();
             Loaded += OnLoaded;
         }
@@ -59,6 +64,9 @@ namespace wisland.Views.Settings
             ImmersiveMediaToggle.OffContent = Loc.GetString("Appearance/ImmersiveMediaOff");
             ImmersiveMediaToggle.IsOn = _settings.UseImmersiveMediaView;
 
+            ImmersiveMediaExperimentHint.Title = Loc.GetString("Appearance/ImmersiveMediaExperimentTitle");
+            ImmersiveMediaExperimentHint.Message = Loc.GetString("Appearance/ImmersiveMediaExperimentMessage");
+
             // Release suppression only AFTER every programmatic value assignment.
             // WinUI raises Toggled/SelectionChanged on programmatic writes too, so
             // any earlier release would let an init-time event write settings back
@@ -86,6 +94,7 @@ namespace wisland.Views.Settings
             if (_suppressSelectionChanged) return;
             _settings.UseImmersiveMediaView = ImmersiveMediaToggle.IsOn;
             _settings.Save();
+            _onImmersiveMediaChanged?.Invoke();
         }
 
         private void LanguageSelector_SelectionChanged(object sender, SelectionChangedEventArgs e)

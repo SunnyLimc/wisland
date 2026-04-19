@@ -21,6 +21,7 @@ namespace wisland
         private readonly Action _onAiSettingsChanged;
         private readonly Action<double> _onSetTaskProgress;
         private readonly Action _onClearTaskProgress;
+        private readonly Action? _onImmersiveMediaChanged;
 
         private readonly NavigationView _navView;
         private readonly Frame _contentFrame;
@@ -37,7 +38,8 @@ namespace wisland
             Action<Models.BackdropType> onBackdropChanged,
             Action onAiSettingsChanged,
             Action<double> onSetTaskProgress,
-            Action onClearTaskProgress)
+            Action onClearTaskProgress,
+            Action? onImmersiveMediaChanged = null)
         {
             _settings = settings;
             _aiResolver = aiResolver;
@@ -45,6 +47,7 @@ namespace wisland
             _onAiSettingsChanged = onAiSettingsChanged;
             _onSetTaskProgress = onSetTaskProgress;
             _onClearTaskProgress = onClearTaskProgress;
+            _onImmersiveMediaChanged = onImmersiveMediaChanged;
 
             Title = Loc.GetString("Settings/Title");
             ExtendsContentIntoTitleBar = true;
@@ -163,7 +166,7 @@ namespace wisland
             switch (tag)
             {
                 case "appearance":
-                    _appearancePage ??= new AppearancePage(_settings, OnBackdropChanged);
+                    _appearancePage ??= new AppearancePage(_settings, OnBackdropChanged, _onImmersiveMediaChanged);
                     _contentFrame.Content = _appearancePage;
                     break;
                 case "aimodels":

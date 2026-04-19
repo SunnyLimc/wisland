@@ -374,7 +374,8 @@ namespace wisland
                 onBackdropChanged: type => SetBackdrop(type),
                 onAiSettingsChanged: () => OnAiSettingsChanged(),
                 onSetTaskProgress: p => SetTaskProgress(p),
-                onClearTaskProgress: () => ClearTaskProgress());
+                onClearTaskProgress: () => ClearTaskProgress(),
+                onImmersiveMediaChanged: () => DispatcherQueue.TryEnqueue(SyncMediaUI));
             _settingsWindow.Closed += (_, _) => _settingsWindow = null;
             _settingsWindow.Activate();
         }

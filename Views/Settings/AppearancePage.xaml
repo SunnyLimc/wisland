@@ -57,6 +57,11 @@
 
                                 <ToggleSwitch x:Name="ImmersiveMediaToggle"
                     Toggled="ImmersiveMediaToggle_Toggled"/>
+
+                                <InfoBar x:Name="ImmersiveMediaExperimentHint"
+                    Severity="Warning"
+                    IsOpen="True"
+                    IsClosable="False"/>
                         </StackPanel>
                 </ScrollViewer>
         </Grid>
