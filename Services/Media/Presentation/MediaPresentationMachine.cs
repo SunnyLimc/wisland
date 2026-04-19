@@ -332,11 +332,14 @@ namespace wisland.Services.Media.Presentation
             {
                 if (ServiceConfirming(winner, trigger))
                 {
-                    return; // stayed in confirming (or bounced/reset) — no Steady emit
+                    // Handled end-to-end by ServiceConfirming: either still
+                    // settling / draft reset (no frame), or released and the
+                    // confirmed Steady frame was already emitted.
+                    return;
                 }
-                // ServiceConfirming returned false → it released Confirming.
-                // Fall through below to re-run the normal reconcile path so
-                // we evaluate kind/transition on the confirmed fingerprint.
+                // False ⇒ winner re-entered stabilization; draft was dropped.
+                // Fall through so the normal reconcile path emits the
+                // Switching kind for this new raw state.
             }
 
             PresentationKind kind;
@@ -393,12 +396,15 @@ namespace wisland.Services.Media.Presentation
                 return;
             }
 
-            // P3b-2: only when stabilization has just ended (previous kind was
-            // Switching) and fingerprint changed, detour into Confirming.
-            // Direct Steady→Steady fp changes (no stabilization, e.g. tests'
-            // simulated track replacement) still emit immediately. A valid
-            // in-flight SwitchIntent bypasses Confirming so user-initiated
-            // skips don't suffer the 250ms settle delay.
+            // P3b-2 + P4d-2: detour into Confirming on fp change either when
+            // stabilization has just ended (previous kind was Switching) OR
+            // when a still-valid SwitchIntent sourced from a SKIP is in flight
+            // (see intentForcesConfirming below). Direct Steady→Steady fp
+            // changes with no skip intent and no observed Switching phase
+            // (e.g. tests' simulated track replacement, natural-end flips)
+            // still emit immediately. Session-select intents also bypass
+            // Confirming — the target is known and the 250ms settle would
+            // only strand the scroll animation.
             bool stabilizationJustEnded =
                 _state.DisplayedKind == PresentationKind.Switching
                 && kind == PresentationKind.Steady;
@@ -543,9 +549,13 @@ namespace wisland.Services.Media.Presentation
 
         /// <summary>
         /// Processes an event while IsConfirming is active.
-        /// Returns true if Confirming was preserved (no Steady release) and the
-        /// caller should NOT run the normal reconcile path; returns false after
-        /// releasing so the caller can emit the confirmed Steady frame.
+        /// <para>Returns <c>true</c> when the caller should NOT run the normal
+        /// reconcile path. That covers both "still settling / draft reset"
+        /// AND "released and this method already emitted the Steady frame".
+        /// </para>
+        /// <para>Returns <c>false</c> only when the winner re-entered
+        /// stabilization (draft is discarded) so the caller falls through to
+        /// the normal path to emit the <c>Switching</c> kind frame.</para>
         /// </summary>
         private bool ServiceConfirming(MediaSessionSnapshot? winner, PresentationEvent? trigger)
         {

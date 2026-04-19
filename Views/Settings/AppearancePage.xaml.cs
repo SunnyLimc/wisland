@@ -54,12 +54,16 @@ namespace wisland.Views.Settings
                 UnpackagedLanguageHint.IsOpen = true;
             }
 
-            _suppressSelectionChanged = false;
-
             ImmersiveMediaToggle.Header = Loc.GetString("Appearance/ImmersiveMediaToggle");
             ImmersiveMediaToggle.OnContent = Loc.GetString("Appearance/ImmersiveMediaOn");
             ImmersiveMediaToggle.OffContent = Loc.GetString("Appearance/ImmersiveMediaOff");
             ImmersiveMediaToggle.IsOn = _settings.UseImmersiveMediaView;
+
+            // Release suppression only AFTER every programmatic value assignment.
+            // WinUI raises Toggled/SelectionChanged on programmatic writes too, so
+            // any earlier release would let an init-time event write settings back
+            // to disk (see Copilot review 2026-04).
+            _suppressSelectionChanged = false;
         }
 
         private void BackdropSelector_SelectionChanged(object sender, SelectionChangedEventArgs e)

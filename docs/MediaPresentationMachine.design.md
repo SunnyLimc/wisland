@@ -706,13 +706,23 @@ namespace wisland.Services.Media.Presentation;
 
 public sealed class MediaPresentationMachine : IDisposable
 {
+    // Actual shipped constructor (as of album-view). Policies own their
+    // service dependencies: FocusArbitrationPolicy wraps the arbiter,
+    // AiOverridePolicy takes an IAiOverrideResolver injected from the host,
+    // StabilizationPolicy subscribes to MediaService events — so the
+    // machine itself only needs the policy list + dispatcher.
     public MediaPresentationMachine(
-        MediaService mediaService,
         IReadOnlyList<IPresentationPolicy> policies,   // injection order = resolve order
-        AiSongResolverService? aiResolver,
         IDispatcherPoster dispatcherPoster);           // posts frames back to the UI thread
 
     public event Action<MediaPresentationFrame>? FrameProduced;
+
+    // Timer-arming requests raised by policies; the host owns the actual
+    // DispatcherTimer and dispatches the corresponding *TimerFiredEvent
+    // back in when the timer elapses.
+    public event Action<DateTimeOffset?>? AutoFocusTimerScheduleRequested;
+    public event Action<DateTimeOffset?>? ManualLockExpiryScheduleRequested;
+    public event Action<DateTimeOffset?>? MetadataSettleTimerScheduleRequested;
 
     // Input
     public void Dispatch(PresentationEvent evt);

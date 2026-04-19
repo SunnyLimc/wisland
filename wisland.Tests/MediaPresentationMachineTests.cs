@@ -381,21 +381,15 @@ namespace wisland.Tests
         // Intent expiry
         // ---------------------------------------------------------------
 
-        [Fact]
+        [Fact(Skip = "Requires controllable clock injection into MediaPresentationMachine — tracked for P5 follow-up. NoIntentMeansReplaceNotSlide already covers the structural fallback.")]
         public void ExpiredIntentFallsBackToReplace()
         {
-            // Force immediate expiry by constructing a harness that uses zero
-            // deadline... the SwitchIntent.Deadline is now + SkipTransitionTimeoutMs
-            // which is 10s. We simulate expiry by running UserSkip then advancing
-            // through a session event that arrives with a clock past the deadline
-            // — because ProcessEvent samples DateTimeOffset.UtcNow, we can't
-            // control time directly. Instead this test verifies that without a
-            // Skip, a track change is Replace (already covered by NoIntentMeansReplaceNotSlide).
-            //
-            // Real expiry pathway is exercised indirectly via the "no intent"
-            // assertion; when timekeeping injection arrives in P5 we'll add a
-            // synthetic-clock test.
-            Assert.True(true);
+            // Intentionally empty. The real-time expiry path needs a synthetic
+            // clock to exercise deterministically (SwitchIntent.Deadline is
+            // now + SkipTransitionTimeoutMs = 10s, and ProcessEvent samples
+            // DateTimeOffset.UtcNow directly). Until that injection lands,
+            // the "no intent" equivalent is locked in by
+            // NoIntentMeansReplaceNotSlide.
         }
 
         // ---------------------------------------------------------------
