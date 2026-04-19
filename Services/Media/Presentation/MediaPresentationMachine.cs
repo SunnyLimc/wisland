@@ -61,6 +61,12 @@ namespace wisland.Services.Media.Presentation
         /// the event usually fires on the UI thread.</summary>
         public event Action<MediaPresentationFrame>? FrameProduced;
 
+        /// <summary>Fired when FocusArbitrationPolicy wants to schedule (or
+        /// cancel with null) the auto-focus timer. The host must restart its
+        /// timer to fire at <c>dueUtc</c>; the timer tick handler should
+        /// <see cref="Dispatch"/> <see cref="AutoFocusTimerFiredEvent"/>.</summary>
+        public event Action<DateTimeOffset?>? AutoFocusTimerScheduleRequested;
+
         public void Start()
         {
             if (_worker != null || _isDisposed) return;
@@ -599,6 +605,10 @@ namespace wisland.Services.Media.Presentation
         private void ScheduleAutoFocusTimer(DateTimeOffset? dueUtc)
         {
             Logger.Trace($"[Machine] ScheduleAutoFocusTimer due={dueUtc?.ToString("HH:mm:ss.fff") ?? "-"}");
+            // Post to the UI dispatcher so timer restart happens on the UI
+            // thread (DispatcherTimer requires its owner's thread).
+            var local = dueUtc;
+            _dispatcherPoster.Post(() => AutoFocusTimerScheduleRequested?.Invoke(local));
         }
 
         internal long NextSequence() => Interlocked.Increment(ref _sequence);

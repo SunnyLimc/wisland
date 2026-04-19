@@ -12,9 +12,6 @@ namespace wisland
 {
     public sealed partial class MainWindow
     {
-        private readonly MediaFocusArbiter _focusArbiter = new(
-            TimeSpan.FromMilliseconds(IslandConfig.MediaAutoSwitchDebounceMs),
-            TimeSpan.FromMilliseconds(IslandConfig.MediaMissingGraceMs));
         private string? _selectedSessionKey;
         private string? _displayedSessionKey;
         private DateTimeOffset? _selectionLockUntilUtc;
@@ -35,6 +32,7 @@ namespace wisland
                 if (_presentationMachine != null)
                 {
                     _presentationMachine.FrameProduced += OnFrameProduced;
+                    _presentationMachine.AutoFocusTimerScheduleRequested += OnAutoFocusTimerScheduleRequested;
                 }
                 await _mediaService.InitializeAsync();
                 // Bootstrap: feed the machine the initial priority-ordered
@@ -280,7 +278,6 @@ namespace wisland
             if (prioritySessions.Count == 0)
             {
                 ClearManualSelectionLockInternal();
-                SyncAutoFocusTimer(null);
                 return new DisplayedMediaContext(
                     DisplayedSession: null,
                     OrderedSessions: prioritySessions,
@@ -302,23 +299,12 @@ namespace wisland
                 hasManualLock = false;
             }
 
-            MediaFocusDecision focusDecision = _focusArbiter.Resolve(
-                prioritySessions,
-                _displayedSessionKey,
-                _selectedSessionKey,
-                hasManualLock,
-                DateTimeOffset.UtcNow);
-            SyncAutoFocusTimer(focusDecision.PendingAutoSwitchDueUtc);
-
-            // P4c-1: the displayed session is the Machine's decision (frame.Session)
-            // rather than MainWindow's re-arbitration. The _focusArbiter above is
-            // kept only so PendingAutoSwitchDueUtc keeps driving MainWindow's
-            // _autoFocusTimer until the Machine gains timer ownership. When a
-            // frame is not yet available (very first paint before bootstrap
-            // dispatches a frame) we fall back to the arbiter decision.
+            // P4c-2: DisplayedSession comes from the Machine's last-emitted frame.
+            // _autoFocusTimer scheduling is now driven by Machine via the
+            // AutoFocusTimerScheduleRequested event; see
+            // OnAutoFocusTimerScheduleRequested below.
             MediaSessionSnapshot displayedSession =
                 _latestFrame?.Session
-                ?? focusDecision.DisplayedSession
                 ?? prioritySessions[0];
             // Visual stability is now owned by MediaPresentationMachine and
             // arrives via _latestFrame.OrderedSessions. Fall back to the
@@ -445,7 +431,6 @@ namespace wisland
             _selectedSessionKey = sessionKey;
             _selectionLockUntilUtc = DateTimeOffset.UtcNow.AddMilliseconds(IslandConfig.SelectionLockDurationMs);
             RestartSelectionLockTimer();
-            SyncAutoFocusTimer(null);
 
             if (displayedSessionChanged)
             {
@@ -492,8 +477,27 @@ namespace wisland
         private void AutoFocusTimer_Tick(object? sender, object e)
         {
             _autoFocusTimer.Stop();
-            SyncMediaUI();
-            UpdateRenderLoopState();
+            // P4c-2: let the Machine re-reconcile (ManualSelectionLockPolicy will
+            // see expiry, FocusArbitrationPolicy will pick a new winner). The
+            // resulting frame flows back via OnFrameProduced → SyncMediaUI.
+            _presentationMachine?.Dispatch(new AutoFocusTimerFiredEvent());
+        }
+
+        private void OnAutoFocusTimerScheduleRequested(DateTimeOffset? dueUtc)
+        {
+            // Invoked by Machine on the UI dispatcher. Drives MainWindow's
+            // existing DispatcherTimer; the Machine does not own a timer source.
+            if (!dueUtc.HasValue || dueUtc.Value <= DateTimeOffset.UtcNow)
+            {
+                _autoFocusTimer.Stop();
+                return;
+            }
+            TimeSpan remaining = dueUtc.Value - DateTimeOffset.UtcNow;
+            _autoFocusTimer.Stop();
+            _autoFocusTimer.Interval = remaining < TimeSpan.FromMilliseconds(50)
+                ? TimeSpan.FromMilliseconds(50)
+                : remaining;
+            _autoFocusTimer.Start();
         }
 
         private bool IsManualSelectionLocked()
@@ -521,22 +525,6 @@ namespace wisland
                 ? TimeSpan.FromMilliseconds(50)
                 : remaining;
             _selectionLockTimer.Start();
-        }
-
-        private void SyncAutoFocusTimer(DateTimeOffset? dueUtc)
-        {
-            if (!dueUtc.HasValue || dueUtc.Value <= DateTimeOffset.UtcNow)
-            {
-                _autoFocusTimer.Stop();
-                return;
-            }
-
-            TimeSpan remaining = dueUtc.Value - DateTimeOffset.UtcNow;
-            _autoFocusTimer.Stop();
-            _autoFocusTimer.Interval = remaining < TimeSpan.FromMilliseconds(50)
-                ? TimeSpan.FromMilliseconds(50)
-                : remaining;
-            _autoFocusTimer.Start();
         }
 
         private void ClearManualSelectionLockInternal()
