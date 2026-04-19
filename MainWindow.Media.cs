@@ -16,10 +16,6 @@ namespace wisland
         private string? _lastDisplayedProgressIdentity;
         private MediaTrackFingerprint _lastDisplayedFingerprint = MediaTrackFingerprint.Empty;
         private MediaPresentationFrame? _latestFrame;
-        private CancellationTokenSource? _aiResolveCts;
-        private MediaTrackFingerprint _lastAiResolveFingerprint = MediaTrackFingerprint.Empty;
-        private string? _lastAiOverrideLookupIdentity;
-        private AiSongResult? _lastAiOverrideLookupResult;
 
         private async Task InitializeMediaAsync()
         {
@@ -78,8 +74,9 @@ namespace wisland
         private void SyncMediaUI()
         {
             DisplayedMediaContext rawContext = ResolveDisplayedMediaContext();
-            // AI override is still applied locally (moves to AiOverridePolicy in P3).
-            DisplayedMediaContext context = ApplyAiOverrideToContext(rawContext);
+            // P4d: AI override now lives in AiOverridePolicy and is carried on
+            // the frame. Apply it to the displayed context for rendering.
+            DisplayedMediaContext context = ApplyFrameAiOverride(rawContext, _latestFrame?.AiOverride);
 
             // Direction / switching hint come from the machine frame, not from
             // local identity diffing. Falling back to None when no frame yet.
@@ -135,7 +132,6 @@ namespace wisland
             if (contentChanged)
             {
                 _lastDisplayedFingerprint = nextFingerprint;
-                TryRequestAiResolveForFrame(rawContext.DisplayedSession, nextFingerprint);
             }
         }
 
@@ -157,105 +153,29 @@ namespace wisland
                 ? new MediaTrackFingerprint(session.Value.SessionKey, session.Value.Title, session.Value.Artist, string.Empty)
                 : MediaTrackFingerprint.Empty;
 
-        private DisplayedMediaContext ApplyAiOverrideToContext(DisplayedMediaContext context)
+        private static DisplayedMediaContext ApplyFrameAiOverride(
+            DisplayedMediaContext context, AiOverrideSnapshot? aiOverride)
         {
-            if (!context.DisplayedSession.HasValue)
+            if (aiOverride == null || !context.DisplayedSession.HasValue)
                 return context;
 
             var session = context.DisplayedSession.Value;
-            var cached = GetCachedAiOverride(session);
-            if (cached == null)
-                return context;
-
-            Logger.Trace($"AI override applied: '{session.Title}' → '{cached.Title}'");
-            var overridden = session with { Title = cached.Title, Artist = cached.Artist };
+            var overridden = session with { Title = aiOverride.Title, Artist = aiOverride.Artist };
             return context with
             {
                 DisplayedSession = overridden,
-                CompactText = cached.Title
+                CompactText = aiOverride.Title
             };
-        }
-
-        private async void TryRequestAiResolveForFrame(MediaSessionSnapshot? session, MediaTrackFingerprint fingerprint)
-        {
-            if (!_settings.AiSongOverrideEnabled || _aiSongResolver == null || !session.HasValue)
-                return;
-
-            var displayed = session.Value;
-
-            // Already resolved from cache — no need to call AI
-            var cached = GetCachedAiOverride(displayed);
-            if (cached != null)
-                return;
-
-            // Cancel any previous in-flight request
-            _aiResolveCts?.Cancel();
-            _aiResolveCts?.Dispose();
-            var cts = new CancellationTokenSource();
-            _aiResolveCts = cts;
-
-            _lastAiResolveFingerprint = fingerprint;
-
-            try
-            {
-                string sourceName = MediaSourceAppResolver.TryResolveDisplayName(displayed.SourceAppId)
-                    ?? displayed.SourceName;
-
-                var result = await _aiSongResolver.ResolveAsync(
-                    displayed.SourceAppId, displayed.Title, displayed.Artist,
-                    sourceName, displayed.DurationSeconds,
-                    cts.Token);
-
-                if (cts.Token.IsCancellationRequested)
-                    return;
-
-                // Only update UI if we're still displaying the same track
-                if (result != null && FingerprintEquals(_lastAiResolveFingerprint, fingerprint))
-                {
-                    ResetAiOverrideLookupState();
-                    SyncMediaUI();
-                }
-            }
-            catch (OperationCanceledException) { }
-            catch (Exception ex)
-            {
-                Logger.Warn($"AI resolve failed: {ex.Message}");
-            }
         }
 
         internal void OnAiSettingsChanged()
         {
             DispatcherQueue?.TryEnqueue(() =>
             {
-                ResetAiOverrideLookupState();
-                _lastAiResolveFingerprint = MediaTrackFingerprint.Empty;
+                _presentationMachine?.Dispatch(new SettingsChangedEvent(SettingsChangeScope.AiOverride));
                 _lastDisplayedFingerprint = MediaTrackFingerprint.Empty;
                 SyncMediaUI();
             });
-        }
-
-        private AiSongResult? GetCachedAiOverride(MediaSessionSnapshot session)
-        {
-            if (!_settings.AiSongOverrideEnabled || _aiSongResolver == null)
-            {
-                ResetAiOverrideLookupState();
-                return null;
-            }
-
-            string lookupIdentity = CreateAiLookupIdentity(session);
-            if (!string.Equals(_lastAiOverrideLookupIdentity, lookupIdentity, StringComparison.Ordinal))
-            {
-                _lastAiOverrideLookupIdentity = lookupIdentity;
-                _lastAiOverrideLookupResult = _aiSongResolver.TryGetCached(session.SourceAppId, session.Title, session.Artist);
-            }
-
-            return _lastAiOverrideLookupResult;
-        }
-
-        private void ResetAiOverrideLookupState()
-        {
-            _lastAiOverrideLookupIdentity = null;
-            _lastAiOverrideLookupResult = null;
         }
 
         private MediaSessionSnapshot? GetDisplayedMediaSessionSnapshot()
@@ -559,14 +479,6 @@ namespace wisland
                 _ => 5
             };
         }
-
-        private static string CreateAiLookupIdentity(MediaSessionSnapshot session)
-            => string.Concat(
-                session.SourceAppId,
-                "\u001f",
-                session.Title,
-                "\u001f",
-                session.Artist);
 
         private static string? CreateProgressIdentity(MediaSessionSnapshot? session)
             => session.HasValue

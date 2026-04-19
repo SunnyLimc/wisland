@@ -65,10 +65,6 @@ namespace wisland
             DisposePresentationMachine();
             _mediaService.Dispose();
 
-            _aiResolveCts?.Cancel();
-            _aiResolveCts?.Dispose();
-            _aiResolveCts = null;
-
             DisposeSessionPickerOverlay();
             _shellVisibilityService.Dispose();
             Logger.Flush();

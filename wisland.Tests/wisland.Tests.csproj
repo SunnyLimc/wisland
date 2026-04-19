@@ -44,6 +44,7 @@
     <Compile Include="..\Services\Media\Presentation\IPresentationPolicy.cs" Link="Services\Media\Presentation\IPresentationPolicy.cs" />
     <Compile Include="..\Services\Media\Presentation\MediaPresentationMachine.cs" Link="Services\Media\Presentation\MediaPresentationMachine.cs" />
     <Compile Include="..\Services\Media\Presentation\MediaPresentationState.cs" Link="Services\Media\Presentation\MediaPresentationState.cs" />
+    <Compile Include="..\Services\Media\Presentation\IAiOverrideResolver.cs" Link="Services\Media\Presentation\IAiOverrideResolver.cs" />
     <Compile Include="..\Services\Media\Presentation\Policies\FocusArbitrationPolicy.cs" Link="Services\Media\Presentation\Policies\FocusArbitrationPolicy.cs" />
     <Compile Include="..\Services\Media\Presentation\Policies\ManualSelectionLockPolicy.cs" Link="Services\Media\Presentation\Policies\ManualSelectionLockPolicy.cs" />
     <Compile Include="..\Services\Media\Presentation\Policies\StabilizationPolicy.cs" Link="Services\Media\Presentation\Policies\StabilizationPolicy.cs" />
