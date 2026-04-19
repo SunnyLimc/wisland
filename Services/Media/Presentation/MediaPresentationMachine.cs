@@ -192,21 +192,30 @@ namespace wisland.Services.Media.Presentation
             // Capture intent with the CURRENT displayed fingerprint as origin.
             // Retained across stabilization, status flips, and overlay wraps;
             // only consumed when the displayed fingerprint actually changes
-            // away from Origin (§4.5).
+            // away from Origin (§4.5). Source=Skip so the subsequent fp change
+            // is absorbed through Confirming (guards against Chrome's paused-
+            // tab metadata flicker).
             _state.Intent = new SwitchIntent(
                 _state.DisplayedFingerprint,
                 evt.Direction,
-                _context.NowUtc + TimeSpan.FromMilliseconds(IslandConfig.SkipTransitionTimeoutMs));
+                _context.NowUtc + TimeSpan.FromMilliseconds(IslandConfig.SkipTransitionTimeoutMs),
+                SwitchIntentSource.Skip);
             Logger.Debug($"[Machine] UserSkip {evt.Direction} captured. Origin={_state.DisplayedFingerprint.Title}/{_state.DisplayedFingerprint.SessionKey} deadline=+{IslandConfig.SkipTransitionTimeoutMs}ms");
             ReconcileDisplay(null);
         }
 
         private void HandleUserSelect(UserSelectSessionEvent evt)
         {
+            // Source=SessionSelect: the user picked a specific, already-visible
+            // session. There is no Chrome-side ambiguity (the target is known
+            // and stable), so the resulting fingerprint change must animate
+            // immediately — Confirming would strand the scroll-picker's slide
+            // animation for 250ms and feel unresponsive.
             _state.Intent = new SwitchIntent(
                 _state.DisplayedFingerprint,
                 evt.Direction,
-                _context.NowUtc + TimeSpan.FromMilliseconds(IslandConfig.SkipTransitionTimeoutMs));
+                _context.NowUtc + TimeSpan.FromMilliseconds(IslandConfig.SkipTransitionTimeoutMs),
+                SwitchIntentSource.SessionSelect);
             Logger.Debug($"[Machine] UserSelect '{evt.SessionKey}' dir={evt.Direction}");
             ReconcileDisplay(null);
         }
@@ -398,16 +407,21 @@ namespace wisland.Services.Media.Presentation
             // update on the same track should not trigger a 250ms settle.
             bool identityChangedForConfirming =
                 !FingerprintIdentityEquals(fingerprint, _state.DisplayedFingerprint);
-            // A fresh, still-valid SwitchIntent signals "user just clicked
-            // skip and a switch is coming". When the first post-click fp
-            // change arrives we must ALWAYS absorb it through Confirming,
-            // even if MediaService released stabilization so fast we never
-            // observed a Switching kind transition. This prevents Chrome's
-            // brief paused-tab or wrong-tab flash from leaking onto the UI:
-            // if the initial candidate bounces to the real next track within
-            // the 250ms window, the draft resets and the user sees a single
-            // clean A->C transition rather than A->B->C.
+            // A fresh, still-valid SwitchIntent sourced from a SKIP signals
+            // "user just clicked skip and a switch is coming". When the first
+            // post-click fp change arrives we must ALWAYS absorb it through
+            // Confirming, even if MediaService released stabilization so fast
+            // we never observed a Switching kind transition. This prevents
+            // Chrome's brief paused-tab or wrong-tab flash from leaking onto
+            // the UI: if the initial candidate bounces to the real next track
+            // within the 250ms window, the draft resets and the user sees a
+            // single clean A->C transition rather than A->B->C.
+            //
+            // Session-select intents (user picked a visible session from the
+            // picker) must NOT force Confirming — the target is known and
+            // stable, so the scroll animation must fire immediately.
             bool intentForcesConfirming = _state.Intent.HasValue
+                && _state.Intent.Value.Source == SwitchIntentSource.Skip
                 && !_state.Intent.Value.IsExpired(_context.NowUtc)
                 && _state.Intent.Value.MatchesOrigin(_state.DisplayedFingerprint)
                 && kind == PresentationKind.Steady;
@@ -652,6 +666,19 @@ namespace wisland.Services.Media.Presentation
                 }
             }
 
+            // Pick the AI override keyed off the snapshot the frame actually
+            // carries so the override matches whatever the view is about to
+            // render. During Confirming the emitted session is the previous
+            // (old) one, so using _context.ActiveAiOverride (which tracks the
+            // arbiter winner, i.e. the new session) would tag the old snapshot
+            // with the new track's override — causing a one-frame title/artist
+            // flash of raw-on-old before the Slide animation.
+            AiOverrideSnapshot? frameAiOverride = null;
+            if (session.HasValue && _context.AiOverrideLookup is { } lookup)
+            {
+                frameAiOverride = lookup(session.Value);
+            }
+
             var frame = new MediaPresentationFrame(
                 Sequence: NextSequence(),
                 Session: session,
@@ -663,7 +690,7 @@ namespace wisland.Services.Media.Presentation
                 ProgressFingerprint: fingerprint,
                 IsFallback: isFallback,
                 ThumbnailHashIsFallback: string.IsNullOrEmpty(fingerprint.ThumbnailHash),
-                AiOverride: _context.ActiveAiOverride,
+                AiOverride: frameAiOverride,
                 Notification: notification);
 
             // §6 invariants (P5 item 34). Debug-only; only trip in tests / local

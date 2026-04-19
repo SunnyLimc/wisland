@@ -34,7 +34,22 @@ namespace wisland.Services.Media.Presentation
         public StabilizationDirective StabilizationDirective { get; internal set; }
 
         // --- AiOverridePolicy output ---
+        /// <summary>Override for the arbiter's current winner. Kept for policy
+        /// reads that need "what override applies to the logical winner". The
+        /// frame emission path prefers <see cref="AiOverrideLookup"/> so the
+        /// frame's session and its override stay matched during Confirming
+        /// (when the frame still shows the previous session).</summary>
         public AiOverrideSnapshot? ActiveAiOverride { get; internal set; }
+
+        /// <summary>Lookup that returns the cached AI override for an arbitrary
+        /// snapshot. Populated by <c>AiOverridePolicy</c> on attach; consumed
+        /// by <c>MediaPresentationMachine.EmitFrame</c> to attach the override
+        /// matching the session actually being emitted. Keying by session key
+        /// alone is insufficient because a single session transitions through
+        /// distinct tracks (same key, different title/artist), and during
+        /// Confirming the emitted snapshot is the previous track while the
+        /// context's winner is the next one.</summary>
+        public Func<MediaSessionSnapshot, AiOverrideSnapshot?>? AiOverrideLookup { get; internal set; }
 
         // --- NotificationOverlayPolicy output ---
         public NotificationPayload? ActiveNotification { get; internal set; }

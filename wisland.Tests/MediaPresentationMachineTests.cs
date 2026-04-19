@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Linq;
 using System.Threading;
 using Windows.Media.Control;
 using wisland.Models;
@@ -581,6 +582,106 @@ namespace wisland.Tests
                 prev = f.Sequence;
             }
             Assert.True(h.Frames.Count >= 3, "Expected at least Replace + Slide + Resume frames");
+        }
+
+        // ----- Regressions locked in after P4d/P3b-2 rollouts --------------
+
+        /// <summary>
+        /// Regression for the change introduced at 3b05f01: a UserSelect
+        /// event must NOT detour through Confirming. Scroll-picked sessions
+        /// come from the visible list with stable metadata; a 250ms settle
+        /// strands the slide animation and feels broken. Only skip intents
+        /// carry the Chrome paused-tab hazard that justifies Confirming.
+        /// </summary>
+        [Fact]
+        public void UserSelectSlidesImmediatelyWithoutConfirming()
+        {
+            using var h = NewHarness();
+            var sessions = new[] { Session("s1", "Song A"), Session("s2", "Song B") };
+            h.Machine.ProcessForTests(new GsmtcSessionsChangedEvent(sessions));
+            // The auto-winner picked during bootstrap depends on LastActivityUtc
+            // tie-breakers; capture whichever session is showing then select
+            // the OTHER one so the switch is always observable.
+            string initialKey = h.Frames[^1].Fingerprint.SessionKey;
+            string targetKey = initialKey == "s1" ? "s2" : "s1";
+            string targetTitle = targetKey == "s1" ? "Song A" : "Song B";
+            h.Frames.Clear();
+
+            h.Machine.ProcessForTests(new UserSelectSessionEvent(targetKey, ContentTransitionDirection.Forward));
+
+            // Must emit the Slide frame directly on the same pass — no
+            // intermediate Confirming, no MetadataSettleTimerFiredEvent
+            // required to make the switch visible.
+            Assert.Single(h.Frames);
+            Assert.Equal(PresentationKind.Steady, h.Frames[0].Kind);
+            Assert.Equal(FrameTransitionKind.SlideForward, h.Frames[0].Transition);
+            Assert.Equal(targetTitle, h.Frames[0].Fingerprint.Title);
+        }
+
+        /// <summary>
+        /// Regression for the 61d8bf6 follow-up: while in Confirming, the
+        /// emitted frame still carries the OLD session. Its AiOverride must
+        /// match the OLD session's override so ApplyFrameAiOverride keeps
+        /// rendering the already-displayed override instead of falling back
+        /// to the raw title/artist for one frame.
+        /// </summary>
+        [Fact]
+        public void ConfirmingFrameCarriesOldSessionsAiOverride()
+        {
+            var resolver = new StubAiOverrideResolver();
+            resolver.Add("app", "Song A", "ArtistA", new AiSongResult { Title = "Pretty A", Artist = "Ai Artist" });
+            resolver.Add("app", "Song B", "ArtistA", new AiSongResult { Title = "Pretty B", Artist = "Ai Artist" });
+
+            using var h = new Harness(
+                new ManualSelectionLockPolicy(),
+                new FocusArbitrationPolicy(TimeSpan.Zero, TimeSpan.Zero),
+                new StabilizationPolicy(),
+                new AiOverridePolicy(resolver),
+                new NotificationOverlayPolicy());
+
+            // Bootstrap Song A with its override attached.
+            h.Machine.ProcessForTests(new GsmtcSessionsChangedEvent(new[] { Session("s1", "Song A") }));
+            Assert.NotNull(h.Frames[^1].AiOverride);
+            Assert.Equal("Pretty A", h.Frames[^1].AiOverride!.Title);
+            h.Frames.Clear();
+
+            // Arm a skip + trigger stabilization leak + release with Song B so
+            // the Machine enters Confirming holding the Song A snapshot.
+            h.Machine.ProcessForTests(new UserSkipRequestedEvent(ContentTransitionDirection.Forward));
+            h.Machine.ProcessForTests(new GsmtcSessionsChangedEvent(new[]
+            {
+                Session("s1", "Song A", stabilization: MediaSessionStabilizationReason.SkipTransition)
+            }));
+            h.Frames.Clear();
+            h.Machine.ProcessForTests(new GsmtcSessionsChangedEvent(new[] { Session("s1", "Song B") }));
+
+            // Single Confirming frame: session/fingerprint still Song A, and
+            // critically its AiOverride must still be the Song A override.
+            var confirming = Assert.Single(h.Frames);
+            Assert.Equal(PresentationKind.Confirming, confirming.Kind);
+            Assert.Equal("Song A", confirming.Fingerprint.Title);
+            Assert.NotNull(confirming.AiOverride);
+            Assert.Equal("Pretty A", confirming.AiOverride!.Title);
+            h.Frames.Clear();
+
+            // Release → Slide to Song B carrying Song B's override.
+            h.Machine.ProcessForTests(new MetadataSettleTimerFiredEvent());
+            var release = Assert.Single(h.Frames);
+            Assert.Equal(FrameTransitionKind.SlideForward, release.Transition);
+            Assert.Equal("Song B", release.Fingerprint.Title);
+            Assert.NotNull(release.AiOverride);
+            Assert.Equal("Pretty B", release.AiOverride!.Title);
+        }
+
+        private sealed class StubAiOverrideResolver : IAiOverrideResolver
+        {
+            private readonly Dictionary<string, AiSongResult> _cache = new(StringComparer.Ordinal);
+            public bool IsEnabled => true;
+            public void Add(string sourceAppId, string title, string artist, AiSongResult result)
+                => _cache[$"{sourceAppId}|{title}|{artist}"] = result;
+            public AiSongResult? TryGetCached(string sourceAppId, string title, string artist)
+                => _cache.TryGetValue($"{sourceAppId}|{title}|{artist}", out var r) ? r : null;
+            public void BeginResolve(MediaSessionSnapshot session) { }
         }
     }
 }
