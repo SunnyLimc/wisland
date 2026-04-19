@@ -747,8 +747,10 @@ public interface IPresentationPolicy
 {
     // A stateful policy declares its read-interface for "shadow state" here.
     // The machine calls OnEvent at specific transitions to inject events or
-    // query the policy.
-    void OnAttach(MediaPresentationMachineContext context);
+    // query the policy. OnAttach receives the machine itself so policies can
+    // subscribe to its schedule-request events (auto-focus / manual-lock /
+    // metadata-settle timers) during attachment.
+    void OnAttach(MediaPresentationMachine machine);
     void OnEvent(PresentationEvent evt, MediaPresentationMachineContext context);
     void OnTick(DateTimeOffset nowUtc, MediaPresentationMachineContext context);
 }

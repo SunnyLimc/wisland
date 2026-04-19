@@ -299,10 +299,13 @@ namespace wisland.Services.Media.Presentation
 
         private void HandleAiResolveCompleted(AiResolveCompletedEvent evt)
         {
-            // AiOverridePolicy.OnEvent ran first and populated
-            // context.ActiveAiOverride with evt.Result. Re-emit the current
-            // frame (Transition=None, same fingerprint) so views pick up the
-            // updated override label/artist without a slide.
+            // The dispatcher ran AiOverridePolicy.OnEvent for this event just
+            // before us. The policy does not read evt.Result directly; it
+            // re-queries the resolver cache (now populated by the completed
+            // resolve) and rebuilds context.AiOverrideLookup so EmitFrame
+            // below attaches the newly cached override to the emitted frame.
+            // Transition=None / same fingerprint keeps views from sliding —
+            // they just refresh the override label/artist in place.
             if (_state.IsNotifying || !_state.Initialized) return;
             EmitFrame(
                 session: _state.DisplayedSnapshot,

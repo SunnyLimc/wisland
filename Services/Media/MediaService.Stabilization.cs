@@ -58,11 +58,11 @@ namespace wisland.Services
                     // extend the expiry so the real resolved track still has time.
                     tracked.StabilizationExpiresAtUtc = nowUtc.AddMilliseconds(IslandConfig.SkipTransitionTimeoutMs);
 
-                    bool rawLooksLikeFreshTrack =
-                        tracked.PlaybackStatus == GlobalSystemMediaTransportControlsSessionPlaybackStatus.Playing
-                        && tracked.HasTimeline
-                        && tracked.DurationSeconds > 0
-                        && tracked.CurrentPositionSeconds <= IslandConfig.SkipTransitionFreshTrackPositionSeconds
+                    bool rawLooksLikeFreshTrack = StabilizationReleaseGuards.LooksLikeFreshTrackShape(
+                            tracked.PlaybackStatus,
+                            tracked.HasTimeline,
+                            tracked.DurationSeconds,
+                            tracked.CurrentPositionSeconds)
                         && HasConcreteMetadata(tracked.Title);
 
                     if (rawLooksLikeFreshTrack)
