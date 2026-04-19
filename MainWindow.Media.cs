@@ -6,6 +6,7 @@ using System.Threading.Tasks;
 using wisland.Helpers;
 using wisland.Models;
 using wisland.Services;
+using wisland.Services.Media.Presentation;
 
 namespace wisland
 {
@@ -14,16 +15,15 @@ namespace wisland
         private readonly MediaFocusArbiter _focusArbiter = new(
             TimeSpan.FromMilliseconds(IslandConfig.MediaAutoSwitchDebounceMs),
             TimeSpan.FromMilliseconds(IslandConfig.MediaMissingGraceMs));
-        private ContentTransitionDirection _pendingMediaTransitionDirection = ContentTransitionDirection.None;
-        private long _pendingMediaTransitionTimestamp;
         private string? _selectedSessionKey;
         private string? _displayedSessionKey;
         private DateTimeOffset? _selectionLockUntilUtc;
-        private string? _lastDisplayedContentIdentity;
         private string? _lastDisplayedProgressIdentity;
+        private MediaTrackFingerprint _lastDisplayedFingerprint = MediaTrackFingerprint.Empty;
+        private MediaPresentationFrame? _latestFrame;
         private readonly List<string> _sessionVisualOrderKeys = new();
         private CancellationTokenSource? _aiResolveCts;
-        private string? _lastAiResolveContentIdentity;
+        private MediaTrackFingerprint _lastAiResolveFingerprint = MediaTrackFingerprint.Empty;
         private string? _lastAiOverrideLookupIdentity;
         private AiSongResult? _lastAiOverrideLookupResult;
 
@@ -33,7 +33,14 @@ namespace wisland
             {
                 _mediaService.SessionsChanged += OnMediaServiceChanged;
                 _mediaService.TrackChanged += OnTrackChanged;
+                if (_presentationMachine != null)
+                {
+                    _presentationMachine.FrameProduced += OnFrameProduced;
+                }
                 await _mediaService.InitializeAsync();
+                // Bootstrap: feed the machine the initial session list so it can
+                // emit the first frame. Legacy SyncMediaUI will run on that frame.
+                _presentationMachine?.Dispatch(new GsmtcSessionsChangedEvent(_mediaService.Sessions));
                 SyncMediaUI();
                 UpdateRenderLoopState();
             }
@@ -47,9 +54,17 @@ namespace wisland
         {
             DispatcherQueue?.TryEnqueue(() =>
             {
-                SyncMediaUI();
+                _presentationMachine?.Dispatch(new GsmtcSessionsChangedEvent(_mediaService.Sessions));
                 UpdateRenderLoopState();
             });
+        }
+
+        private void OnFrameProduced(MediaPresentationFrame frame)
+        {
+            // Machine already posted us to the UI thread via IDispatcherPoster.
+            _latestFrame = frame;
+            SyncMediaUI();
+            UpdateRenderLoopState();
         }
 
         private void OnTrackChanged(string title, string artist)
@@ -66,14 +81,20 @@ namespace wisland
         private void SyncMediaUI()
         {
             DisplayedMediaContext rawContext = ResolveDisplayedMediaContext();
-            DisplayedMediaContext context = ApplyAiOverride(rawContext);
-            string? nextContentIdentity = CreateContentIdentity(context.DisplayedSession, context.ShowTransportSwitchingHint);
+            // AI override is still applied locally (moves to AiOverridePolicy in P3).
+            DisplayedMediaContext context = ApplyAiOverrideToContext(rawContext);
+
+            // Direction / switching hint come from the machine frame, not from
+            // local identity diffing. Falling back to None when no frame yet.
+            MediaPresentationFrame? frame = _latestFrame;
+            ContentTransitionDirection directionHint = FrameTransitionToDirection(frame?.Transition ?? FrameTransitionKind.None);
+            bool showTransportSwitchingHint = frame?.Kind == PresentationKind.Switching;
+
+            MediaTrackFingerprint nextFingerprint = frame?.Fingerprint ?? ComputeFallbackFingerprint(context.DisplayedSession);
+            bool contentChanged = !FingerprintEquals(_lastDisplayedFingerprint, nextFingerprint);
+
             string? nextProgressIdentity = CreateProgressIdentity(context.DisplayedSession);
-            bool contentChanged = !string.Equals(_lastDisplayedContentIdentity, nextContentIdentity, StringComparison.Ordinal);
             bool progressSourceChanged = !string.Equals(_lastDisplayedProgressIdentity, nextProgressIdentity, StringComparison.Ordinal);
-            ContentTransitionDirection directionHint = contentChanged
-                ? GetPendingMediaTransitionDirection()
-                : ContentTransitionDirection.None;
 
             _displayedSessionKey = context.DisplayedSession?.SessionKey;
             _mediaService.SetDisplayedSessionKey(_displayedSessionKey);
@@ -86,7 +107,7 @@ namespace wisland
 
             CompactContent.Update(context.CompactText, directionHint);
 
-            if (!_controller.IsNotifying)
+            if (!_controller.IsForcedExpanded)
             {
                 // Sync immersive dimensions on the controller
                 _controller.UseImmersiveDimensions = IsImmersiveActive;
@@ -97,7 +118,7 @@ namespace wisland
                     context.OrderedSessions.Count,
                     context.OrderedSessions,
                     directionHint,
-                    context.ShowTransportSwitchingHint);
+                    showTransportSwitchingHint);
 
                 ImmersiveContent.UpdateMedia(
                     context.DisplayedSession,
@@ -105,7 +126,7 @@ namespace wisland
                     context.OrderedSessions.Count,
                     context.OrderedSessions,
                     directionHint,
-                    context.ShowTransportSwitchingHint);
+                    showTransportSwitchingHint);
             }
             else
             {
@@ -116,13 +137,30 @@ namespace wisland
 
             if (contentChanged)
             {
-                _lastDisplayedContentIdentity = nextContentIdentity;
-                ClearPendingMediaTransitionDirection();
-                TryRequestAiResolveAsync(rawContext);
+                _lastDisplayedFingerprint = nextFingerprint;
+                TryRequestAiResolveForFrame(rawContext.DisplayedSession, nextFingerprint);
             }
         }
 
-        private DisplayedMediaContext ApplyAiOverride(DisplayedMediaContext context)
+        private static ContentTransitionDirection FrameTransitionToDirection(FrameTransitionKind kind) => kind switch
+        {
+            FrameTransitionKind.SlideForward => ContentTransitionDirection.Forward,
+            FrameTransitionKind.SlideBackward => ContentTransitionDirection.Backward,
+            _ => ContentTransitionDirection.None
+        };
+
+        private static bool FingerprintEquals(MediaTrackFingerprint a, MediaTrackFingerprint b)
+            => string.Equals(a.SessionKey, b.SessionKey, StringComparison.Ordinal)
+            && string.Equals(a.Title, b.Title, StringComparison.Ordinal)
+            && string.Equals(a.Artist, b.Artist, StringComparison.Ordinal)
+            && string.Equals(a.ThumbnailHash, b.ThumbnailHash, StringComparison.Ordinal);
+
+        private static MediaTrackFingerprint ComputeFallbackFingerprint(MediaSessionSnapshot? session)
+            => session.HasValue
+                ? new MediaTrackFingerprint(session.Value.SessionKey, session.Value.Title, session.Value.Artist, string.Empty)
+                : MediaTrackFingerprint.Empty;
+
+        private DisplayedMediaContext ApplyAiOverrideToContext(DisplayedMediaContext context)
         {
             if (!context.DisplayedSession.HasValue)
                 return context;
@@ -141,15 +179,15 @@ namespace wisland
             };
         }
 
-        private async void TryRequestAiResolveAsync(DisplayedMediaContext context)
+        private async void TryRequestAiResolveForFrame(MediaSessionSnapshot? session, MediaTrackFingerprint fingerprint)
         {
-            if (!_settings.AiSongOverrideEnabled || _aiSongResolver == null || !context.DisplayedSession.HasValue)
+            if (!_settings.AiSongOverrideEnabled || _aiSongResolver == null || !session.HasValue)
                 return;
 
-            var session = context.DisplayedSession.Value;
+            var displayed = session.Value;
 
             // Already resolved from cache — no need to call AI
-            var cached = GetCachedAiOverride(session);
+            var cached = GetCachedAiOverride(displayed);
             if (cached != null)
                 return;
 
@@ -159,24 +197,23 @@ namespace wisland
             var cts = new CancellationTokenSource();
             _aiResolveCts = cts;
 
-            string contentIdentity = CreateContentIdentity(context.DisplayedSession, context.ShowTransportSwitchingHint) ?? string.Empty;
-            _lastAiResolveContentIdentity = contentIdentity;
+            _lastAiResolveFingerprint = fingerprint;
 
             try
             {
-                string sourceName = MediaSourceAppResolver.TryResolveDisplayName(session.SourceAppId)
-                    ?? session.SourceName;
+                string sourceName = MediaSourceAppResolver.TryResolveDisplayName(displayed.SourceAppId)
+                    ?? displayed.SourceName;
 
                 var result = await _aiSongResolver.ResolveAsync(
-                    session.SourceAppId, session.Title, session.Artist,
-                    sourceName, session.DurationSeconds,
+                    displayed.SourceAppId, displayed.Title, displayed.Artist,
+                    sourceName, displayed.DurationSeconds,
                     cts.Token);
 
                 if (cts.Token.IsCancellationRequested)
                     return;
 
-                // Only update UI if we're still displaying the same content
-                if (result != null && string.Equals(_lastAiResolveContentIdentity, contentIdentity, StringComparison.Ordinal))
+                // Only update UI if we're still displaying the same track
+                if (result != null && FingerprintEquals(_lastAiResolveFingerprint, fingerprint))
                 {
                     ResetAiOverrideLookupState();
                     SyncMediaUI();
@@ -194,8 +231,8 @@ namespace wisland
             DispatcherQueue?.TryEnqueue(() =>
             {
                 ResetAiOverrideLookupState();
-                _lastAiResolveContentIdentity = null;
-                _lastDisplayedContentIdentity = null;
+                _lastAiResolveFingerprint = MediaTrackFingerprint.Empty;
+                _lastDisplayedFingerprint = MediaTrackFingerprint.Empty;
                 SyncMediaUI();
             });
         }
@@ -283,7 +320,9 @@ namespace wisland
                 displayIndex = FindSessionIndex(orderedSessions, displayedSession.SessionKey);
             }
 
-            bool showTransportSwitchingHint = ShouldShowTransportSwitchingHint(displayedSession);
+            // Kind-based switching hint now comes from the machine frame; legacy
+            // fallback: use session.IsStabilizing when no frame has arrived yet.
+            bool showTransportSwitchingHint = displayedSession.IsStabilizing;
 
             return new DisplayedMediaContext(
                 DisplayedSession: displayedSession,
@@ -303,7 +342,7 @@ namespace wisland
         {
             try
             {
-                RegisterPendingMediaTransitionDirection(ContentTransitionDirection.Forward);
+                _presentationMachine?.Dispatch(new UserSkipRequestedEvent(ContentTransitionDirection.Forward));
                 await _mediaService.SkipNextAsync(_displayedSessionKey);
             }
             catch (Exception ex) { Logger.Warn($"SkipNext failed: {ex.Message}"); }
@@ -313,7 +352,7 @@ namespace wisland
         {
             try
             {
-                RegisterPendingMediaTransitionDirection(ContentTransitionDirection.Backward);
+                _presentationMachine?.Dispatch(new UserSkipRequestedEvent(ContentTransitionDirection.Backward));
                 await _mediaService.SkipPreviousAsync(_displayedSessionKey);
             }
             catch (Exception ex) { Logger.Warn($"SkipPrevious failed: {ex.Message}"); }
@@ -337,7 +376,7 @@ namespace wisland
             if (_isClosed
                 || HasBlockingSurfaceOpen
                 || _controller.IsDragging
-                || _controller.IsNotifying
+                || _controller.IsForcedExpanded
                 || _controller.Current.ExpandedOpacity <= IslandConfig.HitTestOpacityThreshold)
             {
                 return;
@@ -396,10 +435,7 @@ namespace wisland
             if (displayedSessionChanged)
             {
                 Logger.Debug($"Session selected: key={sessionKey}, direction={direction}");
-                if (direction != ContentTransitionDirection.None)
-                {
-                    RegisterPendingMediaTransitionDirection(direction);
-                }
+                _presentationMachine?.Dispatch(new UserSelectSessionEvent(sessionKey, direction));
             }
 
             SyncMediaUI();
@@ -590,31 +626,11 @@ namespace wisland
 
         private void RegisterPendingMediaTransitionDirection(ContentTransitionDirection direction)
         {
-            _pendingMediaTransitionDirection = direction;
-            _pendingMediaTransitionTimestamp = Environment.TickCount64;
-        }
-
-        private ContentTransitionDirection GetPendingMediaTransitionDirection()
-        {
-            if (_pendingMediaTransitionDirection == ContentTransitionDirection.None)
-            {
-                return ContentTransitionDirection.None;
-            }
-
-            long elapsed = Environment.TickCount64 - _pendingMediaTransitionTimestamp;
-            if (elapsed > IslandConfig.TrackSwitchIntentWindowMs)
-            {
-                ClearPendingMediaTransitionDirection();
-                return ContentTransitionDirection.None;
-            }
-
-            return _pendingMediaTransitionDirection;
-        }
-
-        private void ClearPendingMediaTransitionDirection()
-        {
-            _pendingMediaTransitionDirection = ContentTransitionDirection.None;
-            _pendingMediaTransitionTimestamp = 0;
+            // P2b: intent is now owned by MediaPresentationMachine via UserSkipRequestedEvent /
+            // UserSelectSessionEvent. Legacy callers (drag gesture, etc.) still invoke this;
+            // forward to the machine if one exists. This shim is removed in P4.
+            if (direction == ContentTransitionDirection.None) return;
+            _presentationMachine?.Dispatch(new UserSkipRequestedEvent(direction));
         }
 
         private static int FindSessionIndex(IReadOnlyList<MediaSessionSnapshot> sessions, string? sessionKey)
@@ -651,23 +667,6 @@ namespace wisland
                 _ => 5
             };
         }
-
-        private static bool ShouldShowTransportSwitchingHint(MediaSessionSnapshot session)
-            => session.IsStabilizing;
-
-        private static string? CreateContentIdentity(MediaSessionSnapshot? session, bool showTransportSwitchingHint)
-            => session.HasValue
-                ? string.Concat(
-                    session.Value.SessionKey,
-                    "\u001f",
-                    session.Value.Title,
-                    "\u001f",
-                    session.Value.Artist,
-                    "\u001f",
-                    session.Value.Presence,
-                    "\u001f",
-                    showTransportSwitchingHint ? "switching" : "steady")
-                : null;
 
         private static string CreateAiLookupIdentity(MediaSessionSnapshot session)
             => string.Concat(

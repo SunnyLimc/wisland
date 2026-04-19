@@ -99,7 +99,6 @@ namespace wisland.Models
         public const int DockedLineBoundsMarginPhysical = 8;
         public const int DefaultNotificationDurationMs = 3000;
         public const int TrackChangeNotificationDurationMs = 4000;
-        public const int TrackSwitchIntentWindowMs = 1600;
         public const int MediaMissingGraceMs = 3000;
         public const int MediaAutoSwitchDebounceMs = 1200;
         public const int MediaRefreshBurstDurationMs = 3000;

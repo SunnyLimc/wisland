@@ -35,5 +35,19 @@
     <Compile Include="..\Models\IslandState.cs" Link="Models\IslandState.cs" />
     <Compile Include="..\Models\DirectionalTransitionProfile.cs" Link="Models\DirectionalTransitionProfile.cs" />
     <Compile Include="..\Models\SessionPickerOverlayDismissMotion.cs" Link="Models\SessionPickerOverlayDismissMotion.cs" />
+    <Compile Include="..\Models\ContentTransitionDirection.cs" Link="Models\ContentTransitionDirection.cs" />
+    <Compile Include="..\Models\AiSongResult.cs" Link="Models\AiSongResult.cs" />
+    <Compile Include="..\Models\MediaPresentationFrame.cs" Link="Models\MediaPresentationFrame.cs" />
+    <Compile Include="..\Services\Media\Presentation\SwitchIntent.cs" Link="Services\Media\Presentation\SwitchIntent.cs" />
+    <Compile Include="..\Services\Media\Presentation\PresentationEvent.cs" Link="Services\Media\Presentation\PresentationEvent.cs" />
+    <Compile Include="..\Services\Media\Presentation\MediaPresentationMachineContext.cs" Link="Services\Media\Presentation\MediaPresentationMachineContext.cs" />
+    <Compile Include="..\Services\Media\Presentation\IPresentationPolicy.cs" Link="Services\Media\Presentation\IPresentationPolicy.cs" />
+    <Compile Include="..\Services\Media\Presentation\MediaPresentationMachine.cs" Link="Services\Media\Presentation\MediaPresentationMachine.cs" />
+    <Compile Include="..\Services\Media\Presentation\MediaPresentationState.cs" Link="Services\Media\Presentation\MediaPresentationState.cs" />
+    <Compile Include="..\Services\Media\Presentation\Policies\FocusArbitrationPolicy.cs" Link="Services\Media\Presentation\Policies\FocusArbitrationPolicy.cs" />
+    <Compile Include="..\Services\Media\Presentation\Policies\ManualSelectionLockPolicy.cs" Link="Services\Media\Presentation\Policies\ManualSelectionLockPolicy.cs" />
+    <Compile Include="..\Services\Media\Presentation\Policies\StabilizationPolicy.cs" Link="Services\Media\Presentation\Policies\StabilizationPolicy.cs" />
+    <Compile Include="..\Services\Media\Presentation\Policies\AiOverridePolicy.cs" Link="Services\Media\Presentation\Policies\AiOverridePolicy.cs" />
+    <Compile Include="..\Services\Media\Presentation\Policies\NotificationOverlayPolicy.cs" Link="Services\Media\Presentation\Policies\NotificationOverlayPolicy.cs" />
   </ItemGroup>
 </Project>

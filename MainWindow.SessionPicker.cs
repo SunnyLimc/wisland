@@ -136,7 +136,7 @@ namespace wisland
 
         private bool CanShowSessionPicker(DisplayedMediaContext context)
             => !_isClosed
-                && !_controller.IsNotifying
+                && !_controller.IsForcedExpanded
                 && !_controller.IsDragging
                 && _controller.Current.ExpandedOpacity > IslandConfig.HitTestOpacityThreshold
                 && context.DisplayedSession.HasValue

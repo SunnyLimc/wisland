@@ -121,6 +121,29 @@ namespace wisland.Views
             _compositor = null;
         }
 
+        /// <summary>
+        /// P2b: frame-driven overload. Thin wrapper delegating to the legacy call;
+        /// P4 will internalize fingerprint/kind and delete the legacy overload.
+        /// </summary>
+        public bool UpdateMedia(MediaPresentationFrame frame)
+        {
+            if (frame == null) return false;
+            ContentTransitionDirection direction = frame.Transition switch
+            {
+                FrameTransitionKind.SlideForward => ContentTransitionDirection.Forward,
+                FrameTransitionKind.SlideBackward => ContentTransitionDirection.Backward,
+                _ => ContentTransitionDirection.None
+            };
+            bool switchingHint = frame.Kind == PresentationKind.Switching;
+            return UpdateMedia(
+                frame.Session,
+                frame.DisplayIndex,
+                frame.OrderedSessions.Count,
+                frame.OrderedSessions,
+                direction,
+                switchingHint);
+        }
+
         public bool UpdateMedia(
             MediaSessionSnapshot? session,
             int displayIndex,

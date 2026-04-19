@@ -180,6 +180,7 @@ namespace wisland
                 SetBackdrop(_settings.BackdropType, persist: false);
                 UpdateState();
                 ApplyInitialWindowState();
+                InitializePresentationMachine();
                 _ = InitializeMediaAsync();
 
                 StartRenderLoop();

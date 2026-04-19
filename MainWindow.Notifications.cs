@@ -3,6 +3,7 @@ using System.Threading;
 using System.Threading.Tasks;
 using wisland.Helpers;
 using wisland.Models;
+using wisland.Services.Media.Presentation;
 namespace wisland
 {
     public sealed partial class MainWindow
@@ -43,7 +44,8 @@ namespace wisland
                     HideSessionPickerOverlay(reconcileHover: false);
                     ExpandedContent.ShowNotification(title, message, header);
                     ImmersiveContent.ShowNotification(title, message, header);
-                    _controller.IsNotifying = true;
+                    _controller.IsForcedExpanded = true;
+                    _presentationMachine?.Dispatch(new NotificationBeginEvent(new NotificationPayload(title, message, header, durationMs)));
                     UpdateState();
                 });
 
@@ -88,7 +90,8 @@ namespace wisland
 
         private void ClearNotificationState()
         {
-            _controller.IsNotifying = false;
+            _controller.IsForcedExpanded = false;
+            _presentationMachine?.Dispatch(new NotificationEndEvent());
             UpdateState();
             SyncMediaUI();
         }

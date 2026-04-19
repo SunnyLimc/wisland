@@ -1,0 +1,490 @@
+using System;
+using System.Collections.Generic;
+using System.Threading;
+using System.Threading.Channels;
+using System.Threading.Tasks;
+using wisland.Helpers;
+using wisland.Models;
+
+namespace wisland.Services.Media.Presentation
+{
+    /// <summary>
+    /// Single source of truth for "what media should be presented right now".
+    ///
+    /// Consumes <see cref="PresentationEvent"/>s on a single worker loop, threads
+    /// them through the configured <see cref="IPresentationPolicy"/> chain, and
+    /// emits <see cref="MediaPresentationFrame"/>s via <see cref="FrameProduced"/>.
+    ///
+    /// P2 phase: implements §4.4 transitions in a flattened form (explicit
+    /// Pending/Confirming states arrive in P3). <see cref="SwitchIntent"/> is
+    /// live, <see cref="FrameTransitionKind.ResumeAfterNotification"/> is
+    /// honoured, and <see cref="PresentationKind"/> is kept independent from
+    /// <see cref="MediaTrackFingerprint"/> so Kind-only changes never trigger
+    /// a directional slide.
+    /// </summary>
+    public sealed class MediaPresentationMachine : IDisposable
+    {
+        private readonly IReadOnlyList<IPresentationPolicy> _policies;
+        private readonly MediaPresentationMachineContext _context = new();
+        private readonly MediaPresentationState _state = new();
+        private readonly Channel<PresentationEvent> _events;
+        private readonly CancellationTokenSource _cts = new();
+        private readonly IDispatcherPoster _dispatcherPoster;
+        private Task? _worker;
+        private long _sequence;
+        private bool _isDisposed;
+
+        public MediaPresentationMachine(
+            IReadOnlyList<IPresentationPolicy> policies,
+            IDispatcherPoster dispatcherPoster)
+        {
+            _policies = policies;
+            _dispatcherPoster = dispatcherPoster;
+            _events = Channel.CreateUnbounded<PresentationEvent>(new UnboundedChannelOptions
+            {
+                SingleReader = true,
+                SingleWriter = false,
+                AllowSynchronousContinuations = false
+            });
+
+            _context.ScheduleStabilizationTimerCallback = ScheduleStabilizationTimer;
+            _context.ScheduleMetadataSettleTimerCallback = ScheduleMetadataSettleTimer;
+            _context.ScheduleAutoFocusTimerCallback = ScheduleAutoFocusTimer;
+
+            foreach (var policy in _policies)
+            {
+                policy.OnAttach(this);
+            }
+        }
+
+        /// <summary>Frame output. Posted via <see cref="IDispatcherPoster"/> so
+        /// the event usually fires on the UI thread.</summary>
+        public event Action<MediaPresentationFrame>? FrameProduced;
+
+        public void Start()
+        {
+            if (_worker != null || _isDisposed) return;
+            _worker = Task.Run(() => RunAsync(_cts.Token));
+        }
+
+        public void Dispatch(PresentationEvent evt)
+        {
+            if (_isDisposed) return;
+            _events.Writer.TryWrite(evt);
+        }
+
+        /// <summary>
+        /// Synchronous event processing path. Unit tests drive the machine
+        /// through this entry point to avoid thread races; production code uses
+        /// <see cref="Dispatch"/> which posts to the worker loop.
+        /// </summary>
+        internal void ProcessForTests(PresentationEvent evt) => ProcessEvent(evt);
+
+        private async Task RunAsync(CancellationToken ct)
+        {
+            try
+            {
+                while (await _events.Reader.WaitToReadAsync(ct).ConfigureAwait(false))
+                {
+                    while (_events.Reader.TryRead(out var evt))
+                    {
+                        ProcessEvent(evt);
+                    }
+                }
+            }
+            catch (OperationCanceledException) { }
+            catch (Exception ex)
+            {
+                Logger.Error(ex, "MediaPresentationMachine worker crashed");
+            }
+        }
+
+        private void ProcessEvent(PresentationEvent evt)
+        {
+            _context.NowUtc = DateTimeOffset.UtcNow;
+
+            if (evt is GsmtcSessionsChangedEvent sessionsChanged)
+            {
+                _context.Sessions = sessionsChanged.Sessions;
+            }
+
+            // Seed CurrentDisplayedSessionKey so policies (manual lock, arbiter)
+            // see the same reality the machine does.
+            _context.CurrentDisplayedSessionKey = _state.DisplayedSnapshot?.SessionKey;
+
+            foreach (var policy in _policies)
+            {
+                try
+                {
+                    policy.OnEvent(evt, _context);
+                }
+                catch (Exception ex)
+                {
+                    Logger.Warn($"Policy {policy.GetType().Name} threw on {evt.GetType().Name}: {ex.Message}");
+                }
+            }
+
+            switch (evt)
+            {
+                case UserSkipRequestedEvent skip:
+                    HandleUserSkip(skip);
+                    break;
+                case UserSelectSessionEvent select:
+                    HandleUserSelect(select);
+                    break;
+                case NotificationBeginEvent begin:
+                    HandleNotificationBegin(begin);
+                    break;
+                case NotificationEndEvent:
+                    HandleNotificationEnd();
+                    break;
+                case GsmtcSessionsChangedEvent:
+                case AutoFocusTimerFiredEvent:
+                case StabilizationTimerFiredEvent:
+                case MetadataSettleTimerFiredEvent:
+                    ReconcileDisplay();
+                    break;
+                case AiResolveCompletedEvent ai:
+                    HandleAiResolveCompleted(ai);
+                    break;
+            }
+        }
+
+        // --- Event handlers -------------------------------------------------
+
+        private void HandleUserSkip(UserSkipRequestedEvent evt)
+        {
+            // Capture intent with the CURRENT displayed fingerprint as origin.
+            // Retained across stabilization, status flips, and overlay wraps;
+            // only consumed when the displayed fingerprint actually changes
+            // away from Origin (§4.5).
+            _state.Intent = new SwitchIntent(
+                _state.DisplayedFingerprint,
+                evt.Direction,
+                _context.NowUtc + TimeSpan.FromMilliseconds(IslandConfig.SkipTransitionTimeoutMs));
+            Logger.Debug($"[Machine] UserSkip {evt.Direction} captured. Origin={_state.DisplayedFingerprint.Title}/{_state.DisplayedFingerprint.SessionKey} deadline=+{IslandConfig.SkipTransitionTimeoutMs}ms");
+            ReconcileDisplay();
+        }
+
+        private void HandleUserSelect(UserSelectSessionEvent evt)
+        {
+            _state.Intent = new SwitchIntent(
+                _state.DisplayedFingerprint,
+                evt.Direction,
+                _context.NowUtc + TimeSpan.FromMilliseconds(IslandConfig.SkipTransitionTimeoutMs));
+            Logger.Debug($"[Machine] UserSelect '{evt.SessionKey}' dir={evt.Direction}");
+            ReconcileDisplay();
+        }
+
+        private void HandleNotificationBegin(NotificationBeginEvent evt)
+        {
+            if (_state.IsNotifying) return;
+            _state.IsNotifying = true;
+            _state.NotificationPayload = evt.Payload;
+            // Snapshot the current display as "inner" so subsequent GSMTC
+            // events during the overlay can advance inner state without
+            // leaking frames.
+            _state.InnerSnapshot = _state.DisplayedSnapshot;
+            _state.InnerFingerprint = _state.DisplayedFingerprint;
+            _state.InnerKind = _state.DisplayedKind;
+            _state.InnerChangedDuringOverlay = false;
+
+            EmitFrame(
+                session: _state.DisplayedSnapshot,
+                orderedSessions: _context.Sessions,
+                kind: PresentationKind.Notifying,
+                transition: FrameTransitionKind.None,
+                fingerprint: _state.DisplayedFingerprint,
+                isFallback: false,
+                notification: evt.Payload);
+        }
+
+        private void HandleNotificationEnd()
+        {
+            if (!_state.IsNotifying)
+            {
+                return;
+            }
+            _state.IsNotifying = false;
+            _state.NotificationPayload = null;
+
+            // Promote accumulated inner state to displayed, then emit Resume.
+            // Per D1: if the inner fingerprint changed during the overlay we
+            // prefer a Slide (if intent is valid) else Crossfade. If nothing
+            // changed, still emit ResumeAfterNotification so views know the
+            // overlay is gone, but with Transition=ResumeAfterNotification
+            // (views can choose to treat that as a no-op).
+            bool fpChanged = !FingerprintEquals(_state.InnerFingerprint, _state.DisplayedFingerprint);
+            FrameTransitionKind transition = FrameTransitionKind.ResumeAfterNotification;
+
+            _state.DisplayedSnapshot = _state.InnerSnapshot;
+            _state.DisplayedKind = _state.InnerKind;
+            _state.DisplayedFingerprint = _state.InnerFingerprint;
+
+            if (fpChanged && _state.Intent.HasValue && !_state.Intent.Value.IsExpired(_context.NowUtc))
+            {
+                // Upgrade Resume → directional Slide to preserve the animation
+                // opportunity (§5.2, D1).
+                transition = _state.Intent.Value.Direction switch
+                {
+                    ContentTransitionDirection.Forward => FrameTransitionKind.SlideForward,
+                    ContentTransitionDirection.Backward => FrameTransitionKind.SlideBackward,
+                    _ => FrameTransitionKind.Crossfade
+                };
+                _state.Intent = null;
+            }
+            else if (fpChanged)
+            {
+                transition = FrameTransitionKind.Crossfade;
+            }
+
+            EmitFrame(
+                session: _state.DisplayedSnapshot,
+                orderedSessions: _context.Sessions,
+                kind: _state.DisplayedKind,
+                transition: transition,
+                fingerprint: _state.DisplayedFingerprint,
+                isFallback: false,
+                notification: null);
+
+            _state.InnerSnapshot = null;
+            _state.InnerFingerprint = MediaTrackFingerprint.Empty;
+            _state.InnerKind = PresentationKind.Empty;
+            _state.InnerChangedDuringOverlay = false;
+        }
+
+        private void HandleAiResolveCompleted(AiResolveCompletedEvent evt)
+        {
+            // P3/P4 will thread AI overrides through AiOverridePolicy. For P2
+            // we simply re-emit the current frame so any UI-visible override
+            // state can refresh without a slide. Without AiOverridePolicy
+            // populating ActiveAiOverride this is a harmless no-op.
+            if (_state.IsNotifying || !_state.Initialized) return;
+            EmitFrame(
+                session: _state.DisplayedSnapshot,
+                orderedSessions: _context.Sessions,
+                kind: _state.DisplayedKind,
+                transition: FrameTransitionKind.None,
+                fingerprint: _state.DisplayedFingerprint,
+                isFallback: false,
+                notification: null);
+        }
+
+        // --- Core reconciliation --------------------------------------------
+
+        private void ReconcileDisplay()
+        {
+            // Compute what the display should look like given the latest
+            // arbiter decision + sessions.
+            var winnerKey = _context.ArbitratedWinnerKey;
+            MediaSessionSnapshot? winner = FindSession(_context.Sessions, winnerKey);
+
+            PresentationKind kind;
+            MediaTrackFingerprint fingerprint;
+            MediaSessionSnapshot? snapshotForFrame;
+            bool isFallback = false;
+
+            if (!winner.HasValue)
+            {
+                kind = PresentationKind.Empty;
+                fingerprint = MediaTrackFingerprint.Empty;
+                snapshotForFrame = null;
+            }
+            else if (winner.Value.IsStabilizing)
+            {
+                // MediaService is suppressing raw metadata. Keep the previous
+                // fingerprint/snapshot and mark kind=Switching so the UI chip
+                // can show hint text without mutating the main visual.
+                kind = PresentationKind.Switching;
+                fingerprint = _state.DisplayedFingerprint;
+                snapshotForFrame = _state.DisplayedSnapshot ?? winner;
+            }
+            else if (winner.Value.IsWaitingForReconnect)
+            {
+                kind = PresentationKind.Missing;
+                fingerprint = BuildFingerprint(winner.Value);
+                snapshotForFrame = winner;
+            }
+            else
+            {
+                kind = PresentationKind.Steady;
+                fingerprint = BuildFingerprint(winner.Value);
+                snapshotForFrame = winner;
+            }
+
+            // Determine transition based on fingerprint delta + intent.
+            FrameTransitionKind transition = FrameTransitionKind.None;
+            bool fpChanged = !FingerprintEquals(fingerprint, _state.DisplayedFingerprint);
+            bool firstFrame = !_state.Initialized;
+            bool kindChanged = kind != _state.DisplayedKind;
+
+            if (_state.IsNotifying)
+            {
+                // Overlay: don't emit frames; accumulate into inner. Intent is
+                // preserved across the overlay so the Resume frame can upgrade
+                // to a directional Slide (D1).
+                if (fpChanged)
+                {
+                    _state.InnerChangedDuringOverlay = true;
+                }
+                _state.InnerSnapshot = snapshotForFrame;
+                _state.InnerKind = kind;
+                _state.InnerFingerprint = fingerprint;
+                return;
+            }
+
+            if (firstFrame && kind != PresentationKind.Empty)
+            {
+                transition = FrameTransitionKind.Replace;
+            }
+            else if (fpChanged)
+            {
+                if (_state.Intent.HasValue
+                    && !_state.Intent.Value.IsExpired(_context.NowUtc)
+                    && _state.Intent.Value.MatchesOrigin(_state.DisplayedFingerprint))
+                {
+                    transition = _state.Intent.Value.Direction switch
+                    {
+                        ContentTransitionDirection.Forward => FrameTransitionKind.SlideForward,
+                        ContentTransitionDirection.Backward => FrameTransitionKind.SlideBackward,
+                        _ => FrameTransitionKind.Replace
+                    };
+                    _state.Intent = null; // consumed
+                }
+                else
+                {
+                    transition = FrameTransitionKind.Replace;
+                    // Expired or mismatched intent is dropped so it can't
+                    // stale-fire on a later unrelated change.
+                    if (_state.Intent.HasValue && _state.Intent.Value.IsExpired(_context.NowUtc))
+                    {
+                        _state.Intent = null;
+                    }
+                }
+            }
+
+            // Non-overlay: persist state and emit if something changed.
+            _state.DisplayedSnapshot = snapshotForFrame;
+            _state.DisplayedKind = kind;
+            _state.DisplayedFingerprint = fingerprint;
+
+            if (firstFrame || fpChanged || kindChanged)
+            {
+                _state.Initialized = true;
+                EmitFrame(
+                    session: snapshotForFrame,
+                    orderedSessions: _context.Sessions,
+                    kind: kind,
+                    transition: fpChanged ? transition : FrameTransitionKind.None,
+                    fingerprint: fingerprint,
+                    isFallback: isFallback,
+                    notification: null);
+            }
+        }
+
+        // --- Emit helper ----------------------------------------------------
+
+        private void EmitFrame(
+            MediaSessionSnapshot? session,
+            IReadOnlyList<MediaSessionSnapshot> orderedSessions,
+            PresentationKind kind,
+            FrameTransitionKind transition,
+            MediaTrackFingerprint fingerprint,
+            bool isFallback,
+            NotificationPayload? notification)
+        {
+            int displayIndex = -1;
+            if (session.HasValue)
+            {
+                for (int i = 0; i < orderedSessions.Count; i++)
+                {
+                    if (string.Equals(orderedSessions[i].SessionKey, session.Value.SessionKey, StringComparison.Ordinal))
+                    {
+                        displayIndex = i;
+                        break;
+                    }
+                }
+            }
+
+            var frame = new MediaPresentationFrame(
+                Sequence: NextSequence(),
+                Session: session,
+                OrderedSessions: orderedSessions,
+                DisplayIndex: displayIndex,
+                Kind: kind,
+                Transition: transition,
+                Fingerprint: fingerprint,
+                ProgressFingerprint: fingerprint,
+                IsFallback: isFallback,
+                ThumbnailHashIsFallback: true,   // P2: no real hash yet; P3 fills in
+                AiOverride: _context.ActiveAiOverride,
+                Notification: notification);
+
+            Logger.Trace($"[Machine] emit seq={frame.Sequence} kind={kind} transition={transition} fp={fingerprint.Title}/{fingerprint.SessionKey}");
+            _dispatcherPoster.Post(() => FrameProduced?.Invoke(frame));
+        }
+
+        // --- Utility --------------------------------------------------------
+
+        private static MediaTrackFingerprint BuildFingerprint(MediaSessionSnapshot session)
+            // P2: ThumbnailHash empty; P3 populates xxhash64(first 4KB).
+            => new(session.SessionKey ?? string.Empty,
+                   session.Title ?? string.Empty,
+                   session.Artist ?? string.Empty,
+                   string.Empty);
+
+        private static bool FingerprintEquals(MediaTrackFingerprint a, MediaTrackFingerprint b)
+            => string.Equals(a.SessionKey, b.SessionKey, StringComparison.Ordinal)
+            && string.Equals(a.Title, b.Title, StringComparison.Ordinal)
+            && string.Equals(a.Artist, b.Artist, StringComparison.Ordinal)
+            && string.Equals(a.ThumbnailHash, b.ThumbnailHash, StringComparison.Ordinal);
+
+        private static MediaSessionSnapshot? FindSession(IReadOnlyList<MediaSessionSnapshot> sessions, string? sessionKey)
+        {
+            if (string.IsNullOrEmpty(sessionKey)) return null;
+            for (int i = 0; i < sessions.Count; i++)
+            {
+                if (string.Equals(sessions[i].SessionKey, sessionKey, StringComparison.Ordinal))
+                {
+                    return sessions[i];
+                }
+            }
+            return null;
+        }
+
+        // --- Timer scheduling stubs (real impl lands with P3 Stabilization) -
+
+        private void ScheduleStabilizationTimer(DateTimeOffset dueUtc)
+        {
+            Logger.Trace($"[Machine] ScheduleStabilizationTimer due={dueUtc:HH:mm:ss.fff}");
+        }
+
+        private void ScheduleMetadataSettleTimer(DateTimeOffset dueUtc)
+        {
+            Logger.Trace($"[Machine] ScheduleMetadataSettleTimer due={dueUtc:HH:mm:ss.fff}");
+        }
+
+        private void ScheduleAutoFocusTimer(DateTimeOffset? dueUtc)
+        {
+            Logger.Trace($"[Machine] ScheduleAutoFocusTimer due={dueUtc?.ToString("HH:mm:ss.fff") ?? "-"}");
+        }
+
+        internal long NextSequence() => Interlocked.Increment(ref _sequence);
+
+        public void Dispose()
+        {
+            if (_isDisposed) return;
+            _isDisposed = true;
+            try { _cts.Cancel(); } catch { }
+            _events.Writer.TryComplete();
+            try { _worker?.Wait(TimeSpan.FromSeconds(1)); } catch { }
+            _cts.Dispose();
+        }
+    }
+
+    public interface IDispatcherPoster
+    {
+        void Post(Action action);
+    }
+}
+

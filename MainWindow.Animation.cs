@@ -100,7 +100,7 @@ namespace wisland
 
             bool isDockPeekState = _controller.IsDocked
                 && !_controller.IsHovered
-                && !_controller.IsNotifying
+                && !_controller.IsForcedExpanded
                 && !_controller.IsDragging
                 && !shouldDisplayDockedLineNow
                 && state.Height <= IslandConfig.CompactHeight + 1;
@@ -310,7 +310,7 @@ namespace wisland
             bool isSettled = Math.Abs(state.Height - IslandConfig.CompactHeight) < 1.0
                 && Math.Abs(state.Y - _controller.TargetY) < 1.0;
 
-            if (isSettled && _controller.IsDocked && !_controller.IsHovered && !_controller.IsNotifying && !_controller.IsDragging)
+            if (isSettled && _controller.IsDocked && !_controller.IsHovered && !_controller.IsForcedExpanded && !_controller.IsDragging)
             {
                 int visiblePhys = GetDockPeekPhysicalPixels(dpiScale);
                 return displayWorkArea.Y + visiblePhys - physHeight;
