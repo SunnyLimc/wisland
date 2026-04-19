@@ -321,8 +321,8 @@ UI 仍然拿得到动画机会（如果 intent 仍然有效）。
 
 ## 7. 分阶段实施
 
-> 实施状态（截至当前分支）：P1 / P2 / P3a / P3b-1 / P4a / P4b / P4c-1 / P4c-2a / P4c-2b / P4d / P5-log / P5-assert / P5-tests 均已合并。
-> P3b-2（Confirming 250ms settle）仍为待办。
+> 实施状态（截至当前分支）：P1 / P2 / P3a / P3b-1 / P3b-2 / P4a / P4b / P4c-1 / P4c-2a / P4c-2b / P4d / P5-log / P5-assert / P5-tests 均已合并。
+> 剩余工作：真机验证 + 依赖观测的后续调优。
 
 ### P1 · 骨架迁移（行为不变）— ✅
 - 新建 `Services/Media/Presentation/*` 骨架。
@@ -335,11 +335,11 @@ UI 仍然拿得到动画机会（如果 intent 仍然有效）。
 - `NotifyingOverlay` pass‑through + `ResumeAfterNotification`，彻底不再在通知中吞 identity。
 - 删除 `TrackSwitchIntentWindowMs`（合并到 intent deadline）。
 
-### P3 · 泄露三大根因 — 🟡（P3a/P3b-1 完成；P3b-2 推迟）
+### P3 · 泄露三大根因 — ✅
 - ✅ `ArmSkipStabilization` re-arm 时拒绝 baseline 被非 fresh raw 覆盖（P3a）。
 - ✅ 删除 `StabilizationMetadataConfirmationHoldMs=80ms` 路径（P3a）。
 - ✅ `MediaService` 新增 `ThumbnailHash` (xxhash64 前 4KB，异步算，ref-change 时清空)，入 `MediaTrackFingerprint`（P3b-1）。
-- ⏸ 引入 `Confirming` + `MetadataSettleMs=250ms`（P3b-2，推迟；会改 5+ 条现有测试，待 P4d 后再评估）。
+- ✅ `Confirming` 状态 + `MediaMetadataSettleMs=250ms`（P3b-2）；仅在 `Switching → Steady` 的 fp 变更时介入，直接的 Steady→Steady fp 变更仍即时 emit。新增 `MetadataSettleTimerScheduleRequested` 事件 + MainWindow `_metadataSettleTimer` 驱动。
 
 ### P4 · View 解耦 — ✅
 - ✅ `ExpandedMediaView.UpdateMedia(frame)` / `ImmersiveMediaView.UpdateMedia(frame)` 薄封装已落地；Immersive 的 `_lastAlbumArtIdentity` 改用 `MediaTrackFingerprint`（P4a）。
@@ -348,11 +348,10 @@ UI 仍然拿得到动画机会（如果 intent 仍然有效）。
 - ✅ Manual-lock 状态 (`_selectedSessionKey` / `_selectionLockUntilUtc`) 全部搬入 `ManualSelectionLockPolicy`；MainWindow 只留 UI-thread DispatcherTimer 转发（P4c-2b）。
 - ✅ AI override 搬入 `AiOverridePolicy`；新增 `IAiOverrideResolver` + `AiOverrideResolverAdapter` 承载异步 resolve 并回派 `AiResolveCompletedEvent`；MainWindow 只剩 `ApplyFrameAiOverride(frame.AiOverride)` 与 `SettingsChangedEvent(AiOverride)` 派发（P4d）。
 
-### P5 · 观测 & 测试 — 🟡（P5-log / P5-assert / P5-tests 完成；P3b-2 重评待办）
+### P5 · 观测 & 测试 — ✅
 - ✅ Machine 每次事件与每次 emit 都输出结构化日志 `{seq, state_from, state_to, transition, fp_from, fp_to, intent, notification, fallback}`（P5-log）。
-- ✅ `EmitFrame` 中以 `Debug.Assert` 写入 §6 不变式 #1/#2/#3；#4/#5/#6 推迟到 P3b-2/ policy-level（P5-assert）。
-- ✅ 7 条端到端测试覆盖 Steady → PendingUserSwitch → Steady(Slide) 全程、反向 skip 覆盖、thumbnail-hash-only 变化、stabilization 超时、AI resolve、seq 单调递增（P5-tests，现 73/73）。
-- ⏸ P3b-2 需要在真实日志观测后再决定是否引入 `Confirming` state。
+- ✅ `EmitFrame` 中以 `Debug.Assert` 写入 §6 不变式 #1/#2/#3；#4/#5/#6 仍推迟到 policy-level 检查（P5-assert）。
+- ✅ 7 条 P5 扩展测试 + 1 条 P3b-2 Confirming bounce 测试（现 74/74）。
 
 ---
 
