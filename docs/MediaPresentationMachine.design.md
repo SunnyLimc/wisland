@@ -1,114 +1,149 @@
 # Wisland Media Presentation Architecture — Design
 
-状态：**设计稿（未实现）**
-目标：把目前散落在 `MediaService`、`MainWindow.Media`、`IslandController`、`AiSongResolver`、`Notifications` 等处的"当前展示哪一首媒体、怎么过渡、怎么抗抖"这条链路收敛到一个**单一真相源（Single Source of Truth）——`MediaPresentationMachine`**，以根治当前两类偶现缺陷：
+Status: **Implemented** (P1 through P5 + P4d-2 follow-ups are merged on
+`album-view`).
+Original goal: consolidate the "what media is currently being shown, how does
+it transition, how do we absorb jitter" logic that used to be scattered across
+`MediaService`, `MainWindow.Media`, `IslandController`, `AiSongResolver`, and
+`Notifications` into a single source of truth — `MediaPresentationMachine` —
+so the two long-standing intermittent bugs are eliminated for good:
 
-1. 切歌时 expanded view 的左右划动画不总是触发（新歌信息直接替换，没有动画）。
-2. 切歌瞬间偶尔泄露 Chrome 其它标签页暂停态的 metadata / thumbnail。
-
----
-
-## 1. 现状链条盘点
-
-### 1.1 原始数据采集 — `Services/Media/MediaService*` + `Refresh`
-订阅 GSMTC，维护 `TrackedSource` 的 title / artist / thumbnail / playback / timeline / presence / missingSince 等 raw 字段，并按需通过 `PrepareStateChange_NoLock + DispatchChange` 广播 `SessionsChanged` / `TrackChanged`。
-
-### 1.2 切歌抗抖 — `MediaService.Stabilization`
-混合三种 reason：
-- `SkipTransition`：用户点 Skip 后抵挡 Chrome 其它标签页的 paused metadata。
-- `NaturalEnding`：接近曲末时 arm，吞掉末尾噪声。
-- 非 metadata write 触发 fresh‑track 时的 `StabilizationMetadataConfirmationHoldMs=80ms` 短 hold。
-共享 `FrozenSnapshot`、`StabilizationBaselineTitle/Artist`、`StabilizationExpiresAtUtc`、`_stabilizationTimer`。
-
-### 1.3 焦点仲裁 — `MediaFocusArbiter`
-多 session 情况下决策"展示哪条"，带 `autoSwitchDebounce` + `missingSourceGrace`。内部持有 `_pendingAutoWinnerKey / _pendingAutoWinnerSinceUtc`。
-
-### 1.4 用户选择锁 — `MainWindow.Media`
-`_selectedSessionKey / _selectionLockUntilUtc / _selectionLockTimer`。滚轮 / session picker 点击后一段时间内禁止 arbiter 抢焦点。
-
-### 1.5 视觉顺序 — `_sessionVisualOrderKeys / GetVisualOrderedSessions`
-让 avatar strip / picker 顺序稳定。
-
-### 1.6 自动切焦点计时器 — `_autoFocusTimer / SyncAutoFocusTimer`
-
-### 1.7 动画方向 intent — `_pendingMediaTransitionDirection + _pendingMediaTransitionTimestamp`
-一次性 token，`TrackSwitchIntentWindowMs=1600ms`；由 `SkipNext_Click / SkipPrevious_Click / TryCycleDisplayedSession / SelectSession` 写入，第一次 `contentChanged` 消费。
-
-### 1.8 UI 身份去重 — `_lastDisplayedContentIdentity / _lastDisplayedProgressIdentity`
-字符串 hash，当前把 `(switching|steady)` 也拼进 identity。
-
-### 1.9 AI 改写 — `AiSongResolverService` + `ApplyAiOverride` + `_aiResolveCts`
-对 `(sourceId, title, artist)` 异步改写；`_lastAiResolveContentIdentity / _lastAiOverrideLookupIdentity / _lastAiOverrideLookupResult`。
-
-### 1.10 通知覆盖 — `MainWindow.Notifications` + `IslandController.IsNotifying`
-`ShowNotification` 期间 `SyncMediaUI` 不调用 `UpdateMedia`。通知结束后没有"补放一次动画"。
-
-### 1.11 进度条 reset — `RequestMediaProgressReset` / `_isMediaProgressResetPending` / `IslandProgressBar.SnapToZero`
-单独一条身份 `_lastDisplayedProgressIdentity`，与主 identity 并行。
-
-### 1.12 专辑图 / 调色盘 — `ImmersiveMediaView._lastAlbumArtIdentity / _isBusyTransport` + `AlbumArtColorExtractor`
-UI 自己决定何时保留旧封面。`BuildAlbumArtIdentity` 自成一派。
-
-### 1.13 Session Picker overlay — `MainWindow.SessionPicker` + `SessionPickerWindow`
-通过 `IsTransientSurfaceOpen` 影响 island controller。
-
-### 1.14 岛身形态 — `IslandController`
-输入：`IsHovered / IsDragging / IsDocked / IsNotifying / IsForegroundMaximized / IsHoverPending / IsTransientSurfaceOpen / UseImmersiveDimensions`。输出：target W/H/Y/opacity。
-
-### 1.15 前台监视 — `ForegroundWindowMonitor` → `IsForegroundMaximized`
-
-### 1.16 渲染循环节流 — `UpdateRenderLoopState`
+1. The expanded view's slide animation would sometimes fail to fire on skip
+   (the new track metadata replaced in place, no motion).
+2. The moment of the skip occasionally leaked another Chrome tab's paused
+   metadata / thumbnail.
 
 ---
 
-## 2. 当前设计的冲突点
+## 1. Legacy chain inventory
 
-| # | 冲突 / 漏点 | 现象 |
+### 1.1 Raw capture — `Services/Media/MediaService*` + `Refresh`
+Subscribes to GSMTC, maintains `TrackedSource` with raw title / artist /
+thumbnail / playback / timeline / presence / missingSince fields, and
+broadcasts `SessionsChanged` / `TrackChanged` through
+`PrepareStateChange_NoLock + DispatchChange` when needed.
+
+### 1.2 Skip / end-of-track stabilization — `MediaService.Stabilization`
+Combines three reasons:
+- `SkipTransition`: after the user taps skip, shields the UI from the
+  paused-tab metadata another Chrome tab might briefly push.
+- `NaturalEnding`: armed near end-of-track to swallow tail noise.
+- A short `StabilizationMetadataConfirmationHoldMs=80ms` fresh-track hold
+  for non-metadata writes.
+Shares `FrozenSnapshot`, `StabilizationBaselineTitle/Artist`,
+`StabilizationExpiresAtUtc`, and `_stabilizationTimer`.
+
+### 1.3 Focus arbitration — `MediaFocusArbiter`
+Decides which session to display across multiple GSMTC sources, with
+`autoSwitchDebounce` + `missingSourceGrace`. Internally tracks
+`_pendingAutoWinnerKey / _pendingAutoWinnerSinceUtc`.
+
+### 1.4 User-selection lock — `MainWindow.Media`
+`_selectedSessionKey / _selectionLockUntilUtc / _selectionLockTimer`. After a
+scroll or picker click, the arbiter cannot steal focus for a configured
+window.
+
+### 1.5 Visual ordering — `_sessionVisualOrderKeys / GetVisualOrderedSessions`
+Keeps the avatar strip and session picker stable across churn.
+
+### 1.6 Auto-focus timer — `_autoFocusTimer / SyncAutoFocusTimer`
+
+### 1.7 Transition direction intent —
+`_pendingMediaTransitionDirection + _pendingMediaTransitionTimestamp`.
+One-shot token with `TrackSwitchIntentWindowMs=1600ms`; written by
+`SkipNext_Click / SkipPrevious_Click / TryCycleDisplayedSession /
+SelectSession`, consumed by the first `contentChanged`.
+
+### 1.8 UI identity dedup —
+`_lastDisplayedContentIdentity / _lastDisplayedProgressIdentity`.
+String hash that at the time also folded `(switching|steady)` into the
+identity.
+
+### 1.9 AI rewrite — `AiSongResolverService` + `ApplyAiOverride` +
+`_aiResolveCts`. Async rewrite on `(sourceId, title, artist)`, with
+`_lastAiResolveContentIdentity / _lastAiOverrideLookupIdentity /
+_lastAiOverrideLookupResult`.
+
+### 1.10 Notification overlay — `MainWindow.Notifications` +
+`IslandController.IsNotifying`. While `ShowNotification` is active
+`SyncMediaUI` did not call `UpdateMedia`, and there was no "replay the
+animation" pass after the notification ended.
+
+### 1.11 Progress reset — `RequestMediaProgressReset` /
+`_isMediaProgressResetPending` / `IslandProgressBar.SnapToZero`.
+A separate identity `_lastDisplayedProgressIdentity` running parallel to the
+main one.
+
+### 1.12 Album art / palette —
+`ImmersiveMediaView._lastAlbumArtIdentity / _isBusyTransport` +
+`AlbumArtColorExtractor`. The view decided on its own when to keep the old
+cover. `BuildAlbumArtIdentity` was its own private notion of identity.
+
+### 1.13 Session Picker overlay — `MainWindow.SessionPicker` +
+`SessionPickerWindow`. Uses `IsTransientSurfaceOpen` to influence the island
+controller.
+
+### 1.14 Island shape — `IslandController`.
+Inputs: `IsHovered / IsDragging / IsDocked / IsNotifying /
+IsForegroundMaximized / IsHoverPending / IsTransientSurfaceOpen /
+UseImmersiveDimensions`. Outputs: target W/H/Y/opacity.
+
+### 1.15 Foreground monitor — `ForegroundWindowMonitor` →
+`IsForegroundMaximized`.
+
+### 1.16 Render-loop throttling — `UpdateRenderLoopState`.
+
+---
+
+## 2. Conflict points in the legacy design
+
+| # | Conflict / gap | Symptom |
 |---|---|---|
-| C1 | `CreateContentIdentity` 把 `switching|steady` 塞进 identity | Pending 期间任意一次 `SessionsChanged` 都会"先用 switching 一跳消费 pending 方向"，真正的新歌跳变 fallback 到 `ApplyImmediately`，**动画丢失** |
-| C2 | `TrackSwitchIntentWindowMs=1600ms` vs `SkipTransitionTimeoutMs=10000ms` | Chrome 慢切歌时 intent 先过期，**动画丢失** |
-| C3 | `IsNotifying` 分支跳过 `UpdateMedia` 但仍更新 `_lastDisplayedContentIdentity` 并 `ClearPendingMediaTransitionDirection` | 通知期内到达的新歌**永久静默更新** |
-| C4 | 非 metadata write 的 fresh‑track 短 hold 只有 80ms | 低于 Chrome 实际 metadata 到达延迟，到期后 raw 的**中间标签页状态泄露** |
-| C5 | `ShouldShowTransportSwitchingHint=IsStabilizing` vs UI `showBusyTransportState = IsStabilizing && MissingSinceUtc.HasValue` | 身份判"切换中"但 UI 侧防护未开，专辑图/副标题可能提前更新 |
-| C6 | `tracked.Thumbnail` 在稳定化期间仍被 raw 覆盖，叠加 `ArmSkipStabilization` 的 re‑arm 会把当前 raw 封进 frozen | 连点 Skip 时，B 标签页的 thumbnail/title 被写入 frozen baseline，释放后泄露 |
+| C1 | `CreateContentIdentity` folded `switching\|steady` into the identity | During Pending, any `SessionsChanged` consumed the pending direction on the `switching` jump; the real track change fell through to `ApplyImmediately` — **animation lost** |
+| C2 | `TrackSwitchIntentWindowMs=1600ms` vs `SkipTransitionTimeoutMs=10000ms` | On Chrome's slow skip the intent expired first — **animation lost** |
+| C3 | The `IsNotifying` branch skipped `UpdateMedia` but still updated `_lastDisplayedContentIdentity` and called `ClearPendingMediaTransitionDirection` | A track that arrived while the notification was up was **silently applied forever** |
+| C4 | The non-metadata-write fresh-track short hold was only 80ms | Shorter than Chrome's actual metadata delivery delay — when it expired, raw paused-tab state **leaked through** |
+| C5 | `ShouldShowTransportSwitchingHint=IsStabilizing` vs the UI's `showBusyTransportState = IsStabilizing && MissingSinceUtc.HasValue` | Identity said "switching" but the UI guard was not on; album art / subtitle could update too early |
+| C6 | `tracked.Thumbnail` was still overwritten by raw during stabilization, and `ArmSkipStabilization`'s re-arm captured the current raw into the frozen baseline | Rapid double-skip would seal tab B's thumbnail/title into the frozen baseline and leak it on release |
 
 ---
 
-## 3. 职能归类
+## 3. Responsibility grouping
 
-| 分类 | 成员 |
+| Group | Members |
 |---|---|
-| **"当前展示什么媒体"决策的核心状态** | 1.1 / 1.2 / 1.3 / 1.4 / 1.6 / 1.7 / 1.8 / 1.9 / 1.10 / 1.11 / 1.12 |
-| **岛身形态 / 交互**（只消费状态，不产生媒体状态） | 1.13 / 1.14 / 1.15 / 1.16 |
-| **布局辅助** | 1.5 |
+| **Core state that decides "what media is currently shown"** | 1.1 / 1.2 / 1.3 / 1.4 / 1.6 / 1.7 / 1.8 / 1.9 / 1.10 / 1.11 / 1.12 |
+| **Island shape / interaction** (consumes state, does not produce media state) | 1.13 / 1.14 / 1.15 / 1.16 |
+| **Layout helpers** | 1.5 |
 
-所有"核心状态"应集中到 `MediaPresentationMachine` + 其 Policies 中；外层只订阅 Frame。
+All "core state" should live in `MediaPresentationMachine` and its policies;
+outer layers subscribe to `Frame` only.
 
 ---
 
-## 4. 目标架构
+## 4. Target architecture
 
-### 4.1 命名空间布局
+### 4.1 Namespace layout
 
 ```
 Services/Media/
-  MediaService (保留 raw 数据层)
+  MediaService (raw data layer, unchanged)
   Presentation/
-    MediaPresentationMachine       // 单线程事件驱动
-    MediaPresentationFrame         // 对外帧
-    MediaTrackFingerprint          // Session×Title×Artist×Thumbnail
+    MediaPresentationMachine       // single-threaded event-driven core
+    MediaPresentationFrame         // the public frame contract
+    MediaTrackFingerprint          // Session x Title x Artist x Thumbnail
     PresentationKind               // Steady | Switching | Confirming | Missing | Empty | Notifying
     FrameTransitionKind            // None | Replace | Slide(direction) | Crossfade | ResumeAfterNotification
-    SwitchIntent                   // Origin + Direction + DeadlineUtc
+    SwitchIntent                   // Origin + Direction + DeadlineUtc + Source
     Policies/
-      FocusArbitrationPolicy       // 原 MediaFocusArbiter
-      ManualSelectionLockPolicy    // 原 selection lock
-      StabilizationPolicy          // 原 Stabilization.cs，拆成 Skip / NaturalEnding / Confirming
-      AiOverridePolicy             // 原 AiSongResolver 注入逻辑
-      NotificationOverlayPolicy    // 原 Notifications 覆盖
+      FocusArbitrationPolicy       // wraps MediaFocusArbiter
+      ManualSelectionLockPolicy    // the old selection-lock fields
+      StabilizationPolicy          // port of Stabilization.cs — split across Skip / NaturalEnding / Confirming
+      AiOverridePolicy             // was AiSongResolver injection code
+      NotificationOverlayPolicy    // was the notification overlay logic
 ```
 
-### 4.2 状态集
+### 4.2 State set
 
 ```
 Idle
@@ -116,10 +151,10 @@ Steady(track, orderedSessions)
 PendingUserSwitch(frozen, intent, deadlineUtc)
 PendingNaturalSwitch(frozen, deadlineUtc)
 Confirming(draft, firstSeenUtc, lastConfirmedUtc, pendingThumbnail, carriedIntent?)
-NotifyingOverlay(inner: State)      // 正交包裹
+NotifyingOverlay(inner: State)      // orthogonal wrapper
 ```
 
-### 4.3 事件集
+### 4.3 Event set
 
 ```
 GsmtcSessionsChanged(snapshot[])
@@ -135,60 +170,86 @@ NotificationEnd
 SettingsChanged(scope)
 ```
 
-所有事件单线程消费（`Channel<TEvent>` + 独立 worker 或 dispatcher post‑back）。
+Every event is consumed on a single thread (`Channel<TEvent>` + a dedicated
+worker, or a dispatcher post-back).
 
-### 4.4 关键迁移
+### 4.4 Key transitions
 
 | From | Event | Guard | To | Action |
 |---|---|---|---|---|
-| `Idle` | `GsmtcSessionsChanged` | sessions ≥ 1 | `Steady` | pick via `FocusArbitrationPolicy`，emit `Replace` frame |
-| `Steady` | `UserSkipRequested` | session 可稳定化 | `PendingUserSwitch` | 捕获 frozen；`intent = SwitchIntent(fingerprint, direction, now + SkipTransitionTimeoutMs)` |
-| `Steady` | `GsmtcSessionsChanged` | 展示 session 处于 near‑end + metadata 将变 | `PendingNaturalSwitch` | 捕获 frozen |
-| `Steady` | `GsmtcSessionsChanged` | 需换焦点（arbiter 判定） | `Steady` (new track) | `Transition = Replace`（无用户 intent） |
-| `PendingUser/NaturalSwitch` | `GsmtcSessionsChanged` | raw 看起来像 paused‑tab（Paused or pos远≠0 or title空） | self | **不改 baseline，不对外发 frame**，不刷新 thumbnail baseline |
-| `PendingUser/NaturalSwitch` | `GsmtcSessionsChanged` | raw Playing + pos≤3s + title 与 baseline 不同 + title 具体 | `Confirming` | `draft = raw`，`firstSeenUtc = now`，保留 intent |
-| `PendingUser/NaturalSwitch` | `StabilizationTimerFired` | deadline 到 | `Steady(raw, fallback=true)` | intent 未过期 → `Slide(direction)`；否则 `Replace` |
-| `Confirming` | `GsmtcSessionsChanged` | raw 与 draft 不一致 | `PendingUserSwitch`（保留 intent）| 丢弃 draft |
-| `Confirming` | `GsmtcSessionsChanged / MetadataSettleTimerFired` | (now - firstSeenUtc) ≥ MetadataSettleMs | `Steady(confirmed)` | emit `Slide(intent.direction)` 或 `Replace`；提升 `pendingThumbnail` → thumbnail；消费 intent |
-| 任意 | `NotificationBegin` |  | `NotifyingOverlay(inner=current)` | emit `FlagsOnly` kind=Notifying |
-| `NotifyingOverlay` | `NotificationEnd` |  | inner（可能已在内部迁移到新 Steady） | emit `ResumeAfterNotification` |
-| `NotifyingOverlay` | 其它事件 |  | 递归喂 inner | inner 迁移在幕后进行，不对外发 frame（累计到 Resume 时一起发）|
+| `Idle` | `GsmtcSessionsChanged` | sessions >= 1 | `Steady` | pick winner via `FocusArbitrationPolicy`, emit `Replace` frame |
+| `Steady` | `UserSkipRequested` | session can be stabilized | `PendingUserSwitch` | capture frozen; `intent = SwitchIntent(fingerprint, direction, now + SkipTransitionTimeoutMs, Skip)` |
+| `Steady` | `GsmtcSessionsChanged` | shown session is near end + metadata about to change | `PendingNaturalSwitch` | capture frozen |
+| `Steady` | `GsmtcSessionsChanged` | focus needs to switch (arbiter decision) | `Steady` (new track) | `Transition = Replace` (no user intent) |
+| `PendingUser/NaturalSwitch` | `GsmtcSessionsChanged` | raw looks like a paused tab (Paused, or pos far from 0, or empty title) | self | **do not change baseline, do not emit**, do not refresh thumbnail baseline |
+| `PendingUser/NaturalSwitch` | `GsmtcSessionsChanged` | raw Playing + pos<=3s + title differs from baseline + title is concrete | `Confirming` | `draft = raw`, `firstSeenUtc = now`, intent preserved |
+| `PendingUser/NaturalSwitch` | `StabilizationTimerFired` | deadline reached | `Steady(raw, fallback=true)` | if intent not expired → `Slide(direction)`; otherwise `Replace` |
+| `Confirming` | `GsmtcSessionsChanged` | raw differs from draft | `PendingUserSwitch` (intent preserved) | drop draft |
+| `Confirming` | `GsmtcSessionsChanged / MetadataSettleTimerFired` | `(now - firstSeenUtc) >= MetadataSettleMs` | `Steady(confirmed)` | emit `Slide(intent.direction)` or `Replace`; promote `pendingThumbnail` to thumbnail; consume intent |
+| any | `NotificationBegin` |  | `NotifyingOverlay(inner=current)` | emit `FlagsOnly` kind=Notifying |
+| `NotifyingOverlay` | `NotificationEnd` |  | inner (which may itself have migrated to a new Steady internally) | emit `ResumeAfterNotification` |
+| `NotifyingOverlay` | other events |  | recurse into inner | inner migrates offscreen; no frame emitted until Resume collapses everything |
 
-### 4.5 `SwitchIntent` 生命周期
+### 4.5 `SwitchIntent` lifecycle
 
 ```csharp
 record SwitchIntent(
     MediaTrackFingerprint Origin,
     ContentTransitionDirection Direction,
-    DateTimeOffset DeadlineUtc);
+    DateTimeOffset DeadlineUtc,
+    SwitchIntentSource Source); // Skip | SessionSelect
+
+enum SwitchIntentSource { Skip, SessionSelect }
 ```
 
-- 写入：`UserSkipRequested / UserSelectSession`。
-- 保留：`now ≤ Deadline && CurrentFingerprint == Origin`。
-- 消费：`Confirming → Steady` 且 `newFingerprint != Origin`。
-- 覆盖：下一次用户 skip / select；保留 Origin 不变（连点仍指向原来的点击起点）。
-- 丢弃：Deadline 过期；或 fallback 后仍过期。
-- **状态标志翻转、其它 session 变化、通知覆盖均不消费 intent**。
+- Written by: `UserSkipRequested` (`Source = Skip`) / `UserSelectSession`
+  (`Source = SessionSelect`).
+- Retained while: `now <= Deadline && CurrentFingerprint == Origin`.
+- Consumed on: `Confirming → Steady` where `newFingerprint != Origin`, OR the
+  first `fpChanged` steady-to-steady transition after the intent was captured.
+- Overwritten by: the next user skip / select (Origin is kept so consecutive
+  clicks still animate from the original anchor).
+- Dropped when: deadline expires, or fallback still finds it expired.
+- **State-flag flips, other-session churn, and notification overlays never
+  consume the intent.**
 
-### 4.6 Confirming 的 settle 规则（取代 `StabilizationMetadataConfirmationHoldMs`）
+#### Why `Source` matters — the Confirming detour
 
-常量建议：
+`Confirming` exists to absorb Chrome's paused-tab metadata flash that can
+appear for <=250ms between the user clicking skip and the real next track
+arriving. A skip intent therefore *always* detours through Confirming on the
+first fp change, even if `MediaService` released stabilization so quickly
+that no `Switching` kind was observed.
+
+A `SessionSelect` intent is fundamentally different: the user picked a
+visible session from the picker, so the target is known, stable, and free
+of Chrome paused-tab ambiguity. Forcing that intent through Confirming would
+strand the scroll-to-switch animation for the 250ms settle window and feel
+broken. `intentForcesConfirming` in `ReconcileDisplay` is therefore gated on
+`Source == Skip`.
+
+### 4.6 Confirming settle rule (replaces `StabilizationMetadataConfirmationHoldMs`)
+
+Constants:
+
 ```
-MetadataSettleMs            = 250  // 期待 draft 保持一致
-StabilizationMetadataConfirmationHoldMs = 删除
-SkipTransitionTimeoutMs     = 10000 (沿用)
-NaturalEndingTransitionTimeoutMs = 3000 (沿用)
+MetadataSettleMs                         = 250   // how long draft must stay consistent
+StabilizationMetadataConfirmationHoldMs  = removed
+SkipTransitionTimeoutMs                  = 10000 (unchanged)
+NaturalEndingTransitionTimeoutMs         = 3000  (unchanged)
 ```
 
-逻辑：
-- 进入 `Confirming(draft, firstSeenUtc)`。
-- 收到 metadata write：
-  - 与 draft 一致 → `lastConfirmedUtc = now`；若 `now - firstSeenUtc ≥ MetadataSettleMs` → release。
-  - 不一致 → 回到 `PendingUserSwitch`（保留 intent），重置 draft。
-- 收到 thumbnail：写入 `pendingThumbnail`，不影响 settle 判定。
-- 到 stabilization deadline 仍没 release → fallback。
+Logic:
+- Enter `Confirming(draft, firstSeenUtc)`.
+- On metadata write:
+  - Matches draft → `lastConfirmedUtc = now`; if
+    `now - firstSeenUtc >= MetadataSettleMs` → release.
+  - Mismatches → go back to `PendingUserSwitch` (intent preserved), reset
+    draft.
+- On thumbnail: write into `pendingThumbnail`, does not affect settle check.
+- If we hit the stabilization deadline without releasing → fallback.
 
-### 4.7 对外契约
+### 4.7 Public contract
 
 ```csharp
 public enum PresentationKind { Empty, Steady, Switching, Confirming, Missing, Notifying }
@@ -210,219 +271,328 @@ public sealed record MediaPresentationFrame(
     AiOverrideSnapshot? AiOverride);
 ```
 
-**不变量**：
-1. `Sequence` 严格递增；UI 忽略旧 frame。
-2. `Transition != None ⇒ fingerprint 有变化 或 Transition == ResumeAfterNotification`。
-3. Fingerprint 变化 ⇒ 必产生一个 `Transition != None`（动画机会不丢）。
-4. `PresentationKind` 变化（如 Steady→Switching→Confirming）但 Fingerprint 不变 ⇒ `Transition = None`（UI 只更新 chip 文案，不动主视觉）。
-5. `Pending*` 内部状态不对外发 frame（除非包在 `NotifyingOverlay` 里，作为 inner pass‑through 聚合到 Resume）。
-6. `Thumbnail` 在 `Pending/Confirming` 期间只存活于 `pendingThumbnail`，不会被读进 Frame.Session。
+**Invariants**:
+1. `Sequence` strictly increases; the UI ignores stale frames.
+2. `Transition != None ⇒ fingerprint changed OR Transition == ResumeAfterNotification`.
+3. Fingerprint change ⇒ exactly one `Transition != None` is produced
+   (no dropped animation opportunities).
+4. `PresentationKind` changes (Steady→Switching→Confirming) without a
+   fingerprint change ⇒ `Transition = None` (the UI only updates the chip,
+   it does not move the main visual).
+5. `Pending*` internal states do not emit frames (except while wrapped in
+   `NotifyingOverlay` as inner pass-through, which is collapsed on Resume).
+6. Thumbnail in `Pending/Confirming` only lives in `pendingThumbnail`; it
+   never leaks into `Frame.Session`.
 
-### 4.8 MainWindow.Media 重新定位
+### 4.8 MainWindow.Media after the refactor
 
-`MainWindow.Media.cs` 仅剩：
-- 订阅 `MediaPresentationMachine.FrameProduced`。
-- 把 frame 喂给 `ExpandedMediaView.UpdateMedia(frame)` / `ImmersiveMediaView.UpdateMedia(frame)`。
-- 根据 frame 驱动：
+`MainWindow.Media.cs` keeps only:
+- A subscription to `MediaPresentationMachine.FrameProduced`.
+- Feeding the frame into `ExpandedMediaView.UpdateMedia(frame)` /
+  `ImmersiveMediaView.UpdateMedia(frame)`.
+- Driving from the frame:
   - `IslandController.UseImmersiveDimensions`
   - `UpdateRenderLoopState`
-  - progress reset（以 `frame.ProgressFingerprint` 为准）
-- 转发用户输入事件到 Machine（`UserSkipRequested` / `UserSelectSession` / `UserManualUnlock`）。
+  - Progress reset (gated on `frame.ProgressFingerprint`)
+- Forwarding user input events to the machine (`UserSkipRequested` /
+  `UserSelectSession` / `UserManualUnlock`).
 
-全部移除：`_pendingMediaTransitionDirection`、`_selectedSessionKey`、`_selectionLockUntilUtc`、`_sessionVisualOrderKeys`、`_lastDisplayed*`、`_ai*` 等字段。
+All removed: `_pendingMediaTransitionDirection`, `_selectedSessionKey`,
+`_selectionLockUntilUtc`, `_sessionVisualOrderKeys`, `_lastDisplayed*`, the
+`_ai*` fields.
 
-### 4.9 IslandController 边界收紧
+### 4.9 Tightening `IslandController`
 
-- `IsNotifying` 改名 `IsForcedExpanded`，只由 `NotificationOverlayPolicy` 通过一个窄 API 设置。
-- Session Picker、Notification 不再直接访问 `_controller.IsNotifying` / `IsTransientSurfaceOpen`；都走 policy → controller。
+- Rename `IsNotifying` → `IsForcedExpanded`, set only by
+  `NotificationOverlayPolicy` through a narrow API.
+- Session Picker and Notification code no longer reach into
+  `_controller.IsNotifying` / `IsTransientSurfaceOpen` directly; they route
+  through policy → controller.
 
 ---
 
-## 5. 事件流示例
+## 5. Event-flow examples
 
-### 5.1 Chrome 正常切歌（Skip Next）
+### 5.1 Normal Chrome skip-next
 
 ```
 t0      User clicks Skip
         Dispatch(UserSkipRequested(Forward))
         Steady(A) → PendingUserSwitch{ frozen=A, intent(A→?, Forward, deadline=t0+10s) }
         (no frame)
-t0+300  Chrome 上报 paused tab B 的 title
-        guard: Paused & 非 fresh → 保持 Pending；不改 baseline；pendingThumbnail 不写
+t0+300  Chrome pushes paused tab B's title
+        guard: Paused & not fresh → stay Pending; baseline unchanged; pendingThumbnail untouched
         (no frame)
-t0+800  Chrome 上报 Playing + pos=0.1s，但 raw.title 还是 B
-        guard: title=B=baseline? 若等则 title 还没换，保持 Pending
-t0+1100 Chrome 上报 real title C + Artist C
-        guard: title=C, 具体, 与 baseline 不同 → Confirming{draft=C, firstSeenUtc=t0+1100}
+t0+800  Chrome pushes Playing + pos=0.1s, but raw.title is still B
+        guard: title == baseline? if so, title hasn't flipped yet — stay Pending
+t0+1100 Chrome pushes the real title C + Artist C
+        guard: title=C, concrete, differs from baseline → Confirming{ draft=C, firstSeenUtc=t0+1100 }
         (no frame)
-t0+1350 Chrome 再上报 title C（或无新 metadata 但 settle timer 到）
-        now - firstSeenUtc = 250 ms ≥ MetadataSettleMs
-        Confirming → Steady(C), Transition=SlideForward（intent 未过期且匹配）
-        pendingThumbnail 提升为 thumbnail
+t0+1350 Chrome re-confirms C (or no metadata change but settle timer fires)
+        now - firstSeenUtc = 250 ms >= MetadataSettleMs
+        Confirming → Steady(C), Transition=SlideForward (intent still valid, matches origin)
+        pendingThumbnail promoted to thumbnail
         emit Frame(Sequence+1, C, Kind=Steady, Transition=SlideForward)
 ```
 
-UI 收到 `SlideForward` → 左右划动画播放。
-Chrome 慢也不怕：intent deadline 是 10 s。
+UI gets `SlideForward` → slide animation plays. Even if Chrome is slow, the
+intent deadline is 10s so animation is still picked up correctly.
 
-### 5.2 通知覆盖期间切歌
+### 5.2 Track change behind a notification overlay
 
 ```
 t0      NotificationBegin(payload)
         Steady(A) → NotifyingOverlay(inner=Steady(A))
         emit Frame(Kind=Notifying, Transition=None)
-t0+500  GSMTC 切歌到 C（走完 Pending → Confirming → Steady）
+t0+500  GSMTC moves to C (runs Pending → Confirming → Steady inside the overlay)
         inner: Steady(A) → ... → Steady(C, pendingTransition=Slide)
-        对外不发 frame（被 overlay 遮住）
+        no outward frame (overlay masks it)
 t0+2500 NotificationEnd
         NotifyingOverlay → Steady(C)
         emit Frame(Kind=Steady, Transition=ResumeAfterNotification, Fingerprint=C)
 ```
 
-UI 看到 ResumeAfterNotification 可以选择 `Crossfade` 或 `Slide`（策略可配置），**动画不丢**。
+On Resume the UI can pick `Crossfade` or `Slide` (strategy is configurable):
+**the animation is never lost.**
 
-### 5.3 连点 Skip 两次
+### 5.3 Rapid double-skip
 
 ```
-Skip(1): Steady(A) → PendingUserSwitch{ frozen=A, intent₁(A→?, Forward, t₁) }
-(800ms 后，raw 已被 Chrome 更新为 paused B，但 baseline 未改)
+Skip(1): Steady(A) → PendingUserSwitch{ frozen=A, intent1(A→?, Forward, t1) }
+(800ms later, raw has already been updated by Chrome to paused tab B, but
+baseline is unchanged)
 Skip(2): UserSkipRequested(Forward)
-         re‑arm guard: raw 非 Playing/fresh → 拒绝把 baseline 换成 B
-         intent = SwitchIntent(A, Forward, new deadline t₂)  ← Origin 仍是 A
-最终 C 到来 → Confirming → Steady(C), SlideForward
+         re-arm guard: raw is not Playing/fresh → refuse to replace baseline with B
+         intent = SwitchIntent(A, Forward, new deadline t2)  ← Origin is still A
+Eventually C arrives → Confirming → Steady(C), SlideForward
 ```
 
-不会把 B 封进 frozen baseline，也不会泄露 B。
+B is never sealed into the frozen baseline, and never leaks.
 
-### 5.4 稳定化超时兜底
+### 5.4 Stabilization timeout fallback
 
 ```
 Skip → PendingUserSwitch
-... 10 s 内未收到 Playing + concrete title
+... 10s elapse without a Playing + concrete title
 StabilizationTimerFired → Steady(raw_fallback, IsFallback=true)
-  if intent 未过期 → Transition=SlideForward
+  if intent still valid → Transition=SlideForward
   else → Transition=Replace
 ```
 
-UI 仍然拿得到动画机会（如果 intent 仍然有效）。
+The UI still gets an animation opportunity as long as the intent is intact.
 
 ---
 
-## 6. 关键不变量（可写成 debug assertion）
+## 6. Key invariants (can be written as debug assertions)
 
-1. `frame.Sequence` 严格递增。
-2. `frame.Transition == SlideForward | SlideBackward ⇒ frame.Fingerprint != previous.Fingerprint`。
-3. `previous.Fingerprint != frame.Fingerprint ⇒ frame.Transition != None`。
-4. `state ∈ {Pending*, Confirming}` 期间不发 frame（除非 overlay pass‑through 累计）。
-5. `SwitchIntent` 仅当 `CurrentFingerprint == intent.Origin && now ≤ intent.Deadline` 时保留。
-6. `frame.Session.Thumbnail` 永远来自已 settle 过的 metadata，而非 raw。
-
----
-
-## 7. 分阶段实施
-
-> 实施状态（截至当前分支）：P1 / P2 / P3a / P3b-1 / P3b-2 / P4a / P4b / P4c-1 / P4c-2a / P4c-2b / P4d / P5-log / P5-assert / P5-tests 均已合并。
-> 剩余工作：真机验证 + 依赖观测的后续调优。
-
-### P1 · 骨架迁移（行为不变）— ✅
-- 新建 `Services/Media/Presentation/*` 骨架。
-- `MediaFocusArbiter / Stabilization / SelectionLock / Ai override 缓存` 搬进 Policies，保持原行为。
-- `MediaPresentationMachine` 作为 `MediaService.SessionsChanged` 的下游，输出 frame；`MainWindow.Media` 仍临时沿用旧逻辑双订阅，方便 A/B 对比。
-
-### P2 · 动画三大根因 — ✅
-- `Fingerprint` 与 `PresentationKind` 分离，`CreateContentIdentity` 删除。
-- `SwitchIntent` 替代 `_pendingMediaTransitionDirection`；Deadline = `SkipTransitionTimeoutMs`。
-- `NotifyingOverlay` pass‑through + `ResumeAfterNotification`，彻底不再在通知中吞 identity。
-- 删除 `TrackSwitchIntentWindowMs`（合并到 intent deadline）。
-
-### P3 · 泄露三大根因 — ✅
-- ✅ `ArmSkipStabilization` re-arm 时拒绝 baseline 被非 fresh raw 覆盖（P3a）。
-- ✅ 删除 `StabilizationMetadataConfirmationHoldMs=80ms` 路径（P3a）。
-- ✅ `MediaService` 新增 `ThumbnailHash` (xxhash64 前 4KB，异步算，ref-change 时清空)，入 `MediaTrackFingerprint`（P3b-1）。
-- ✅ `Confirming` 状态 + `MediaMetadataSettleMs=250ms`（P3b-2）；仅在 `Switching → Steady` 的 fp 变更时介入，直接的 Steady→Steady fp 变更仍即时 emit。新增 `MetadataSettleTimerScheduleRequested` 事件 + MainWindow `_metadataSettleTimer` 驱动。
-
-### P4 · View 解耦 — ✅
-- ✅ `ExpandedMediaView.UpdateMedia(frame)` / `ImmersiveMediaView.UpdateMedia(frame)` 薄封装已落地；Immersive 的 `_lastAlbumArtIdentity` 改用 `MediaTrackFingerprint`（P4a）。
-- ✅ Visual ordering 搬入 Machine，`frame.OrderedSessions` 是稳定序；MainWindow `_sessionVisualOrderKeys` 删（P4b）。
-- ✅ `frame.Session` 作为 DisplayedSession，MainWindow `_focusArbiter` 删（P4c-1/2a）。
-- ✅ Manual-lock 状态 (`_selectedSessionKey` / `_selectionLockUntilUtc`) 全部搬入 `ManualSelectionLockPolicy`；MainWindow 只留 UI-thread DispatcherTimer 转发（P4c-2b）。
-- ✅ AI override 搬入 `AiOverridePolicy`；新增 `IAiOverrideResolver` + `AiOverrideResolverAdapter` 承载异步 resolve 并回派 `AiResolveCompletedEvent`；MainWindow 只剩 `ApplyFrameAiOverride(frame.AiOverride)` 与 `SettingsChangedEvent(AiOverride)` 派发（P4d）。
-
-### P5 · 观测 & 测试 — ✅
-- ✅ Machine 每次事件与每次 emit 都输出结构化日志 `{seq, state_from, state_to, transition, fp_from, fp_to, intent, notification, fallback}`（P5-log）。
-- ✅ `EmitFrame` 中以 `Debug.Assert` 写入 §6 不变式 #1/#2/#3；#4/#5/#6 仍推迟到 policy-level 检查（P5-assert）。
-- ✅ 7 条 P5 扩展测试 + 1 条 P3b-2 Confirming bounce 测试（现 74/74）。
+1. `frame.Sequence` strictly increases.
+2. `frame.Transition == SlideForward | SlideBackward ⇒
+    frame.Fingerprint != previous.Fingerprint`.
+3. `previous.Fingerprint != frame.Fingerprint ⇒ frame.Transition != None`.
+4. No frames while `state ∈ {Pending*, Confirming}` (except the overlay
+   pass-through, which collapses into Resume).
+5. `SwitchIntent` is kept only while
+   `CurrentFingerprint == intent.Origin && now <= intent.Deadline`.
+6. `frame.Session.Thumbnail` always comes from settled metadata, never raw.
 
 ---
 
-## 8. 与现有组件的映射
+## 7. Phased rollout
 
-| 现有 | 去向 | 处置 |
+> Rollout status (as of this branch): P1 / P2 / P3a / P3b-1 / P3b-2 / P4a /
+> P4b / P4c-1 / P4c-2a / P4c-2b / P4d / P4d-2 / P5-log / P5-assert /
+> P5-tests are all merged.
+> Remaining work: on-device validation and observation-driven tuning.
+
+### P1 · Skeleton migration (behavior-neutral) — ✅
+- Created the `Services/Media/Presentation/*` skeleton.
+- Moved `MediaFocusArbiter / Stabilization / SelectionLock / AI override
+  cache` into policies, preserving the original behavior.
+- `MediaPresentationMachine` runs downstream of
+  `MediaService.SessionsChanged` and emits frames; `MainWindow.Media` kept
+  the old code path in parallel for A/B comparison.
+
+### P2 · The three animation root causes — ✅
+- Split `Fingerprint` and `PresentationKind`; deleted
+  `CreateContentIdentity`.
+- `SwitchIntent` replaced `_pendingMediaTransitionDirection`;
+  `Deadline = SkipTransitionTimeoutMs`.
+- `NotifyingOverlay` with pass-through and `ResumeAfterNotification` — the
+  notification path never swallows identity again.
+- Removed `TrackSwitchIntentWindowMs` (folded into intent deadline).
+
+### P3 · The three leak root causes — ✅
+- ✅ `ArmSkipStabilization` re-arm now refuses to let baseline be overwritten
+  by non-fresh raw (P3a).
+- ✅ Removed the `StabilizationMetadataConfirmationHoldMs=80ms` path (P3a).
+- ✅ `MediaService` computes `ThumbnailHash` (xxhash64 of the first 4KB,
+  async, cleared on ref-change) and folds it into `MediaTrackFingerprint`
+  (P3b-1).
+- ✅ `Confirming` state + `MediaMetadataSettleMs=250ms` (P3b-2); only
+  engages on `Switching → Steady` fp change — direct Steady→Steady fp
+  changes still emit immediately. Added
+  `MetadataSettleTimerScheduleRequested` + a MainWindow-owned
+  `_metadataSettleTimer`.
+
+### P4 · View decoupling — ✅
+- ✅ `ExpandedMediaView.UpdateMedia(frame)` /
+  `ImmersiveMediaView.UpdateMedia(frame)` thin wrappers are in place;
+  `ImmersiveMediaView._lastAlbumArtIdentity` uses `MediaTrackFingerprint`
+  (P4a).
+- ✅ Visual ordering moved inside the machine; `frame.OrderedSessions` is
+  the stable order; MainWindow's `_sessionVisualOrderKeys` is deleted
+  (P4b).
+- ✅ `frame.Session` is the displayed session; MainWindow's `_focusArbiter`
+  is deleted (P4c-1 / 2a).
+- ✅ Manual-lock state (`_selectedSessionKey` / `_selectionLockUntilUtc`)
+  lives entirely in `ManualSelectionLockPolicy`; MainWindow keeps only the
+  UI-thread `DispatcherTimer` forwarder (P4c-2b).
+- ✅ AI override moved into `AiOverridePolicy`; added `IAiOverrideResolver`
+  + `AiOverrideResolverAdapter` that own the async resolve and dispatch
+  `AiResolveCompletedEvent` back into the machine; MainWindow is down to
+  `ApplyFrameAiOverride(frame.AiOverride)` and
+  `SettingsChangedEvent(AiOverride)` dispatch (P4d).
+
+### P4d-2 · Follow-ups (post-release regressions) — ✅
+
+- ✅ `SwitchIntent` gained a `Source` discriminator
+  (`Skip` | `SessionSelect`). `UserSelectSessionEvent` now bypasses the
+  Confirming detour entirely so the scroll-to-switch-session animation
+  fires immediately. Only `Skip` intents still force a Confirming pass
+  against Chrome's paused-tab flicker hazard. Regression lock-in:
+  `UserSelectSlidesImmediatelyWithoutConfirming`.
+- ✅ `EmitFrame` now reads the AI override off the **frame's own snapshot**
+  via `MediaPresentationMachineContext.AiOverrideLookup`
+  (`Func<MediaSessionSnapshot, AiOverrideSnapshot?>`), not off
+  `ActiveAiOverride` (which tracks the arbiter's winner). During
+  `Confirming` the emitted session is the previous track; using the
+  winner's override would tag the old snapshot with the next track's AI
+  title/artist, producing a one-frame raw-on-old flash before the Slide.
+  The lookup keys on `(SourceAppId, Title, Artist)` so same-SessionKey
+  back-to-back tracks resolve independently. Regression lock-in:
+  `ConfirmingFrameCarriesOldSessionsAiOverride`.
+
+### P5 · Observability & tests — ✅
+- ✅ Every event and every emit logs a structured line
+  `{seq, state_from, state_to, transition, fp_from, fp_to, intent, notification, fallback}`
+  (P5-log).
+- ✅ `EmitFrame` now has `Debug.Assert` checks for §6 invariants #1 / #2 /
+  #3; #4 / #5 / #6 remain at the policy layer (P5-assert).
+- ✅ 7 extra P5 tests + 1 P3b-2 Confirming-bounce test (currently 86/86
+  with the two P4d-2 regression tests added).
+
+---
+
+## 8. Mapping legacy components to new code
+
+| Legacy | Target | Disposition |
 |---|---|---|
-| `MediaService.Stabilization.cs` | `StabilizationPolicy` + `Pending*/Confirming` 状态 | Reason 枚举保留 |
-| `MediaFocusArbiter` | `FocusArbitrationPolicy` | 保留，签名不变 |
-| `_selectedSessionKey / _selectionLockUntilUtc / _selectionLockTimer` | `ManualSelectionLockPolicy` | 删 MainWindow 字段 |
-| `_pendingMediaTransitionDirection / _pendingMediaTransitionTimestamp` | `SwitchIntent` | 删 MainWindow 字段 |
-| `_lastDisplayedContentIdentity / _lastDisplayedProgressIdentity` | `Frame.Fingerprint / ProgressFingerprint` | 删 |
-| `_lastAiResolveContentIdentity / _lastAiOverrideLookupIdentity / _lastAiOverrideLookupResult` | `AiOverridePolicy` 内部缓存 | 删 |
-| `ShouldShowTransportSwitchingHint` / `CreateContentIdentity(...,switching)` | `PresentationKind.Switching` 独立字段 | 删原函数 |
-| `_controller.IsNotifying` | `IslandController.IsForcedExpanded` + `NotificationOverlayPolicy` | 收窄语义 |
-| `_sessionVisualOrderKeys / GetVisualOrderedSessions` | Machine 内部输出整理 | 保留实现 |
-| `_autoFocusTimer / SyncAutoFocusTimer` | Machine 调度 | 删 MainWindow 字段 |
-| `ImmersiveMediaView._lastAlbumArtIdentity / _isBusyTransport` | `frame.Fingerprint / frame.Kind == Switching` | 简化 |
-| `StabilizationMetadataConfirmationHoldMs` 常量 | 删除 | `MetadataSettleMs` 代替 |
-| `TrackSwitchIntentWindowMs` 常量 | 删除 | `SkipTransitionTimeoutMs` 代替 |
+| `MediaService.Stabilization.cs` | `StabilizationPolicy` + `Pending*/Confirming` states | Reason enum kept |
+| `MediaFocusArbiter` | `FocusArbitrationPolicy` | kept, signature unchanged |
+| `_selectedSessionKey / _selectionLockUntilUtc / _selectionLockTimer` | `ManualSelectionLockPolicy` | removed from MainWindow |
+| `_pendingMediaTransitionDirection / _pendingMediaTransitionTimestamp` | `SwitchIntent` | removed from MainWindow |
+| `_lastDisplayedContentIdentity / _lastDisplayedProgressIdentity` | `Frame.Fingerprint / ProgressFingerprint` | removed |
+| `_lastAiResolveContentIdentity / _lastAiOverrideLookupIdentity / _lastAiOverrideLookupResult` | internal cache in `AiOverridePolicy` | removed |
+| `ShouldShowTransportSwitchingHint` / `CreateContentIdentity(...,switching)` | `PresentationKind.Switching` as its own field | functions removed |
+| `_controller.IsNotifying` | `IslandController.IsForcedExpanded` + `NotificationOverlayPolicy` | narrowed |
+| `_sessionVisualOrderKeys / GetVisualOrderedSessions` | internal to the machine | implementation kept |
+| `_autoFocusTimer / SyncAutoFocusTimer` | scheduled by the machine | removed from MainWindow |
+| `ImmersiveMediaView._lastAlbumArtIdentity / _isBusyTransport` | `frame.Fingerprint / frame.Kind == Switching` | simplified |
+| `StabilizationMetadataConfirmationHoldMs` constant | removed | `MetadataSettleMs` took over |
+| `TrackSwitchIntentWindowMs` constant | removed | `SkipTransitionTimeoutMs` took over |
 
 ---
 
-## 9. 风险与取舍
+## 9. Risks and trade-offs
 
-1. **线程模型**：Machine 必须单线程消费事件（`Channel<TEvent>` + 专用 worker）。GSMTC 事件来自任意线程；UI 事件来自 DispatcherQueue；需要 dispatcher 桥 & back‑post 机制。
-2. **AI 改写时序**：AI 缓存未命中时先发未改写 frame，AI 完成后再发一次 `Transition=None, Kind` 不变的 frame 覆盖标题 —— 避免为 AI 改写多做一次 Slide。
-3. **P1 期间双订阅**：旧逻辑与 Machine 并行运行，用 debug log 对比 frame 与旧 identity。完成 A/B 验证后才切 P2。
-4. **NotifyingOverlay pass‑through** 是设计里最巧的一环：inner state 累计多次迁移时，Resume 只发最终 frame；如果期间已存在有效 intent 且 fingerprint 已变，Resume 应尽量播 `SlideX`，其它情况退化到 `Crossfade`。
-5. **测试覆盖**：迁移每条都要单测，初期工作量显著增加，但可以彻底消灭目前的偶现 bug。
-6. **Thumbnail hash**：`MediaTrackFingerprint.ThumbnailHash` 不能是引用等价（`IRandomAccessStreamReference` 每次可能重新发），需要 Service 在取到 thumbnail 时计算一个稳定的 hash（例如前 N 字节的 xxhash），否则"封面换但 fingerprint 不变"问题无解。
-
----
-
-## 10. 决策点（已决策）
-
-### D1 · Resume 帧默认动画 — **已决策**
-- 有有效 `SwitchIntent` 且 `fingerprint` 变化 → `SlideForward / SlideBackward`
-- 其余情况（通知期间未切歌 / intent 已过期）→ `Crossfade`
-- 绝不使用无动画的 `Replace`（会把 Resume 降级成硬切，体验差）
-- 实现要点：`NotifyingOverlay` inner 需保留"待发 Slide"标志（累计的 intent 在 Resume 时一次性消费）
-
-### D2 · `MetadataSettleMs` — **已决策 = 250 ms**
-- 常量位置：`IslandConfig.MediaMetadataSettleMs = 250`（可改）
-- 依据：Spotify <100 ms / YouTube Music 300–600 ms / 用户感知阈值 ~400 ms
-- 不采用动态 settle，固定值实现简单且已覆盖 90% 场景；慢路径由 `SkipTransitionTimeoutMs` fallback 兜底
-
-### D3 · `ThumbnailHash` 算法与触发点 — **已决策**
-- 算法：**xxhash64(thumbnail 流前 4 KB)**，异步执行
-- 触发点：`MediaService.UpdateMediaPropertiesAsync` 拿到新 thumbnail 后异步算 hash，写入 `TrackedSource.pendingThumbnailHash`；`Confirming → Steady` 提升时才读到 `Frame.Fingerprint`
-- 失败回退：`(Title, Artist, Duration, SourceAppId)` 作为弱 hash，`Frame` 上标记 `ThumbnailHashIsFallback = true`
-- 关键约束：frame 发出前 fingerprint 必须 ready，否则会出现 "相同内容 Slide" 的误判
-
-### D4 · `NotificationOverlayPolicy` 范围 — **已决策：职责切开**
-- Policy 只管：通知生命周期（Begin/End/Duration/Cancel）、Machine 覆盖语义、与 inner state 的 pass‑through 累计
-- `MainWindow.Notifications.cs` 保留：把 `NotificationPayload` 渲染成实际 UI（文案、header 图标、持续时间取法）
-- 对外契约：Frame 携带 `Kind = Notifying` 时附带 `NotificationPayload`；View 负责渲染
-
-### D5 · Machine `IDisposable` — **已决策：是**
-- Machine 持有 `Channel<TEvent>` + 专用 worker Task + 两个 timer（stabilization / metadataSettle）+ AI in‑flight token
-- `Dispose()` 责任：取消 worker（CancellationToken）、dispose timers、取消 AI 请求、从 `MediaService` 退订
-- 生命周期顺序：`MainWindow.Lifetime.cs` 关闭路径里 **`Machine.Dispose() → MediaService.Dispose()`**（否则 worker 可能在 dispose 后收到 stale 事件）
-- Worker 循环模式：`await channel.Reader.WaitToReadAsync(ct)`，token 取消即干净退出
+1. **Threading model**: the machine must consume events on a single thread
+   (`Channel<TEvent>` + dedicated worker). GSMTC events come from arbitrary
+   threads; UI events come from the dispatcher queue; a dispatcher-bridge +
+   back-post mechanism is required.
+2. **AI rewrite timing**: on cache miss we emit the un-rewritten frame first,
+   then on AI completion emit one more frame with `Transition=None` and the
+   same `Kind` that only refreshes the title — so we never produce an extra
+   Slide just for the AI rewrite.
+3. **Dual-subscription during P1**: the old logic and the machine run in
+   parallel; debug logs compare the frame stream against the old identity
+   stream. Only after the A/B check passes do we flip to P2.
+4. **NotifyingOverlay pass-through** is the subtlest piece of the design:
+   when the inner state migrates multiple times behind the overlay, Resume
+   emits only the final frame. If a valid intent plus changed fingerprint
+   ended up there, Resume prefers `SlideX`; otherwise it degrades to
+   `Crossfade`.
+5. **Test coverage**: every migration step requires dedicated tests; the
+   upfront cost is high but it pays off in eliminating the existing
+   intermittent bugs permanently.
+6. **Thumbnail hash**: `MediaTrackFingerprint.ThumbnailHash` cannot be
+   reference-equality based (`IRandomAccessStreamReference` can re-issue
+   the same bytes under a new reference). `MediaService` must compute a
+   stable hash when it gets the thumbnail, otherwise "cover art changed
+   but fingerprint didn't" is unsolvable.
 
 ---
 
-## 11. API 类型签名（最终契约）
+## 10. Decision points (resolved)
 
-所有类型位于 `wisland.Services.Media.Presentation` 命名空间（除非另行标注）。Model 类型可放 `wisland.Models`。
+### D1 · Default animation for the Resume frame — **resolved**
+- Valid `SwitchIntent` and fingerprint changed → `SlideForward /
+  SlideBackward`.
+- Otherwise (no track change behind the overlay, or intent expired) →
+  `Crossfade`.
+- Never no-op `Replace` (hard-cut Resume feels bad).
+- Implementation note: the `NotifyingOverlay` inner needs to carry a
+  "pending Slide" flag (the accumulated intent is consumed when Resume
+  emits).
 
-### 11.1 Frame / Fingerprint / 枚举
+### D2 · `MetadataSettleMs` — **resolved, = 250 ms**
+- Constant location: `IslandConfig.MediaMetadataSettleMs = 250` (tunable).
+- Rationale: Spotify <100ms / YouTube Music 300–600ms / user perception
+  threshold ~400ms.
+- No dynamic settle — a fixed value is simpler and already covers 90% of
+  cases; slow paths are caught by `SkipTransitionTimeoutMs` fallback.
+
+### D3 · `ThumbnailHash` algorithm and trigger point — **resolved**
+- Algorithm: **xxhash64 of the first 4 KB** of the thumbnail stream, async.
+- Trigger: after `MediaService.UpdateMediaPropertiesAsync` receives a new
+  thumbnail, it computes the hash asynchronously and writes it into
+  `TrackedSource.pendingThumbnailHash`; only on `Confirming → Steady` is
+  it promoted into the frame's `Fingerprint`.
+- Fallback: `(Title, Artist, Duration, SourceAppId)` is a weak hash; the
+  frame is marked `ThumbnailHashIsFallback = true`.
+- Key constraint: the fingerprint must be ready before the frame is
+  emitted, otherwise we hit "same content Slide" false positives.
+
+### D4 · `NotificationOverlayPolicy` scope — **resolved, responsibilities split**
+- The policy owns: notification lifecycle (Begin/End/Duration/Cancel), the
+  overlay semantics inside the machine, and the pass-through aggregation
+  over the inner state.
+- `MainWindow.Notifications.cs` still owns: turning a
+  `NotificationPayload` into actual UI (text, header icon, duration
+  resolution).
+- Public contract: frames with `Kind = Notifying` carry a
+  `NotificationPayload`; the view renders it.
+
+### D5 · Machine `IDisposable` — **resolved, yes**
+- The machine owns a `Channel<TEvent>`, a dedicated worker `Task`, two
+  timers (stabilization / metadataSettle), and an AI-resolve in-flight
+  token.
+- `Dispose()` responsibilities: cancel the worker (CancellationToken),
+  dispose the timers, cancel the AI request, unsubscribe from
+  `MediaService`.
+- Lifecycle order: on shutdown
+  `Machine.Dispose() → MediaService.Dispose()` (otherwise the worker
+  could receive stale events).
+- Worker loop pattern: `await channel.Reader.WaitToReadAsync(ct)`, cancel
+  the token for a clean exit.
+
+---
+
+## 11. API type signatures (final contract)
+
+All types live under `wisland.Services.Media.Presentation` unless marked
+otherwise. Model types live under `wisland.Models`.
+
+### 11.1 Frame / Fingerprint / enums
 
 ```csharp
 namespace wisland.Models;
@@ -431,9 +601,10 @@ public enum PresentationKind
 {
     Empty,
     Steady,
-    Switching,       // Pending* 时的 UI hint（machine 本身 Pending 不发 frame，
-                     // 这个枚举值通过 NotifyingOverlay inner pass-through 或
-                     // fallback 时携带给 UI 显示 "Switching" chip 文字）
+    Switching,       // UI hint during Pending*. The machine itself emits no
+                     // frame from Pending; this value is carried out via
+                     // NotifyingOverlay pass-through or on fallback so the
+                     // UI can show the "Switching" chip text.
     Confirming,
     Missing,
     Notifying
@@ -490,10 +661,13 @@ public sealed record MediaPresentationFrame(
 ```csharp
 namespace wisland.Services.Media.Presentation;
 
+public enum SwitchIntentSource { Skip, SessionSelect }
+
 public readonly record struct SwitchIntent(
     MediaTrackFingerprint Origin,
     ContentTransitionDirection Direction,
-    DateTimeOffset DeadlineUtc)
+    DateTimeOffset DeadlineUtc,
+    SwitchIntentSource Source = SwitchIntentSource.Skip)
 {
     public bool IsExpired(DateTimeOffset nowUtc) => nowUtc > DeadlineUtc;
     public bool MatchesOrigin(MediaTrackFingerprint current)
@@ -503,7 +677,7 @@ public readonly record struct SwitchIntent(
 }
 ```
 
-### 11.3 事件
+### 11.3 Events
 
 ```csharp
 namespace wisland.Services.Media.Presentation;
@@ -534,16 +708,16 @@ public sealed class MediaPresentationMachine : IDisposable
 {
     public MediaPresentationMachine(
         MediaService mediaService,
-        IReadOnlyList<IPresentationPolicy> policies,   // 注入顺序决定求解顺序
+        IReadOnlyList<IPresentationPolicy> policies,   // injection order = resolve order
         AiSongResolverService? aiResolver,
-        IDispatcherPoster dispatcherPoster);           // 把 frame post 回 UI 线程
+        IDispatcherPoster dispatcherPoster);           // posts frames back to the UI thread
 
     public event Action<MediaPresentationFrame>? FrameProduced;
 
-    // 输入
+    // Input
     public void Dispatch(PresentationEvent evt);
 
-    // 生命周期
+    // Lifecycle
     public void Start();
     public void Dispose();
 }
@@ -554,15 +728,16 @@ public interface IDispatcherPoster
 }
 ```
 
-### 11.5 Policy 抽象
+### 11.5 Policy abstraction
 
 ```csharp
 namespace wisland.Services.Media.Presentation;
 
 public interface IPresentationPolicy
 {
-    // 有状态 policy 在此声明自己维护的 "shadow state" 读接口
-    // Machine 在特定状态迁移时调用 OnEvent 给 policy 注入事件或问询
+    // A stateful policy declares its read-interface for "shadow state" here.
+    // The machine calls OnEvent at specific transitions to inject events or
+    // query the policy.
     void OnAttach(MediaPresentationMachineContext context);
     void OnEvent(PresentationEvent evt, MediaPresentationMachineContext context);
     void OnTick(DateTimeOffset nowUtc, MediaPresentationMachineContext context);
@@ -573,14 +748,16 @@ public sealed class MediaPresentationMachineContext
     public DateTimeOffset NowUtc { get; internal set; }
     public IReadOnlyList<MediaSessionSnapshot> Sessions { get; internal set; } = Array.Empty<MediaSessionSnapshot>();
 
-    // Policy 可写：arbiter / manual lock / stabilization / ai / notification
+    // Policy-writable: arbiter / manual lock / stabilization / ai / notification
     public string? ManualLockedSessionKey { get; internal set; }
     public bool HasManualLock { get; internal set; }
     public StabilizationDirective StabilizationDirective { get; internal set; }
     public AiOverrideSnapshot? ActiveAiOverride { get; internal set; }
+    // Per-frame AI override lookup (see §12.4). Keyed on the snapshot itself.
+    public Func<MediaSessionSnapshot, AiOverrideSnapshot?>? AiOverrideLookup { get; internal set; }
     public NotificationPayload? ActiveNotification { get; internal set; }
 
-    // Machine 工具
+    // Machine utilities
     public void ScheduleStabilizationTimer(DateTimeOffset dueUtc);
     public void ScheduleMetadataSettleTimer(DateTimeOffset dueUtc);
     public void ScheduleAutoFocusTimer(DateTimeOffset? dueUtc);
@@ -592,136 +769,92 @@ public readonly record struct StabilizationDirective(
     MediaSessionSnapshot? FrozenSnapshot);
 ```
 
-### 11.6 具体 Policy 类
+### 11.6 Concrete policy classes
 
 ```csharp
-public sealed class FocusArbitrationPolicy : IPresentationPolicy { /* 包 MediaFocusArbiter */ }
-public sealed class ManualSelectionLockPolicy : IPresentationPolicy { /* SelectionLockDurationMs */ }
+public sealed class FocusArbitrationPolicy : IPresentationPolicy
+{
+    public FocusArbitrationPolicy(MediaFocusArbiter inner);
+    // The inner arbiter is retained verbatim; the policy only translates
+    // events into Resolve() calls and writes winner into the context.
+}
+
+public sealed class ManualSelectionLockPolicy : IPresentationPolicy
+{
+    public ManualSelectionLockPolicy(TimeSpan lockDuration);
+    // Replaces _selectedSessionKey / _selectionLockUntilUtc logic.
+}
+
 public sealed class StabilizationPolicy : IPresentationPolicy
 {
-    // 吸收 ArmSkipStabilization / TryArmNaturalEndingStabilization / Confirming 流程
-    // 持有 pendingThumbnail / pendingThumbnailHash 以解 C6 泄露
+    public StabilizationPolicy(IStabilizationConfig config);
+    // Owns SkipTransition / NaturalEnding / fresh-track; re-arm is gated by
+    // "raw must look fresh (Playing + pos small + title concrete)".
 }
+
 public sealed class AiOverridePolicy : IPresentationPolicy
 {
-    // 原 ApplyAiOverride + GetCachedAiOverride + TryRequestAiResolveAsync
-    // 异步完成后 Dispatch(AiResolveCompletedEvent)
+    public AiOverridePolicy(IAiOverrideResolver resolver);
+    // Maintains _lastAiResolveIdentity / _lastAiOverrideLookupIdentity /
+    // _lastAiOverrideLookupResult equivalents internally; surfaces both
+    // context.ActiveAiOverride (winner view) and context.AiOverrideLookup
+    // (per-snapshot view used by EmitFrame — see §12.4).
 }
+
 public sealed class NotificationOverlayPolicy : IPresentationPolicy
 {
-    // 只管生命周期和覆盖语义
+    public NotificationOverlayPolicy();
+    // Drives NotifyingOverlay wrapping + Resume emission.
 }
 ```
 
-### 11.7 MediaService 扩展（最小改动）
+### 11.7 Helper types
 
 ```csharp
-public sealed partial class MediaService
+// Thumbnail hash computation lives in MediaService, not in the machine.
+namespace wisland.Services.Media;
+
+internal static class ThumbnailHasher
 {
-    // 新增：pendingThumbnail + hash
-    // TrackedSource 里增加:
-    //   internal string? PendingThumbnailHash;
-    //   internal IRandomAccessStreamReference? PendingThumbnail;
-
-    // 新增一个纯输出管道：不再依赖 SessionsChanged 多路径
-    public event Action<IReadOnlyList<MediaSessionSnapshot>>? RawSessionsChanged;
-
-    // ArmSkipStabilization re-arm 时拒绝在 raw 非 fresh 状态下刷 baseline
-    // ComputeThumbnailHashAsync(thumbnail): xxhash64(前 4 KB) | 失败返回 null
+    public static Task<string?> ComputeAsync(IRandomAccessStreamReference? reference);
+    // ComputeThumbnailHashAsync(thumbnail): xxhash64 of first 4KB; null on failure.
 }
 ```
 
 ---
 
-## 12. 按阶段的逐文件改动清单
+## 12. Per-phase file-by-file change list
 
-> 每阶段都可独立合并、独立发布。编号 = 改动序号。
+> Every phase can be merged and shipped independently. Numbers = change
+> ordinal.
 
-### P1 · 骨架迁移（零行为变化；并行双订阅）
+### P1 · Skeleton migration (behavior-neutral; dual subscription)
 
-新增：
-1. `Services/Media/Presentation/MediaPresentationMachine.cs`（骨架 + event loop，不发 frame）
+New files:
+1. `Services/Media/Presentation/MediaPresentationMachine.cs` (skeleton + event
+   loop; emits no frames yet)
 2. `Services/Media/Presentation/MediaPresentationMachineContext.cs`
 3. `Services/Media/Presentation/IPresentationPolicy.cs`
-4. `Services/Media/Presentation/PresentationEvent.cs`（上 §11.3 所有 record）
+4. `Services/Media/Presentation/PresentationEvent.cs` (all records from
+   §11.3)
 5. `Services/Media/Presentation/SwitchIntent.cs`
-6. `Services/Media/Presentation/Policies/FocusArbitrationPolicy.cs`（包 `MediaFocusArbiter`）
+6. `Services/Media/Presentation/Policies/FocusArbitrationPolicy.cs` (wraps
+   `MediaFocusArbiter`)
 7. `Services/Media/Presentation/Policies/ManualSelectionLockPolicy.cs`
-8. `Services/Media/Presentation/Policies/StabilizationPolicy.cs`（仅搬 Stabilization.cs 逻辑，未改规则）
+8. `Services/Media/Presentation/Policies/StabilizationPolicy.cs` (just the
+   port of Stabilization.cs; rules unchanged)
 9. `Services/Media/Presentation/Policies/AiOverridePolicy.cs`
 10. `Services/Media/Presentation/Policies/NotificationOverlayPolicy.cs`
-11. `Models/MediaPresentationFrame.cs`（含 `PresentationKind`、`FrameTransitionKind`、`MediaTrackFingerprint`、`AiOverrideSnapshot`、`NotificationPayload`）
-12. `wisland.Tests/MediaPresentationMachineTests.cs`（空，占位）
+11. `Models/MediaPresentationFrame.cs` (contains `PresentationKind`,
+    `FrameTransitionKind`, `MediaTrackFingerprint`, `AiOverrideSnapshot`,
+    `NotificationPayload`)
+12. `wisland.Tests/MediaPresentationMachineTests.cs` (empty placeholder)
 
-修改：
-13. `MainWindow.xaml.cs`：实例化 Machine 但**不接它的 frame**，仅订阅打日志。
-14. `MainWindow.Lifetime.cs`：关闭时先 `machine.Dispose()`，再 `mediaService.Dispose()`。
+Changes:
+13. `MainWindow.xaml.cs`: instantiate the machine but **do not consume its
+    frames**; subscribe only to log.
+14. `MainWindow.Lifetime.cs`: on shutdown call `machine.Dispose()` before
+    `mediaService.Dispose()`.
 
-Phase 出口判定：build + 现有测试通过；Machine 日志输出事件序列可与旧 `SyncMediaUI` 行为比对。
-
-### P2 · 动画三大根因（C1/C2/C3）
-
-修改：
-15. `Models/MediaPresentationFrame.cs`：`Transition/Fingerprint/Kind` 正式启用。
-16. `Services/Media/Presentation/MediaPresentationMachine.cs`：输出 `FrameProduced` 事件，完整覆盖 §4.4 迁移表（其中 Confirming 可先用固定 0ms settle 通过测试，P3 再收紧）。
-17. `MainWindow.Media.cs`：
-    - 删除 `_pendingMediaTransitionDirection / _pendingMediaTransitionTimestamp` 字段 + 相关函数
-    - 删除 `_lastDisplayedContentIdentity / _lastDisplayedProgressIdentity`
-    - 删除 `ShouldShowTransportSwitchingHint / CreateContentIdentity / CreateProgressIdentity`
-    - `SyncMediaUI` 改名 `OnFrameProduced(MediaPresentationFrame frame)`，仅做 UI 分发
-18. `Views/ExpandedMediaView.xaml.cs`：新增 `UpdateMedia(MediaPresentationFrame)`，保留旧重载兼容到 P4。
-19. `Views/ImmersiveMediaView.xaml.cs`：同上。
-20. `MainWindow.Notifications.cs`：`ShowNotification` 改为 `Dispatch(NotificationBeginEvent/End)`；`_controller.IsNotifying` 改名 `IsForcedExpanded` 或由 `NotificationOverlayPolicy` 推送。
-21. `Services/IslandController.cs`：`IsNotifying` → `IsForcedExpanded`，引用点更新。
-22. 删除常量：`IslandConfig.TrackSwitchIntentWindowMs`。
-
-Phase 出口判定：手测连续切歌 10+ 次动画稳定；单测覆盖 §4.4 关键行。
-
-### P3 · 泄露三大根因（C4/C5/C6）
-
-修改：
-23. `Services/Media/MediaService.SourceTracking.cs`：`TrackedSource` 增加 `PendingThumbnail / PendingThumbnailHash`。
-24. `Services/Media/MediaService.Refresh.cs`：thumbnail 写入改为写 `pendingThumbnail`，并启动 `ComputeThumbnailHashAsync`；完成后写 `pendingThumbnailHash`。
-25. `Services/Media/MediaService.Stabilization.cs`：
-    - `ArmSkipStabilization` re‑arm 增加 "raw 必须 Playing + fresh 才允许更新 baseline" 守卫
-    - 删除 `StabilizationMetadataConfirmationHoldMs` 相关分支
-26. `Services/Media/Presentation/Policies/StabilizationPolicy.cs`：实现 Confirming settle（§4.6）
-27. `Models/IslandConfig.cs`：新增 `MediaMetadataSettleMs = 250`；删除 `StabilizationMetadataConfirmationHoldMs`。
-28. `Services/Media/MediaService.State.cs`：`CreateSnapshot` 的 `Thumbnail` 字段仅在非 Confirming/Pending 时读 raw；否则读 frozen。
-
-Phase 出口判定：多标签页 Chrome skip 压测，连点 5 次不再泄露 B tab 信息。
-
-### P4 · View 解耦
-
-修改：
-29. `Views/ExpandedMediaView.xaml.cs`：删除旧 `UpdateMedia(MediaSessionSnapshot?, …)` 重载；完全基于 frame。
-30. `Views/ImmersiveMediaView.xaml.cs`：同上；`_lastAlbumArtIdentity / _isBusyTransport` 改用 `frame.Fingerprint / frame.Kind`。
-31. `Controls/DirectionalContentTransitionCoordinator.cs`：新增 `ApplyByFrameKind(FrameTransitionKind)` 或等价分发函数。
-
-### P5 · 观测 & 测试
-
-32. `wisland.Tests/MediaPresentationMachineTests.cs`：
-    - `Steady → PendingUserSwitch → Confirming → Steady(Slide)`
-    - `PendingUserSwitch + Paused B tab → 保持 Pending`
-    - 连点 Skip → intent 更新但 Origin 不变
-    - NotificationBegin/End pass‑through → Resume 动画
-    - StabilizationTimer 兜底路径
-    - AiResolve 完成二次发 frame
-33. `Services/Media/Presentation/MediaPresentationMachine.cs`：结构化日志 `{seq, state_from, state_to, reason, fingerprint, intent}`。
-34. §6 不变量以 `Debug.Assert` 写入 Machine `EmitFrame`。
-
----
-
-## 13. 常量对照
-
-| 常量 | 当前 | 目标 |
-|---|---|---|
-| `TrackSwitchIntentWindowMs` | 1600 | **删除** |
-| `SkipTransitionTimeoutMs` | 10000 | 保留（作 SwitchIntent.Deadline）|
-| `NaturalEndingTransitionTimeoutMs` | 3000 | 保留 |
-| `SkipTransitionFreshTrackPositionSeconds` | 3.0 | 保留 |
-| `StabilizationMetadataConfirmationHoldMs` | 80 | **删除** |
-| `MediaMetadataSettleMs` | — | **新增 = 250** |
-| `MediaAutoSwitchDebounceMs` | 已有 | 保留 |
-| `MediaMissingGraceMs` | 已有 | 保留 |
-| `SelectionLockDurationMs` | 已有 | 保留 |
+Exit criterion: build + existing tests pass; the machine's event-stream log
+can be compared with the old `SyncMediaUI` behavior.
