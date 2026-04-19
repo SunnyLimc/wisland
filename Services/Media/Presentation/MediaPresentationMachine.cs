@@ -422,17 +422,43 @@ namespace wisland.Services.Media.Presentation
                 AiOverride: _context.ActiveAiOverride,
                 Notification: notification);
 
+            // §6 invariants (P5 item 34). Debug-only; only trip in tests / local
+            // builds so production is unaffected if a policy misbehaves.
+            System.Diagnostics.Debug.Assert(
+                frame.Sequence > _lastEmittedSequence,
+                $"Invariant #1 violated: Sequence must strictly increase (last={_lastEmittedSequence}, new={frame.Sequence})");
+
+            bool fpChanged = !fingerprint.Equals(_lastEmittedFingerprint);
+            bool isSlide = transition == FrameTransitionKind.SlideForward
+                        || transition == FrameTransitionKind.SlideBackward;
+
+            System.Diagnostics.Debug.Assert(
+                !isSlide || fpChanged,
+                $"Invariant #2 violated: Slide transition requires fingerprint change (transition={transition}, fp={DescribeFingerprint(fingerprint)})");
+
+            // Invariant #3: fp change ⇒ transition != None. Exception: the very
+            // first emit from an Empty baseline is allowed to use None only when
+            // the new fp is also Empty (i.e. startup idle). Any non-empty fp
+            // transition must be visually acknowledged.
+            bool baselineWasEmpty = _lastEmittedFingerprint.IsEmpty;
+            bool newIsEmpty = fingerprint.IsEmpty;
+            System.Diagnostics.Debug.Assert(
+                !fpChanged || transition != FrameTransitionKind.None || (baselineWasEmpty && newIsEmpty),
+                $"Invariant #3 violated: fingerprint changed but transition=None (fp_from={DescribeFingerprint(_lastEmittedFingerprint)}, fp_to={DescribeFingerprint(fingerprint)})");
+
             // Structured emit log (section 12 P5 item 33). Captures the seq, the
             // transition decision, fp delta across the emit boundary, and the
             // current intent so regressions can be diagnosed from logs alone.
             Logger.Debug($"[Machine] emit seq={frame.Sequence} kind={_lastEmittedKind}->{kind} transition={transition} fp_from=[{DescribeFingerprint(_lastEmittedFingerprint)}] fp_to=[{DescribeFingerprint(fingerprint)}] intent={DescribeIntent(_state.Intent)} notification={(notification != null ? "yes" : "no")} fallback={isFallback}");
 
+            _lastEmittedSequence = frame.Sequence;
             _lastEmittedKind = kind;
             _lastEmittedFingerprint = fingerprint;
 
             _dispatcherPoster.Post(() => FrameProduced?.Invoke(frame));
         }
 
+        private long _lastEmittedSequence = -1;
         private PresentationKind _lastEmittedKind = PresentationKind.Empty;
         private MediaTrackFingerprint _lastEmittedFingerprint = MediaTrackFingerprint.Empty;
 
