@@ -446,11 +446,12 @@ namespace wisland.Tests
             Assert.Equal(FrameTransitionKind.SlideBackward, h.Frames[0].Transition);
         }
 
-        // Scenario: thumbnail hash change alone (same session/title/artist)
-        // produces a Replace-style emit so views that key off the full
-        // fingerprint reload album art. This is the post-P3b-1 behavior.
+        // Scenario: a thumbnail-hash-only update (same session+title+artist)
+        // must NOT produce a Replace/Slide — §6 invariant #6 (thumbnail writes
+        // do not change logical identity). The frame still fires so downstream
+        // views can update album art but carries Transition=None.
         [Fact]
-        public void ThumbnailHashChangeEmitsReplaceFrame()
+        public void ThumbnailHashChangeEmitsRefreshFrame()
         {
             using var h = NewHarness();
             var baseSession = Session("s1", "Song A");
@@ -461,15 +462,14 @@ namespace wisland.Tests
             h.Machine.ProcessForTests(new GsmtcSessionsChangedEvent(new[] { baseSession }));
             Assert.Empty(h.Frames);
 
-            // Same title/artist/session but different thumbnail hash → fp changes
-            // and a non-Slide frame must fire (invariant #3 requires visible
-            // acknowledgement).
+            // Same title/artist/session but different thumbnail hash → fp
+            // changes at the hash level only. Emit a refresh frame so views
+            // can pick up the new album art, but Transition=None (not Replace
+            // and not Slide) because the logical identity is unchanged.
             var withHash = baseSession with { ThumbnailHash = "deadbeef12345678" };
             h.Machine.ProcessForTests(new GsmtcSessionsChangedEvent(new[] { withHash }));
             Assert.Single(h.Frames);
-            Assert.NotEqual(FrameTransitionKind.None, h.Frames[0].Transition);
-            Assert.NotEqual(FrameTransitionKind.SlideForward, h.Frames[0].Transition);
-            Assert.NotEqual(FrameTransitionKind.SlideBackward, h.Frames[0].Transition);
+            Assert.Equal(FrameTransitionKind.None, h.Frames[0].Transition);
             Assert.Equal("deadbeef12345678", h.Frames[0].Fingerprint.ThumbnailHash);
         }
 

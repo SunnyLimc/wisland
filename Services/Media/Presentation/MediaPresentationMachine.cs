@@ -290,10 +290,10 @@ namespace wisland.Services.Media.Presentation
 
         private void HandleAiResolveCompleted(AiResolveCompletedEvent evt)
         {
-            // P3/P4 will thread AI overrides through AiOverridePolicy. For P2
-            // we simply re-emit the current frame so any UI-visible override
-            // state can refresh without a slide. Without AiOverridePolicy
-            // populating ActiveAiOverride this is a harmless no-op.
+            // AiOverridePolicy.OnEvent ran first and populated
+            // context.ActiveAiOverride with evt.Result. Re-emit the current
+            // frame (Transition=None, same fingerprint) so views pick up the
+            // updated override label/artist without a slide.
             if (_state.IsNotifying || !_state.Initialized) return;
             EmitFrame(
                 session: _state.DisplayedSnapshot,
@@ -396,7 +396,12 @@ namespace wisland.Services.Media.Presentation
             bool intentBypass = _state.Intent.HasValue
                 && !_state.Intent.Value.IsExpired(_context.NowUtc)
                 && _state.Intent.Value.MatchesOrigin(_state.DisplayedFingerprint);
-            if (stabilizationJustEnded && fpChanged && !firstFrame && !intentBypass)
+            // Only detour through Confirming when the logical identity
+            // (session+title+artist) actually changed; a pure thumbnail-hash
+            // update on the same track should not trigger a 250ms settle.
+            bool identityChangedForConfirming =
+                !FingerprintIdentityEquals(fingerprint, _state.DisplayedFingerprint);
+            if (stabilizationJustEnded && fpChanged && identityChangedForConfirming && !firstFrame && !intentBypass)
             {
                 EnterConfirming(winner!.Value, fingerprint);
                 return;
@@ -408,7 +413,19 @@ namespace wisland.Services.Media.Presentation
             }
             else if (fpChanged)
             {
-                if (_state.Intent.HasValue
+                // §6 invariant #6: a thumbnail-hash-only change for the same
+                // logical track (same session+title+artist) must NOT produce a
+                // directional Slide or Replace. ThumbnailHash is computed
+                // asynchronously so it commonly lands a few hundred ms after
+                // the title/artist write; treating that as a new track would
+                // emit a spurious second frame (same song "flashes" or loses
+                // its already-played slide).
+                bool identityChanged = !FingerprintIdentityEquals(fingerprint, _state.DisplayedFingerprint);
+                if (!identityChanged)
+                {
+                    transition = FrameTransitionKind.None;
+                }
+                else if (_state.Intent.HasValue
                     && !_state.Intent.Value.IsExpired(_context.NowUtc)
                     && _state.Intent.Value.MatchesOrigin(_state.DisplayedFingerprint))
                 {
@@ -516,7 +533,10 @@ namespace wisland.Services.Media.Presentation
             }
 
             var rawFp = BuildFingerprint(winner.Value);
-            bool sameAsDraft = FingerprintEquals(rawFp, _state.ConfirmingDraftFingerprint);
+            // §4.6: thumbnail writes do not affect settle judgement. Compare
+            // on identity (session+title+artist); thumbnail hash arriving for
+            // the same logical draft is simply absorbed into the stored draft.
+            bool sameAsDraft = FingerprintIdentityEquals(rawFp, _state.ConfirmingDraftFingerprint);
             bool timerFired = trigger is MetadataSettleTimerFiredEvent;
             var elapsed = _context.NowUtc - _state.ConfirmingFirstSeenUtc;
             var settle = TimeSpan.FromMilliseconds(IslandConfig.MediaMetadataSettleMs);
@@ -530,6 +550,15 @@ namespace wisland.Services.Media.Presentation
                 _state.ConfirmingFirstSeenUtc = _context.NowUtc;
                 _context.ScheduleMetadataSettleTimer(_context.NowUtc + settle);
                 return true;
+            }
+
+            // Identity matches: absorb any updated thumbnail hash into the
+            // stored draft so the released Steady frame carries the latest
+            // fingerprint.
+            if (!FingerprintEquals(rawFp, _state.ConfirmingDraftFingerprint))
+            {
+                _state.ConfirmingDraftSnapshot = winner;
+                _state.ConfirmingDraftFingerprint = rawFp;
             }
 
             if (!timerFired && elapsed < settle)
@@ -640,15 +669,23 @@ namespace wisland.Services.Media.Presentation
                 !isSlide || fpChanged,
                 $"Invariant #2 violated: Slide transition requires fingerprint change (transition={transition}, fp={DescribeFingerprint(fingerprint)})");
 
-            // Invariant #3: fp change ⇒ transition != None. Exception: the very
-            // first emit from an Empty baseline is allowed to use None only when
-            // the new fp is also Empty (i.e. startup idle). Any non-empty fp
-            // transition must be visually acknowledged.
+            // Invariant #3: fp change ⇒ transition != None. Exceptions:
+            //   (a) the very first emit from an Empty baseline to another
+            //       Empty baseline (startup idle);
+            //   (b) thumbnail-hash-only change for the same logical identity
+            //       (§6 #6 — thumbnail writes do not produce a directional
+            //       animation because the visible track didn't change).
             bool baselineWasEmpty = _lastEmittedFingerprint.IsEmpty;
             bool newIsEmpty = fingerprint.IsEmpty;
+            bool identityChanged =
+                !string.Equals(_lastEmittedFingerprint.SessionKey, fingerprint.SessionKey, StringComparison.Ordinal)
+                || !string.Equals(_lastEmittedFingerprint.Title, fingerprint.Title, StringComparison.Ordinal)
+                || !string.Equals(_lastEmittedFingerprint.Artist, fingerprint.Artist, StringComparison.Ordinal);
             System.Diagnostics.Debug.Assert(
-                !fpChanged || transition != FrameTransitionKind.None || (baselineWasEmpty && newIsEmpty),
-                $"Invariant #3 violated: fingerprint changed but transition=None (fp_from={DescribeFingerprint(_lastEmittedFingerprint)}, fp_to={DescribeFingerprint(fingerprint)})");
+                !fpChanged || transition != FrameTransitionKind.None
+                    || (baselineWasEmpty && newIsEmpty)
+                    || !identityChanged,
+                $"Invariant #3 violated: fingerprint identity changed but transition=None (fp_from={DescribeFingerprint(_lastEmittedFingerprint)}, fp_to={DescribeFingerprint(fingerprint)})");
 
             // Structured emit log (section 12 P5 item 33). Captures the seq, the
             // transition decision, fp delta across the emit boundary, and the
@@ -770,6 +807,17 @@ namespace wisland.Services.Media.Presentation
             && string.Equals(a.Title, b.Title, StringComparison.Ordinal)
             && string.Equals(a.Artist, b.Artist, StringComparison.Ordinal)
             && string.Equals(a.ThumbnailHash, b.ThumbnailHash, StringComparison.Ordinal);
+
+        /// <summary>
+        /// Identity comparison that ignores <see cref="MediaTrackFingerprint.ThumbnailHash"/>.
+        /// Used to detect cases where the thumbnail arrived/changed for the SAME
+        /// logical track (same session+title+artist): those should not force a
+        /// Replace transition nor reset the Confirming settle window (§4.6, §6 #6).
+        /// </summary>
+        private static bool FingerprintIdentityEquals(MediaTrackFingerprint a, MediaTrackFingerprint b)
+            => string.Equals(a.SessionKey, b.SessionKey, StringComparison.Ordinal)
+            && string.Equals(a.Title, b.Title, StringComparison.Ordinal)
+            && string.Equals(a.Artist, b.Artist, StringComparison.Ordinal);
 
         private static MediaSessionSnapshot? FindSession(IReadOnlyList<MediaSessionSnapshot> sessions, string? sessionKey)
         {
