@@ -310,7 +310,16 @@ namespace wisland
                 DateTimeOffset.UtcNow);
             SyncAutoFocusTimer(focusDecision.PendingAutoSwitchDueUtc);
 
-            MediaSessionSnapshot displayedSession = focusDecision.DisplayedSession ?? prioritySessions[0];
+            // P4c-1: the displayed session is the Machine's decision (frame.Session)
+            // rather than MainWindow's re-arbitration. The _focusArbiter above is
+            // kept only so PendingAutoSwitchDueUtc keeps driving MainWindow's
+            // _autoFocusTimer until the Machine gains timer ownership. When a
+            // frame is not yet available (very first paint before bootstrap
+            // dispatches a frame) we fall back to the arbiter decision.
+            MediaSessionSnapshot displayedSession =
+                _latestFrame?.Session
+                ?? focusDecision.DisplayedSession
+                ?? prioritySessions[0];
             // Visual stability is now owned by MediaPresentationMachine and
             // arrives via _latestFrame.OrderedSessions. Fall back to the
             // priority list if no frame has been produced yet (e.g. very first
