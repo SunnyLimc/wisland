@@ -236,12 +236,18 @@ namespace wisland.Tests
             }
             h.Frames.Clear();
 
-            // Stabilization releases with the real new track. Because a valid
-            // SwitchIntent is present, P3b-2 Confirming is bypassed and the
-            // slide fires immediately (user-initiated actions should not be
-            // delayed by the settle window).
+            // Stabilization releases with the real new track. User-initiated
+            // skips ALSO go through Confirming (the 250ms settle absorbs any
+            // Chrome paused-tab flash between release and the final track
+            // arriving). Once the settle timer fires the Slide is emitted.
             h.Machine.ProcessForTests(new GsmtcSessionsChangedEvent(new[] { Session("s1", "Song B") }));
+            Assert.Single(h.Frames);
+            Assert.Equal(PresentationKind.Confirming, h.Frames[0].Kind);
+            Assert.Equal(FrameTransitionKind.None, h.Frames[0].Transition);
+            Assert.Equal("Song A", h.Frames[0].Fingerprint.Title);
+            h.Frames.Clear();
 
+            h.Machine.ProcessForTests(new MetadataSettleTimerFiredEvent());
             Assert.Single(h.Frames);
             Assert.Equal(PresentationKind.Steady, h.Frames[0].Kind);
             Assert.Equal(FrameTransitionKind.SlideForward, h.Frames[0].Transition);

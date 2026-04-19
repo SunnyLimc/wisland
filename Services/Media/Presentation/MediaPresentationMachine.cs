@@ -393,15 +393,20 @@ namespace wisland.Services.Media.Presentation
             bool stabilizationJustEnded =
                 _state.DisplayedKind == PresentationKind.Switching
                 && kind == PresentationKind.Steady;
-            bool intentBypass = _state.Intent.HasValue
-                && !_state.Intent.Value.IsExpired(_context.NowUtc)
-                && _state.Intent.Value.MatchesOrigin(_state.DisplayedFingerprint);
             // Only detour through Confirming when the logical identity
             // (session+title+artist) actually changed; a pure thumbnail-hash
             // update on the same track should not trigger a 250ms settle.
             bool identityChangedForConfirming =
                 !FingerprintIdentityEquals(fingerprint, _state.DisplayedFingerprint);
-            if (stabilizationJustEnded && fpChanged && identityChangedForConfirming && !firstFrame && !intentBypass)
+            // User-initiated skips ALSO go through Confirming. The 250ms
+            // settle window is what prevents Chrome's brief paused-tab flash
+            // from leaking into the UI between stabilization release and the
+            // real next track arriving (§5.3). Earlier code bypassed
+            // Confirming when a valid intent was present under the mistaken
+            // assumption that the 250ms delay was user-perceptible; the
+            // actual "UI skip feels slow" complaint traced to a 10s
+            // stabilization hang (fixed separately in MediaService).
+            if (stabilizationJustEnded && fpChanged && identityChangedForConfirming && !firstFrame)
             {
                 EnterConfirming(winner!.Value, fingerprint);
                 return;
