@@ -387,11 +387,16 @@ namespace wisland.Services.Media.Presentation
             // P3b-2: only when stabilization has just ended (previous kind was
             // Switching) and fingerprint changed, detour into Confirming.
             // Direct Steady→Steady fp changes (no stabilization, e.g. tests'
-            // simulated track replacement) still emit immediately.
+            // simulated track replacement) still emit immediately. A valid
+            // in-flight SwitchIntent bypasses Confirming so user-initiated
+            // skips don't suffer the 250ms settle delay.
             bool stabilizationJustEnded =
                 _state.DisplayedKind == PresentationKind.Switching
                 && kind == PresentationKind.Steady;
-            if (stabilizationJustEnded && fpChanged && !firstFrame)
+            bool intentBypass = _state.Intent.HasValue
+                && !_state.Intent.Value.IsExpired(_context.NowUtc)
+                && _state.Intent.Value.MatchesOrigin(_state.DisplayedFingerprint);
+            if (stabilizationJustEnded && fpChanged && !firstFrame && !intentBypass)
             {
                 EnterConfirming(winner!.Value, fingerprint);
                 return;
@@ -428,11 +433,16 @@ namespace wisland.Services.Media.Presentation
             }
 
             // Non-overlay: persist state and emit if something changed.
+            // Detect same-identity snapshot refreshes (e.g. user pauses/resumes
+            // or progress advances) so the UI can update its pause icon / time
+            // readout even when fp/kind are unchanged. Such frames carry
+            // Transition=None.
+            bool snapshotChanged = !SnapshotEquals(_state.DisplayedSnapshot, snapshotForFrame);
             _state.DisplayedSnapshot = snapshotForFrame;
             _state.DisplayedKind = kind;
             _state.DisplayedFingerprint = fingerprint;
 
-            if (firstFrame || fpChanged || kindChanged)
+            if (firstFrame || fpChanged || kindChanged || snapshotChanged)
             {
                 _state.Initialized = true;
                 EmitFrame(
@@ -444,6 +454,22 @@ namespace wisland.Services.Media.Presentation
                     isFallback: isFallback,
                     notification: null);
             }
+        }
+
+        private static bool SnapshotEquals(MediaSessionSnapshot? a, MediaSessionSnapshot? b)
+        {
+            if (!a.HasValue && !b.HasValue) return true;
+            if (!a.HasValue || !b.HasValue) return false;
+            var x = a.Value;
+            var y = b.Value;
+            // Compare UI-visible fields only. LastSeenUtc/LastActivityUtc tick
+            // on every refresh so they must NOT participate in equality.
+            return x.PlaybackStatus == y.PlaybackStatus
+                && x.Presence == y.Presence
+                && x.HasTimeline == y.HasTimeline
+                && x.DurationSeconds.Equals(y.DurationSeconds)
+                && x.IsSystemCurrent == y.IsSystemCurrent
+                && x.StabilizationReason == y.StabilizationReason;
         }
 
         // P3b-2 helpers ------------------------------------------------------

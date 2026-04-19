@@ -127,8 +127,11 @@ namespace wisland.Tests
                 Session("s1", "Song A", status: GlobalSystemMediaTransportControlsSessionPlaybackStatus.Paused)
             }));
 
-            // No second frame because neither fingerprint nor kind changed.
-            Assert.Single(h.Frames);
+            // Status change emits a refresh frame so the UI can update its
+            // pause icon, but Transition must be None (no slide).
+            Assert.Equal(2, h.Frames.Count);
+            Assert.Equal(FrameTransitionKind.None, h.Frames[1].Transition);
+            Assert.Equal(h.Frames[0].Fingerprint, h.Frames[1].Fingerprint);
         }
 
         // ---------------------------------------------------------------
@@ -196,7 +199,10 @@ namespace wisland.Tests
             {
                 Session("s1", "Song A", status: GlobalSystemMediaTransportControlsSessionPlaybackStatus.Playing)
             }));
-            Assert.Empty(h.Frames);
+            // Status changes emit refresh frames (Transition=None) so the UI
+            // can repaint the pause icon; none of them should be slides.
+            Assert.All(h.Frames, f => Assert.Equal(FrameTransitionKind.None, f.Transition));
+            h.Frames.Clear();
 
             // Real new track arrives → intent still valid, slide fires.
             h.Machine.ProcessForTests(new GsmtcSessionsChangedEvent(new[] { Session("s1", "Song C") }));
@@ -230,18 +236,11 @@ namespace wisland.Tests
             }
             h.Frames.Clear();
 
-            // Stabilization releases with the real new track. P3b-2 gates this
-            // through a Confirming settle: first frame is Kind=Confirming (no
-            // slide), then MetadataSettleTimerFired releases the Steady frame.
+            // Stabilization releases with the real new track. Because a valid
+            // SwitchIntent is present, P3b-2 Confirming is bypassed and the
+            // slide fires immediately (user-initiated actions should not be
+            // delayed by the settle window).
             h.Machine.ProcessForTests(new GsmtcSessionsChangedEvent(new[] { Session("s1", "Song B") }));
-
-            Assert.Single(h.Frames);
-            Assert.Equal(PresentationKind.Confirming, h.Frames[0].Kind);
-            Assert.Equal(FrameTransitionKind.None, h.Frames[0].Transition);
-            Assert.Equal("Song A", h.Frames[0].Fingerprint.Title); // old fp held
-            h.Frames.Clear();
-
-            h.Machine.ProcessForTests(new MetadataSettleTimerFiredEvent());
 
             Assert.Single(h.Frames);
             Assert.Equal(PresentationKind.Steady, h.Frames[0].Kind);
@@ -250,18 +249,46 @@ namespace wisland.Tests
         }
 
         [Fact]
+        public void NaturalStabilizationReleaseGoesThroughConfirming()
+        {
+            // Without a UserSkipRequested event (natural ending / refresh):
+            // stabilization release enters Confirming for MediaMetadataSettleMs,
+            // then emits Steady+Replace once the timer fires.
+            using var h = NewHarness();
+            h.Machine.ProcessForTests(new GsmtcSessionsChangedEvent(new[] { Session("s1", "Song A") }));
+            h.Machine.ProcessForTests(new GsmtcSessionsChangedEvent(new[]
+            {
+                Session("s1", "Song A", stabilization: MediaSessionStabilizationReason.NaturalEnding)
+            }));
+            h.Frames.Clear();
+
+            // Release with a new track, no intent present.
+            h.Machine.ProcessForTests(new GsmtcSessionsChangedEvent(new[] { Session("s1", "Song B") }));
+            Assert.Single(h.Frames);
+            Assert.Equal(PresentationKind.Confirming, h.Frames[0].Kind);
+            Assert.Equal(FrameTransitionKind.None, h.Frames[0].Transition);
+            Assert.Equal("Song A", h.Frames[0].Fingerprint.Title);
+            h.Frames.Clear();
+
+            h.Machine.ProcessForTests(new MetadataSettleTimerFiredEvent());
+            Assert.Single(h.Frames);
+            Assert.Equal(PresentationKind.Steady, h.Frames[0].Kind);
+            Assert.Equal(FrameTransitionKind.Replace, h.Frames[0].Transition);
+            Assert.Equal("Song B", h.Frames[0].Fingerprint.Title);
+        }
+
+        [Fact]
         public void ConfirmingResetsWhenDraftBouncesBeforeSettle()
         {
             using var h = NewHarness();
             h.Machine.ProcessForTests(new GsmtcSessionsChangedEvent(new[] { Session("s1", "Song A") }));
-            h.Machine.ProcessForTests(new UserSkipRequestedEvent(ContentTransitionDirection.Forward));
             h.Machine.ProcessForTests(new GsmtcSessionsChangedEvent(new[]
             {
-                Session("s1", "Paused Tab", stabilization: MediaSessionStabilizationReason.SkipTransition)
+                Session("s1", "Song A", stabilization: MediaSessionStabilizationReason.NaturalEnding)
             }));
             h.Frames.Clear();
 
-            // Stabilization releases with "Song B" → enter Confirming.
+            // Stabilization releases with "Song B" → enter Confirming (no intent).
             h.Machine.ProcessForTests(new GsmtcSessionsChangedEvent(new[] { Session("s1", "Song B") }));
             Assert.Equal(PresentationKind.Confirming, h.Frames[^1].Kind);
 
@@ -274,7 +301,7 @@ namespace wisland.Tests
             h.Machine.ProcessForTests(new MetadataSettleTimerFiredEvent());
             Assert.Equal(PresentationKind.Steady, h.Frames[^1].Kind);
             Assert.Equal("Song C", h.Frames[^1].Fingerprint.Title);
-            Assert.Equal(FrameTransitionKind.SlideForward, h.Frames[^1].Transition);
+            Assert.Equal(FrameTransitionKind.Replace, h.Frames[^1].Transition);
         }
 
         // ---------------------------------------------------------------
