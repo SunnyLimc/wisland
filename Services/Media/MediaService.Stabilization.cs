@@ -210,23 +210,22 @@ namespace wisland.Services
                     return true;
                 }
 
-                // For metadata writes the title/artist we see IS the latest from
-                // GSMTC, so it is safe to release immediately. For non-metadata
-                // writes (timeline position reset, playback status change) the
-                // current title may still be stale intermediate data (e.g. Chrome
-                // briefly reporting another tab). Do NOT release on non-metadata
-                // writes; simply wait for the real metadata write or the full
-                // stabilization timeout. The 80ms early-hold path was removed in
-                // P3 because the Machine's Confirming settle (§4.6, 250ms) handles
-                // the "wait for metadata" window at a higher layer.
-                if (isMetadataWrite)
-                {
-                    ClearStabilization_NoLock(tracked, releaseReason: "fresh-track");
-                    return true;
-                }
-
-                Logger.Trace($"Stabilization suppressed non-metadata release for '{tracked.SessionKey}': waiting for metadata write (title='{tracked.Title}')");
-                return false;
+                // ShouldReleaseStabilization_NoLock already enforces:
+                //   * metadataDifferentFromBaseline (title/artist != pre-skip baseline)
+                //   * HasConcreteMetadata (title is not a placeholder)
+                //   * looksLikeFreshTrack (Playing + HasTimeline + position near start)
+                // So by the time we reach here, a prior metadata write has updated
+                // title away from the baseline AND the latest non-metadata write
+                // confirmed playing+timeline-reset. Chrome's "paused tab B" scenario
+                // is filtered out by looksLikeFreshTrack (tab B is not Playing).
+                // Release immediately regardless of whether THIS write was metadata
+                // or timeline/status — waiting for another metadata write that may
+                // never come used to cause a full SkipTransitionTimeoutMs (~10s)
+                // hang when the title write arrived before the timeline write.
+                // The Machine's Confirming settle (§4.6) covers the natural-stabilization
+                // metadata-settling window at a higher layer.
+                ClearStabilization_NoLock(tracked, releaseReason: isMetadataWrite ? "fresh-track" : "fresh-track-non-metadata");
+                return true;
             }
 
             // Gate closed: raw fields changed but UI must keep seeing the frozen snapshot.
