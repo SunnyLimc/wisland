@@ -305,6 +305,178 @@ namespace wisland.Tests
             // synthetic-clock test.
             Assert.True(true);
         }
+
+        // ---------------------------------------------------------------
+        // P5 extended scenarios (item 36 in design doc)
+        // ---------------------------------------------------------------
+
+        // Scenario: Steady → (user skip) → PendingUserSwitch → (fp change) → Steady(Slide)
+        // This is the canonical happy-path already covered by
+        // UserSkipThenNewTrackEmitsSlideForward, but this variant asserts the
+        // full sequence across multiple status-only events and checks that
+        // the emitted frame's intent was genuinely consumed (subsequent
+        // identical fp does not re-slide).
+        [Fact]
+        public void PendingUserSwitch_SlideThenIntentConsumed()
+        {
+            using var h = NewHarness();
+            h.Machine.ProcessForTests(new GsmtcSessionsChangedEvent(new[] { Session("s1", "Song A") }));
+            h.Frames.Clear();
+
+            h.Machine.ProcessForTests(new UserSkipRequestedEvent(ContentTransitionDirection.Forward));
+            h.Machine.ProcessForTests(new GsmtcSessionsChangedEvent(new[] { Session("s1", "Song B") }));
+
+            Assert.Single(h.Frames);
+            Assert.Equal(FrameTransitionKind.SlideForward, h.Frames[0].Transition);
+            h.Frames.Clear();
+
+            // Identical fingerprint → no frame.
+            h.Machine.ProcessForTests(new GsmtcSessionsChangedEvent(new[] { Session("s1", "Song B") }));
+            Assert.Empty(h.Frames);
+
+            // A natural (no-skip) track change should now Replace, not Slide,
+            // proving the original forward intent was consumed by the prior slide.
+            h.Machine.ProcessForTests(new GsmtcSessionsChangedEvent(new[] { Session("s1", "Song C") }));
+            Assert.Single(h.Frames);
+            Assert.Equal(FrameTransitionKind.Replace, h.Frames[0].Transition);
+        }
+
+        // Scenario: rapid consecutive skips in the same direction while still
+        // on the origin track. The second skip should refresh the intent
+        // (same direction/origin), not emit a frame. The eventual real track
+        // then slides forward.
+        [Fact]
+        public void ConsecutiveSameDirectionSkipsCoalesceThenSlide()
+        {
+            using var h = NewHarness();
+            h.Machine.ProcessForTests(new GsmtcSessionsChangedEvent(new[] { Session("s1", "Song A") }));
+            h.Frames.Clear();
+
+            h.Machine.ProcessForTests(new UserSkipRequestedEvent(ContentTransitionDirection.Forward));
+            h.Machine.ProcessForTests(new UserSkipRequestedEvent(ContentTransitionDirection.Forward));
+            // No frame from skip events alone.
+            Assert.Empty(h.Frames);
+
+            h.Machine.ProcessForTests(new GsmtcSessionsChangedEvent(new[] { Session("s1", "Song D") }));
+            Assert.Single(h.Frames);
+            Assert.Equal(FrameTransitionKind.SlideForward, h.Frames[0].Transition);
+            Assert.Equal("Song D", h.Frames[0].Fingerprint.Title);
+        }
+
+        // Scenario: a backward skip after a forward skip should overwrite the
+        // pending intent's direction, not be discarded.
+        [Fact]
+        public void OppositeDirectionSkipOverridesPendingIntent()
+        {
+            using var h = NewHarness();
+            h.Machine.ProcessForTests(new GsmtcSessionsChangedEvent(new[] { Session("s1", "Song A") }));
+            h.Frames.Clear();
+
+            h.Machine.ProcessForTests(new UserSkipRequestedEvent(ContentTransitionDirection.Forward));
+            h.Machine.ProcessForTests(new UserSkipRequestedEvent(ContentTransitionDirection.Backward));
+            h.Machine.ProcessForTests(new GsmtcSessionsChangedEvent(new[] { Session("s1", "Song Prev") }));
+
+            Assert.Single(h.Frames);
+            Assert.Equal(FrameTransitionKind.SlideBackward, h.Frames[0].Transition);
+        }
+
+        // Scenario: thumbnail hash change alone (same session/title/artist)
+        // produces a Replace-style emit so views that key off the full
+        // fingerprint reload album art. This is the post-P3b-1 behavior.
+        [Fact]
+        public void ThumbnailHashChangeEmitsReplaceFrame()
+        {
+            using var h = NewHarness();
+            var baseSession = Session("s1", "Song A");
+            h.Machine.ProcessForTests(new GsmtcSessionsChangedEvent(new[] { baseSession }));
+            h.Frames.Clear();
+
+            // Identical fp → no frame.
+            h.Machine.ProcessForTests(new GsmtcSessionsChangedEvent(new[] { baseSession }));
+            Assert.Empty(h.Frames);
+
+            // Same title/artist/session but different thumbnail hash → fp changes
+            // and a non-Slide frame must fire (invariant #3 requires visible
+            // acknowledgement).
+            var withHash = baseSession with { ThumbnailHash = "deadbeef12345678" };
+            h.Machine.ProcessForTests(new GsmtcSessionsChangedEvent(new[] { withHash }));
+            Assert.Single(h.Frames);
+            Assert.NotEqual(FrameTransitionKind.None, h.Frames[0].Transition);
+            Assert.NotEqual(FrameTransitionKind.SlideForward, h.Frames[0].Transition);
+            Assert.NotEqual(FrameTransitionKind.SlideBackward, h.Frames[0].Transition);
+            Assert.Equal("deadbeef12345678", h.Frames[0].Fingerprint.ThumbnailHash);
+        }
+
+        // Scenario: stabilization timer fires without any metadata arriving.
+        // The machine must re-reconcile and either stay Switching or return
+        // to Steady on the previous fingerprint — it must NOT emit a Slide
+        // on the previous fingerprint (invariant #2).
+        [Fact]
+        public void StabilizationTimerDoesNotSlideOnUnchangedFingerprint()
+        {
+            using var h = NewHarness();
+            h.Machine.ProcessForTests(new GsmtcSessionsChangedEvent(new[] { Session("s1", "Song A") }));
+            h.Frames.Clear();
+
+            h.Machine.ProcessForTests(new UserSkipRequestedEvent(ContentTransitionDirection.Forward));
+            h.Machine.ProcessForTests(new GsmtcSessionsChangedEvent(new[]
+            {
+                Session("s1", "Song A", stabilization: MediaSessionStabilizationReason.SkipTransition)
+            }));
+            h.Frames.Clear();
+
+            // Timer fires — no new metadata yet.
+            h.Machine.ProcessForTests(new StabilizationTimerFiredEvent());
+
+            foreach (var f in h.Frames)
+            {
+                Assert.NotEqual(FrameTransitionKind.SlideForward, f.Transition);
+                Assert.NotEqual(FrameTransitionKind.SlideBackward, f.Transition);
+            }
+        }
+
+        // Scenario: AiResolveCompletedEvent re-emits the current frame without
+        // a slide so overlaid AI-resolved title/artist becomes visible. The
+        // fingerprint is unchanged, so Transition must be None.
+        [Fact]
+        public void AiResolveCompletedEmitsNonSlidingFrame()
+        {
+            using var h = NewHarness();
+            h.Machine.ProcessForTests(new GsmtcSessionsChangedEvent(new[] { Session("s1", "Song A") }));
+            h.Frames.Clear();
+
+            h.Machine.ProcessForTests(new AiResolveCompletedEvent(
+                SourceAppId: "app",
+                Title: "Song A",
+                Artist: "ArtistA",
+                Result: null));
+
+            Assert.Single(h.Frames);
+            Assert.Equal(FrameTransitionKind.None, h.Frames[0].Transition);
+            Assert.Equal("Song A", h.Frames[0].Fingerprint.Title);
+        }
+
+        // Scenario: sequence numbers strictly increase across the session.
+        // Invariant #1 is already asserted by Debug.Assert inside EmitFrame;
+        // this test provides a Release-safe cross-check.
+        [Fact]
+        public void FrameSequenceStrictlyIncreases()
+        {
+            using var h = NewHarness();
+            h.Machine.ProcessForTests(new GsmtcSessionsChangedEvent(new[] { Session("s1", "Song A") }));
+            h.Machine.ProcessForTests(new UserSkipRequestedEvent(ContentTransitionDirection.Forward));
+            h.Machine.ProcessForTests(new GsmtcSessionsChangedEvent(new[] { Session("s1", "Song B") }));
+            h.Machine.ProcessForTests(new NotificationBeginEvent(new NotificationPayload("n", "m", "h", 1000)));
+            h.Machine.ProcessForTests(new NotificationEndEvent());
+
+            long prev = -1;
+            foreach (var f in h.Frames)
+            {
+                Assert.True(f.Sequence > prev, $"Frame {f.Sequence} did not increase from {prev}");
+                prev = f.Sequence;
+            }
+            Assert.True(h.Frames.Count >= 3, "Expected at least Replace + Slide + Resume frames");
+        }
     }
 }
 
