@@ -112,6 +112,8 @@ namespace wisland.Services.Media.Presentation
             // see the same reality the machine does.
             _context.CurrentDisplayedSessionKey = _state.DisplayedSnapshot?.SessionKey;
 
+            Logger.Trace($"[Machine] event={evt.GetType().Name} kind={_state.DisplayedKind} fp=[{DescribeFingerprint(_state.DisplayedFingerprint)}] intent={DescribeIntent(_state.Intent)} notifying={_state.IsNotifying}");
+
             foreach (var policy in _policies)
             {
                 try
@@ -416,12 +418,39 @@ namespace wisland.Services.Media.Presentation
                 Fingerprint: fingerprint,
                 ProgressFingerprint: fingerprint,
                 IsFallback: isFallback,
-                ThumbnailHashIsFallback: true,   // P2: no real hash yet; P3 fills in
+                ThumbnailHashIsFallback: string.IsNullOrEmpty(fingerprint.ThumbnailHash),
                 AiOverride: _context.ActiveAiOverride,
                 Notification: notification);
 
-            Logger.Trace($"[Machine] emit seq={frame.Sequence} kind={kind} transition={transition} fp={fingerprint.Title}/{fingerprint.SessionKey}");
+            // Structured emit log (section 12 P5 item 33). Captures the seq, the
+            // transition decision, fp delta across the emit boundary, and the
+            // current intent so regressions can be diagnosed from logs alone.
+            Logger.Debug($"[Machine] emit seq={frame.Sequence} kind={_lastEmittedKind}->{kind} transition={transition} fp_from=[{DescribeFingerprint(_lastEmittedFingerprint)}] fp_to=[{DescribeFingerprint(fingerprint)}] intent={DescribeIntent(_state.Intent)} notification={(notification != null ? "yes" : "no")} fallback={isFallback}");
+
+            _lastEmittedKind = kind;
+            _lastEmittedFingerprint = fingerprint;
+
             _dispatcherPoster.Post(() => FrameProduced?.Invoke(frame));
+        }
+
+        private PresentationKind _lastEmittedKind = PresentationKind.Empty;
+        private MediaTrackFingerprint _lastEmittedFingerprint = MediaTrackFingerprint.Empty;
+
+        private static string DescribeFingerprint(MediaTrackFingerprint fp)
+        {
+            if (fp.IsEmpty) return "empty";
+            string title = string.IsNullOrEmpty(fp.Title) ? "-" : fp.Title;
+            string artist = string.IsNullOrEmpty(fp.Artist) ? "-" : fp.Artist;
+            string hash = string.IsNullOrEmpty(fp.ThumbnailHash) ? "nohash" : fp.ThumbnailHash.Substring(0, Math.Min(8, fp.ThumbnailHash.Length));
+            return $"{fp.SessionKey} '{title}' by '{artist}' #{hash}";
+        }
+
+        private static string DescribeIntent(SwitchIntent? intent)
+        {
+            if (!intent.HasValue) return "none";
+            var i = intent.Value;
+            long dueMs = (long)(i.DeadlineUtc - DateTimeOffset.UtcNow).TotalMilliseconds;
+            return $"dir={i.Direction} origin='{i.Origin.Title}' due={dueMs}ms";
         }
 
         // --- Utility --------------------------------------------------------
