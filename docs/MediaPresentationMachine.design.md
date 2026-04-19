@@ -321,8 +321,8 @@ UI 仍然拿得到动画机会（如果 intent 仍然有效）。
 
 ## 7. 分阶段实施
 
-> 实施状态（截至当前分支）：P1 / P2 / P3a / P3b-1 / P4a / P4b / P4c-1 / P4c-2a / P4c-2b / P5-log / P5-assert / P5-tests 均已合并。
-> P3b-2（Confirming 250ms settle）与 P4d（AI override 迁入 AiOverridePolicy）仍为待办。
+> 实施状态（截至当前分支）：P1 / P2 / P3a / P3b-1 / P4a / P4b / P4c-1 / P4c-2a / P4c-2b / P4d / P5-log / P5-assert / P5-tests 均已合并。
+> P3b-2（Confirming 250ms settle）仍为待办。
 
 ### P1 · 骨架迁移（行为不变）— ✅
 - 新建 `Services/Media/Presentation/*` 骨架。
@@ -341,12 +341,12 @@ UI 仍然拿得到动画机会（如果 intent 仍然有效）。
 - ✅ `MediaService` 新增 `ThumbnailHash` (xxhash64 前 4KB，异步算，ref-change 时清空)，入 `MediaTrackFingerprint`（P3b-1）。
 - ⏸ 引入 `Confirming` + `MetadataSettleMs=250ms`（P3b-2，推迟；会改 5+ 条现有测试，待 P4d 后再评估）。
 
-### P4 · View 解耦 — 🟡（P4a/P4b/P4c 完成；P4d 待办）
+### P4 · View 解耦 — ✅
 - ✅ `ExpandedMediaView.UpdateMedia(frame)` / `ImmersiveMediaView.UpdateMedia(frame)` 薄封装已落地；Immersive 的 `_lastAlbumArtIdentity` 改用 `MediaTrackFingerprint`（P4a）。
 - ✅ Visual ordering 搬入 Machine，`frame.OrderedSessions` 是稳定序；MainWindow `_sessionVisualOrderKeys` 删（P4b）。
 - ✅ `frame.Session` 作为 DisplayedSession，MainWindow `_focusArbiter` 删（P4c-1/2a）。
 - ✅ Manual-lock 状态 (`_selectedSessionKey` / `_selectionLockUntilUtc`) 全部搬入 `ManualSelectionLockPolicy`；MainWindow 只留 UI-thread DispatcherTimer 转发（P4c-2b）。
-- ⏸ AI override 逻辑仍在 MainWindow.Media（`TryRequestAiResolveForFrame` / `ApplyAiOverrideToContext`）；待 P4d 迁入 `AiOverridePolicy` + `AiResolveCompletedEvent` 驱动 frame 再发。
+- ✅ AI override 搬入 `AiOverridePolicy`；新增 `IAiOverrideResolver` + `AiOverrideResolverAdapter` 承载异步 resolve 并回派 `AiResolveCompletedEvent`；MainWindow 只剩 `ApplyFrameAiOverride(frame.AiOverride)` 与 `SettingsChangedEvent(AiOverride)` 派发（P4d）。
 
 ### P5 · 观测 & 测试 — 🟡（P5-log / P5-assert / P5-tests 完成；P3b-2 重评待办）
 - ✅ Machine 每次事件与每次 emit 都输出结构化日志 `{seq, state_from, state_to, transition, fp_from, fp_to, intent, notification, fallback}`（P5-log）。
