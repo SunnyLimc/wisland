@@ -46,10 +46,42 @@ namespace wisland.Services
                 if (tracked.StabilizationReason == MediaSessionStabilizationReason.SkipTransition
                     && tracked.StabilizationExpiresAtUtc > nowUtc)
                 {
-                    // Extend timeout for a consecutive skip; preserve baseline + frozen.
+                    // Re-arm for consecutive skip: update baseline + frozen to the
+                    // current raw state ONLY when the raw state actually looks like a
+                    // freshly-resolved next track (Playing + HasTimeline + position ≤
+                    // fresh-track threshold + concrete metadata). Otherwise the raw
+                    // title may still be the paused B tab that Chrome briefly reports
+                    // between skips, and swallowing that into the baseline would cause
+                    // the next re-arm + fresh-track check to never fire (baseline ==
+                    // tab title, so tab metadata "matches" baseline and releases are
+                    // suppressed). In that case we keep the original baseline and just
+                    // extend the expiry so the real resolved track still has time.
                     tracked.StabilizationExpiresAtUtc = nowUtc.AddMilliseconds(IslandConfig.SkipTransitionTimeoutMs);
+
+                    bool rawLooksLikeFreshTrack = StabilizationReleaseGuards.LooksLikeFreshTrackShape(
+                            tracked.PlaybackStatus,
+                            tracked.HasTimeline,
+                            tracked.DurationSeconds,
+                            tracked.CurrentPositionSeconds)
+                        && HasConcreteMetadata(tracked.Title);
+
+                    if (rawLooksLikeFreshTrack)
+                    {
+                        tracked.StabilizationBaselineTitle = tracked.Title;
+                        tracked.StabilizationBaselineArtist = tracked.Artist;
+                        tracked.StabilizationBaselinePositionSeconds = tracked.CurrentPositionSeconds;
+                        tracked.StabilizationBaselineHasTimeline = tracked.HasTimeline;
+                        tracked.FrozenSnapshot = CreateRawSnapshot(tracked) with
+                        {
+                            StabilizationReason = tracked.StabilizationReason
+                        };
+                        Logger.Debug($"Skip stabilization re-armed for '{sessionKey}' (baseline updated to fresh raw='{tracked.Title}')");
+                    }
+                    else
+                    {
+                        Logger.Debug($"Skip stabilization re-armed for '{sessionKey}' (baseline preserved='{tracked.StabilizationBaselineTitle}', raw='{tracked.Title}' not fresh)");
+                    }
                     RescheduleStabilizationTimer_NoLock(nowUtc);
-                    Logger.Debug($"Skip stabilization extended for '{sessionKey}'");
                     return;
                 }
 
@@ -86,6 +118,8 @@ namespace wisland.Services
             tracked.StabilizationExpiresAtUtc = nowUtc + timeout;
             tracked.StabilizationBaselineTitle = tracked.Title;
             tracked.StabilizationBaselineArtist = tracked.Artist;
+            tracked.StabilizationBaselinePositionSeconds = tracked.CurrentPositionSeconds;
+            tracked.StabilizationBaselineHasTimeline = tracked.HasTimeline;
             tracked.FrozenSnapshot = CreateRawSnapshot(tracked) with
             {
                 StabilizationReason = reason
@@ -106,6 +140,8 @@ namespace wisland.Services
             tracked.StabilizationReason = MediaSessionStabilizationReason.None;
             tracked.StabilizationBaselineTitle = string.Empty;
             tracked.StabilizationBaselineArtist = string.Empty;
+            tracked.StabilizationBaselinePositionSeconds = 0;
+            tracked.StabilizationBaselineHasTimeline = false;
             tracked.FrozenSnapshot = default;
         }
 
@@ -144,11 +180,31 @@ namespace wisland.Services
                 return false;
             }
 
-            bool looksLikeFreshTrack =
-                tracked.PlaybackStatus == GlobalSystemMediaTransportControlsSessionPlaybackStatus.Playing
-                && tracked.HasTimeline
-                && tracked.DurationSeconds > 0
-                && tracked.CurrentPositionSeconds <= IslandConfig.SkipTransitionFreshTrackPositionSeconds;
+            bool looksLikeFreshTrack = StabilizationReleaseGuards.LooksLikeFreshTrackShape(
+                tracked.PlaybackStatus,
+                tracked.HasTimeline,
+                tracked.DurationSeconds,
+                tracked.CurrentPositionSeconds);
+
+            // Require the position to have actually dropped below the baseline.
+            // Without this, a metadata-only flicker (Chrome briefly surfacing another
+            // tab's title/artist while the timeline is still advancing on the prior
+            // playback) is mis-detected as a fresh track. The leak scenario:
+            //   baseline: title='Sacred' pos=2.7
+            //   write 1: title='Sacred' pos=2.9 (no change)
+            //   write 2: title='OtherTab' artist='Unknown' pos=2.9 ← position did NOT
+            //            reset; this is NOT a track restart, it's tab metadata noise.
+            // A genuine fresh track resets the timeline (pos drops to ~0), so requiring
+            // current pos < baseline pos filters out the noise without affecting real
+            // track changes (which always reset position).
+            if (looksLikeFreshTrack
+                && !StabilizationReleaseGuards.PositionLooksRestarted(
+                    tracked.CurrentPositionSeconds,
+                    tracked.StabilizationBaselinePositionSeconds,
+                    tracked.StabilizationBaselineHasTimeline))
+            {
+                looksLikeFreshTrack = false;
+            }
 
             return looksLikeFreshTrack;
         }
@@ -157,8 +213,14 @@ namespace wisland.Services
         /// Called AFTER a raw field write in Apply*_NoLock.
         /// Returns true if subscribers should be notified (stabilization is idle or just released).
         /// Returns false to suppress emission while the gate is closed.
+        /// <paramref name="isMetadataWrite"/> indicates the write was a title/artist change.
+        /// When a non-metadata write (timeline/playback) first triggers fresh-track
+        /// detection, the release is deferred via a short hold so the correct metadata
+        /// has time to arrive (Chrome may report another tab's paused metadata before
+        /// the real track's metadata). A subsequent metadata write that still satisfies
+        /// fresh-track conditions releases immediately.
         /// </summary>
-        private bool EvaluateStabilizationAfterWrite_NoLock(TrackedSource tracked, DateTimeOffset nowUtc)
+        private bool EvaluateStabilizationAfterWrite_NoLock(TrackedSource tracked, DateTimeOffset nowUtc, bool isMetadataWrite = false)
         {
             if (tracked.StabilizationReason == MediaSessionStabilizationReason.None)
             {
@@ -168,7 +230,27 @@ namespace wisland.Services
             if (ShouldReleaseStabilization_NoLock(tracked, nowUtc))
             {
                 bool expired = tracked.StabilizationExpiresAtUtc <= nowUtc;
-                ClearStabilization_NoLock(tracked, releaseReason: expired ? "expired" : "fresh-track");
+                if (expired)
+                {
+                    ClearStabilization_NoLock(tracked, releaseReason: "expired");
+                    return true;
+                }
+
+                // ShouldReleaseStabilization_NoLock already enforces:
+                //   * metadataDifferentFromBaseline (title/artist != pre-skip baseline)
+                //   * HasConcreteMetadata (title is not a placeholder)
+                //   * looksLikeFreshTrack (Playing + HasTimeline + position near start)
+                // So by the time we reach here, a prior metadata write has updated
+                // title away from the baseline AND the latest non-metadata write
+                // confirmed playing+timeline-reset. Chrome's "paused tab B" scenario
+                // is filtered out by looksLikeFreshTrack (tab B is not Playing).
+                // Release immediately regardless of whether THIS write was metadata
+                // or timeline/status — waiting for another metadata write that may
+                // never come used to cause a full SkipTransitionTimeoutMs (~10s)
+                // hang when the title write arrived before the timeline write.
+                // The Machine's Confirming settle (§4.6) covers the natural-stabilization
+                // metadata-settling window at a higher layer.
+                ClearStabilization_NoLock(tracked, releaseReason: isMetadataWrite ? "fresh-track" : "fresh-track-non-metadata");
                 return true;
             }
 
@@ -301,14 +383,37 @@ namespace wisland.Services
         /// internally by CreateSnapshot.
         /// </summary>
         private static MediaSessionSnapshot CreateRawSnapshot(TrackedSource tracked)
-            => new(
+        {
+            // Wall-clock catch-up: the UI render loop (which drives Tick) is suspended
+            // when the island is idle or another session is displayed, so a backgrounded
+            // session's CurrentPositionSeconds can become stale. Extrapolate from the
+            // last-known anchor using wall-clock elapsed so switchback shows true
+            // current progress instead of snapping back to the anchor value.
+            double effectivePosition = tracked.CurrentPositionSeconds;
+            double effectiveProgress = tracked.Progress;
+            if (tracked.HasTimeline
+                && tracked.DurationSeconds > 0
+                && tracked.PlaybackStatus == GlobalSystemMediaTransportControlsSessionPlaybackStatus.Playing
+                && tracked.Presence == MediaSessionPresence.Active
+                && !tracked.HasPendingReconnect
+                && tracked.PositionUpdatedUtc != default)
+            {
+                double elapsed = (DateTimeOffset.UtcNow - tracked.PositionUpdatedUtc).TotalSeconds;
+                if (elapsed > 0 && elapsed < 12 * 3600)
+                {
+                    effectivePosition = Math.Min(tracked.DurationSeconds, tracked.CurrentPositionSeconds + elapsed);
+                    effectiveProgress = effectivePosition / tracked.DurationSeconds;
+                }
+            }
+
+            return new MediaSessionSnapshot(
                 tracked.SessionKey,
                 tracked.SourceAppId,
                 tracked.SourceName,
                 tracked.Title,
                 tracked.Artist,
                 tracked.PlaybackStatus,
-                tracked.Progress,
+                effectiveProgress,
                 tracked.HasTimeline,
                 tracked.DurationSeconds,
                 tracked.IsSystemCurrent,
@@ -316,6 +421,9 @@ namespace wisland.Services
                 tracked.Presence,
                 tracked.LastSeenUtc,
                 tracked.MissingSinceUtc,
-                MediaSessionStabilizationReason.None);
+                MediaSessionStabilizationReason.None,
+                tracked.Thumbnail,
+                tracked.ThumbnailHash);
+        }
     }
 }

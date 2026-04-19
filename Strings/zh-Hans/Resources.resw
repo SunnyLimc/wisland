@@ -523,4 +523,19 @@
   <data name="TestProgress.Content" xml:space="preserve">
     <value>测试进度条</value>
   </data>
+  <data name="Appearance/ImmersiveMediaToggle" xml:space="preserve">
+    <value>沉浸式媒体体验</value>
+  </data>
+  <data name="Appearance/ImmersiveMediaOn" xml:space="preserve">
+    <value>开</value>
+  </data>
+  <data name="Appearance/ImmersiveMediaOff" xml:space="preserve">
+    <value>关</value>
+  </data>
+  <data name="Appearance/ImmersiveMediaExperimentTitle" xml:space="preserve">
+    <value>实验性功能</value>
+  </data>
+  <data name="Appearance/ImmersiveMediaExperimentMessage" xml:space="preserve">
+    <value>沉浸式媒体视图仍处于实验阶段。布局、动画和性能可能会发生变化，部分媒体源可能无法正常显示。</value>
+  </data>
 </root>

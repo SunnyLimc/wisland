@@ -523,4 +523,19 @@
   <data name="TestProgress.Content" xml:space="preserve">
     <value>プログレスバーをテスト</value>
   </data>
+  <data name="Appearance/ImmersiveMediaToggle" xml:space="preserve">
+    <value>没入型メディア体験</value>
+  </data>
+  <data name="Appearance/ImmersiveMediaOn" xml:space="preserve">
+    <value>オン</value>
+  </data>
+  <data name="Appearance/ImmersiveMediaOff" xml:space="preserve">
+    <value>オフ</value>
+  </data>
+  <data name="Appearance/ImmersiveMediaExperimentTitle" xml:space="preserve">
+    <value>実験的機能</value>
+  </data>
+  <data name="Appearance/ImmersiveMediaExperimentMessage" xml:space="preserve">
+    <value>没入型メディアビューはまだ実験段階です。レイアウト、アニメーション、パフォーマンスが変更される可能性があり、一部のメディアソースでは正しく表示されないことがあります。</value>
+  </data>
 </root>

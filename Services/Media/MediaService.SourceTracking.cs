@@ -310,6 +310,7 @@ namespace wisland.Services
                 tracked.MissingSinceUtc = null;
                 ResetPendingReconnect_NoLock(tracked);
                 ApplyMediaProperties_NoLock(tracked, prefetchedState.Title, prefetchedState.Artist, nowUtc);
+                tracked.Thumbnail = prefetchedState.Thumbnail;
                 ApplyPlaybackState_NoLock(tracked, prefetchedState.PlaybackStatus, nowUtc);
                 ApplyTimelineState_NoLock(
                     tracked,
@@ -365,7 +366,7 @@ namespace wisland.Services
             tracked.Title = nextTitle;
             tracked.Artist = nextArtist;
             tracked.LastActivityUtc = nowUtc;
-            return EvaluateStabilizationAfterWrite_NoLock(tracked, nowUtc);
+            return EvaluateStabilizationAfterWrite_NoLock(tracked, nowUtc, isMetadataWrite: true);
         }
 
         private bool ApplyPlaybackState_NoLock(
@@ -415,6 +416,7 @@ namespace wisland.Services
 
             tracked.HasTimeline = hasTimeline;
             tracked.CurrentPositionSeconds = positionSeconds;
+            tracked.PositionUpdatedUtc = nowUtc;
             tracked.DurationSeconds = durationSeconds;
             tracked.Progress = hasTimeline && durationSeconds > 0
                 ? positionSeconds / durationSeconds
@@ -480,6 +482,7 @@ namespace wisland.Services
             {
                 tracked.HasTimeline = tracked.PendingHasTimeline;
                 tracked.CurrentPositionSeconds = tracked.PendingPositionSeconds;
+                tracked.PositionUpdatedUtc = nowUtc;
                 tracked.DurationSeconds = tracked.PendingDurationSeconds;
                 tracked.Progress = tracked.PendingHasTimeline && tracked.PendingDurationSeconds > 0
                     ? tracked.PendingPositionSeconds / tracked.PendingDurationSeconds
@@ -642,6 +645,7 @@ namespace wisland.Services
                 target.PlaybackStatus = candidate.PlaybackStatus;
                 target.HasTimeline = candidate.HasTimeline;
                 target.CurrentPositionSeconds = candidate.CurrentPositionSeconds;
+                target.PositionUpdatedUtc = candidate.PositionUpdatedUtc == default ? nowUtc : candidate.PositionUpdatedUtc;
                 target.DurationSeconds = candidate.DurationSeconds;
                 target.Progress = candidate.Progress;
                 ClearTransportContinuationIfSatisfied_NoLock(target);

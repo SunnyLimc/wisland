@@ -1,5 +1,6 @@
 using System;
 using Windows.Media.Control;
+using Windows.Storage.Streams;
 
 namespace wisland.Models
 {
@@ -21,7 +22,9 @@ namespace wisland.Models
         MediaSessionPresence Presence,
         DateTimeOffset LastSeenUtc,
         DateTimeOffset? MissingSinceUtc,
-        MediaSessionStabilizationReason StabilizationReason = MediaSessionStabilizationReason.None)
+        MediaSessionStabilizationReason StabilizationReason = MediaSessionStabilizationReason.None,
+        IRandomAccessStreamReference? Thumbnail = null,
+        string ThumbnailHash = "")
     {
         public bool IsPlaying => PlaybackStatus == GlobalSystemMediaTransportControlsSessionPlaybackStatus.Playing;
         public bool IsWaitingForReconnect => Presence == MediaSessionPresence.WaitingForReconnect;

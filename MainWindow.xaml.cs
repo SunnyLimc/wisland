@@ -71,6 +71,7 @@ namespace wisland
         private readonly DispatcherTimer _dockedHoverDelayTimer;
         private readonly DispatcherTimer _selectionLockTimer;
         private readonly DispatcherTimer _autoFocusTimer;
+        private readonly DispatcherTimer _metadataSettleTimer;
 
         // --- Line Mode State ---
         private readonly ShellVisibilityService _shellVisibilityService = new();
@@ -90,6 +91,9 @@ namespace wisland
         // --- Content Clipping ---
         private readonly Microsoft.UI.Composition.RectangleClip _contentClip;
         private readonly Microsoft.UI.Composition.Visual _contentVisual;
+
+        /// <summary>Whether the immersive media view is currently the active expanded view.</summary>
+        private bool IsImmersiveActive => _settings.UseImmersiveMediaView;
 
         // --- OS Window Sync State ---
         private int _lastPhysX, _lastPhysY, _lastPhysW, _lastPhysH;
@@ -162,6 +166,8 @@ namespace wisland
                 _selectionLockTimer.Tick += SelectionLockTimer_Tick;
                 _autoFocusTimer = new DispatcherTimer();
                 _autoFocusTimer.Tick += AutoFocusTimer_Tick;
+                _metadataSettleTimer = new DispatcherTimer();
+                _metadataSettleTimer.Tick += MetadataSettleTimer_Tick;
 
                 _touchLongPressTimer = new DispatcherTimer { Interval = TimeSpan.FromMilliseconds(IslandConfig.TouchLongPressMs) };
                 _touchLongPressTimer.Tick += TouchLongPressTimer_Tick;
@@ -177,6 +183,7 @@ namespace wisland
                 SetBackdrop(_settings.BackdropType, persist: false);
                 UpdateState();
                 ApplyInitialWindowState();
+                InitializePresentationMachine();
                 _ = InitializeMediaAsync();
 
                 StartRenderLoop();
@@ -367,7 +374,8 @@ namespace wisland
                 onBackdropChanged: type => SetBackdrop(type),
                 onAiSettingsChanged: () => OnAiSettingsChanged(),
                 onSetTaskProgress: p => SetTaskProgress(p),
-                onClearTaskProgress: () => ClearTaskProgress());
+                onClearTaskProgress: () => ClearTaskProgress(),
+                onImmersiveMediaChanged: () => DispatcherQueue.TryEnqueue(SyncMediaUI));
             _settingsWindow.Closed += (_, _) => _settingsWindow = null;
             _settingsWindow.Activate();
         }

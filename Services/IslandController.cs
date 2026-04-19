@@ -14,10 +14,15 @@ namespace wisland.Services
         public bool IsHovered { get; set; }
         public bool IsDragging { get; set; }
         public bool IsDocked { get; set; }
-        public bool IsNotifying { get; set; }
+        public bool IsForcedExpanded { get; set; }
         public bool IsForegroundMaximized { get; set; }
         public bool IsHoverPending { get; set; }
         public bool IsTransientSurfaceOpen { get; set; }
+
+        /// <summary>
+        /// When true, the expanded state uses the larger immersive dimensions.
+        /// </summary>
+        public bool UseImmersiveDimensions { get; set; }
 
         // --- Current Value Outputs ---
         public IslandState Current { get; } = new();
@@ -56,7 +61,7 @@ namespace wisland.Services
         /// </summary>
         public void UpdateTargetState()
         {
-            if (IsNotifying)
+            if (IsForcedExpanded)
             {
                 // Respect floating position if not docked
                 SetExpandedTargets(IsDocked ? 0 : Current.Y);
@@ -85,8 +90,8 @@ namespace wisland.Services
 
         private void SetExpandedTargets(double y)
         {
-            _targetWidth = IslandConfig.ExpandedWidth;
-            _targetHeight = IslandConfig.ExpandedHeight;
+            _targetWidth = UseImmersiveDimensions ? IslandConfig.ImmersiveExpandedWidth : IslandConfig.ExpandedWidth;
+            _targetHeight = UseImmersiveDimensions ? IslandConfig.ImmersiveExpandedHeight : IslandConfig.ExpandedHeight;
             _targetY = y;
             _targetCompactOpacity = 0;
             _targetExpandedOpacity = 1;
@@ -208,7 +213,7 @@ namespace wisland.Services
         // --- Hidden Check ---
         public bool IsOffscreen()
         {
-            return IsDocked && IsForegroundMaximized && !IsHovered && !IsTransientSurfaceOpen && !IsNotifying && !IsDragging
+            return IsDocked && IsForegroundMaximized && !IsHovered && !IsTransientSurfaceOpen && !IsForcedExpanded && !IsDragging
                    && Current.Y < -_targetHeight + 2;
         }
     }

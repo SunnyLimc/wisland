@@ -100,12 +100,17 @@ namespace wisland
 
             bool isDockPeekState = _controller.IsDocked
                 && !_controller.IsHovered
-                && !_controller.IsNotifying
+                && !_controller.IsForcedExpanded
                 && !_controller.IsDragging
                 && !shouldDisplayDockedLineNow
                 && state.Height <= IslandConfig.CompactHeight + 1;
 
+            bool immersive = IsImmersiveActive;
+
             bool shouldShowProgressEffect = ShouldShowProgressEffect(_frameDisplayedSession);
+            // Hide liquid progress bar when immersive view is the active expanded view
+            if (immersive && state.ExpandedOpacity > 0.5)
+                shouldShowProgressEffect = false;
             IslandProgressBar.SetEffectVisible(shouldShowProgressEffect);
             IslandProgressBar.SetShimmerActive(ShouldAnimateProgressShimmer(_frameDisplayedSession));
 
@@ -209,15 +214,33 @@ namespace wisland
                 CompactContent.Opacity = state.CompactOpacity;
             }
 
-            if (Math.Abs(ExpandedContent.Opacity - state.ExpandedOpacity) > 0.005)
+            // Route expanded opacity to the active view; keep the inactive view hidden
+            double activeExpandedOpacity = state.ExpandedOpacity;
+            double classicOpacity = immersive ? 0 : activeExpandedOpacity;
+            double immersiveOpacity = immersive ? activeExpandedOpacity : 0;
+
+            if (Math.Abs(ExpandedContent.Opacity - classicOpacity) > 0.005)
             {
-                ExpandedContent.Opacity = state.ExpandedOpacity;
+                ExpandedContent.Opacity = classicOpacity;
+            }
+
+            if (Math.Abs(ImmersiveContent.Opacity - immersiveOpacity) > 0.005)
+            {
+                ImmersiveContent.Opacity = immersiveOpacity;
             }
 
             bool isExpandedActive = state.ExpandedOpacity > IslandConfig.HitTestOpacityThreshold;
-            if (ExpandedContent.IsHitTestVisible != isExpandedActive)
+            bool classicHitTest = isExpandedActive && !immersive;
+            bool immersiveHitTest = isExpandedActive && immersive;
+
+            if (ExpandedContent.IsHitTestVisible != classicHitTest)
             {
-                ExpandedContent.IsHitTestVisible = isExpandedActive;
+                ExpandedContent.IsHitTestVisible = classicHitTest;
+            }
+
+            if (ImmersiveContent.IsHitTestVisible != immersiveHitTest)
+            {
+                ImmersiveContent.IsHitTestVisible = immersiveHitTest;
             }
 
             bool compactHitTestVisible = !isExpandedActive && state.IsHitTestVisible;
@@ -287,7 +310,7 @@ namespace wisland
             bool isSettled = Math.Abs(state.Height - IslandConfig.CompactHeight) < 1.0
                 && Math.Abs(state.Y - _controller.TargetY) < 1.0;
 
-            if (isSettled && _controller.IsDocked && !_controller.IsHovered && !_controller.IsNotifying && !_controller.IsDragging)
+            if (isSettled && _controller.IsDocked && !_controller.IsHovered && !_controller.IsForcedExpanded && !_controller.IsDragging)
             {
                 int visiblePhys = GetDockPeekPhysicalPixels(dpiScale);
                 return displayWorkArea.Y + visiblePhys - physHeight;

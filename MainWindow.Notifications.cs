@@ -3,6 +3,7 @@ using System.Threading;
 using System.Threading.Tasks;
 using wisland.Helpers;
 using wisland.Models;
+using wisland.Services.Media.Presentation;
 namespace wisland
 {
     public sealed partial class MainWindow
@@ -12,7 +13,8 @@ namespace wisland
         /// </summary>
         public void ShowNotification(string title, string message, int durationMs = IslandConfig.DefaultNotificationDurationMs, string? header = null)
         {
-            header ??= Loc.GetString("Media/Notification");            Logger.Info($"Notification shown: '{title}' ({durationMs}ms)");
+            header ??= Loc.GetString("Media/Notification");
+            Logger.Info($"Notification shown: '{title}' ({durationMs}ms)");
             _ = ShowNotificationAsync(title, message, header, durationMs);
         }
 
@@ -41,7 +43,9 @@ namespace wisland
 
                     HideSessionPickerOverlay(reconcileHover: false);
                     ExpandedContent.ShowNotification(title, message, header);
-                    _controller.IsNotifying = true;
+                    ImmersiveContent.ShowNotification(title, message, header);
+                    _controller.IsForcedExpanded = true;
+                    _presentationMachine?.Dispatch(new NotificationBeginEvent(new NotificationPayload(title, message, header, durationMs)));
                     UpdateState();
                 });
 
@@ -86,9 +90,18 @@ namespace wisland
 
         private void ClearNotificationState()
         {
-            _controller.IsNotifying = false;
+            _controller.IsForcedExpanded = false;
+            // Dispatch the overlay end and let the machine's Resume frame
+            // drive the media-view refresh via OnFrameProduced. Calling
+            // SyncMediaUI() synchronously here used the still-stale
+            // _latestFrame (pre-Resume, possibly carrying the pre-overlay
+            // track when a skip landed during the notification), which
+            // produced a one-tick flicker of old metadata before the Slide
+            // or Crossfade animation from the Resume frame arrived.
+            // HandleNotificationEnd always emits a ResumeAfterNotification
+            // frame, so OnFrameProduced will refresh the views.
+            _presentationMachine?.Dispatch(new NotificationEndEvent());
             UpdateState();
-            SyncMediaUI();
         }
     }
 }

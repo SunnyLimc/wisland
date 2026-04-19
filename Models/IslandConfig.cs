@@ -13,6 +13,10 @@ namespace wisland.Models
         public const double ExpandedWidth = 400;
         public const double ExpandedHeight = 120;
 
+        // --- Immersive Expanded State ---
+        public const double ImmersiveExpandedWidth = 420;
+        public const double ImmersiveExpandedHeight = 210;
+
         // --- Animation ---
         public const double AnimationSpeed = 25.0;
         public const double MaxDeltaTime = 0.1;
@@ -95,7 +99,6 @@ namespace wisland.Models
         public const int DockedLineBoundsMarginPhysical = 8;
         public const int DefaultNotificationDurationMs = 3000;
         public const int TrackChangeNotificationDurationMs = 4000;
-        public const int TrackSwitchIntentWindowMs = 1600;
         public const int MediaMissingGraceMs = 3000;
         public const int MediaAutoSwitchDebounceMs = 1200;
         public const int MediaRefreshBurstDurationMs = 3000;
@@ -104,6 +107,12 @@ namespace wisland.Models
         public const int NaturalEndingTransitionTimeoutMs = 3000;
         public const double NaturalEndingDetectionThresholdSeconds = 10.0;
         public const double SkipTransitionFreshTrackPositionSeconds = 3.0;
+        // Minimum amount the playback position must drop below the stabilization
+        // baseline for a metadata change to be treated as a true track restart.
+        // Filters out metadata-only flickers where Chrome briefly surfaces another
+        // tab's title/artist while the timeline keeps advancing on the prior track.
+        public const double SkipTransitionPositionRestartMarginSeconds = 0.5;
+        public const int MediaMetadataSettleMs = 250;
         public const int SelectionLockDurationMs = 10000;
         public const double SessionPickerOverlayWidth = 312.0;
         public const int SessionPickerOverlayMaxVisibleItems = 4;

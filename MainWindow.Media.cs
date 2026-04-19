@@ -6,26 +6,16 @@ using System.Threading.Tasks;
 using wisland.Helpers;
 using wisland.Models;
 using wisland.Services;
+using wisland.Services.Media.Presentation;
 
 namespace wisland
 {
     public sealed partial class MainWindow
     {
-        private readonly MediaFocusArbiter _focusArbiter = new(
-            TimeSpan.FromMilliseconds(IslandConfig.MediaAutoSwitchDebounceMs),
-            TimeSpan.FromMilliseconds(IslandConfig.MediaMissingGraceMs));
-        private ContentTransitionDirection _pendingMediaTransitionDirection = ContentTransitionDirection.None;
-        private long _pendingMediaTransitionTimestamp;
-        private string? _selectedSessionKey;
         private string? _displayedSessionKey;
-        private DateTimeOffset? _selectionLockUntilUtc;
-        private string? _lastDisplayedContentIdentity;
         private string? _lastDisplayedProgressIdentity;
-        private readonly List<string> _sessionVisualOrderKeys = new();
-        private CancellationTokenSource? _aiResolveCts;
-        private string? _lastAiResolveContentIdentity;
-        private string? _lastAiOverrideLookupIdentity;
-        private AiSongResult? _lastAiOverrideLookupResult;
+        private MediaTrackFingerprint _lastDisplayedFingerprint = MediaTrackFingerprint.Empty;
+        private MediaPresentationFrame? _latestFrame;
 
         private async Task InitializeMediaAsync()
         {
@@ -33,7 +23,18 @@ namespace wisland
             {
                 _mediaService.SessionsChanged += OnMediaServiceChanged;
                 _mediaService.TrackChanged += OnTrackChanged;
+                if (_presentationMachine != null)
+                {
+                    _presentationMachine.FrameProduced += OnFrameProduced;
+                    _presentationMachine.AutoFocusTimerScheduleRequested += OnAutoFocusTimerScheduleRequested;
+                    _presentationMachine.ManualLockExpiryScheduleRequested += OnManualLockExpiryScheduleRequested;
+                    _presentationMachine.MetadataSettleTimerScheduleRequested += OnMetadataSettleTimerScheduleRequested;
+                }
                 await _mediaService.InitializeAsync();
+                // Bootstrap: feed the machine the initial priority-ordered
+                // session list so it can apply visual stability and emit the
+                // first frame. Legacy SyncMediaUI will run on that frame.
+                _presentationMachine?.Dispatch(new GsmtcSessionsChangedEvent(GetPriorityOrderedSessions()));
                 SyncMediaUI();
                 UpdateRenderLoopState();
             }
@@ -47,9 +48,17 @@ namespace wisland
         {
             DispatcherQueue?.TryEnqueue(() =>
             {
-                SyncMediaUI();
+                _presentationMachine?.Dispatch(new GsmtcSessionsChangedEvent(GetPriorityOrderedSessions()));
                 UpdateRenderLoopState();
             });
+        }
+
+        private void OnFrameProduced(MediaPresentationFrame frame)
+        {
+            // Machine already posted us to the UI thread via IDispatcherPoster.
+            _latestFrame = frame;
+            SyncMediaUI();
+            UpdateRenderLoopState();
         }
 
         private void OnTrackChanged(string title, string artist)
@@ -66,14 +75,21 @@ namespace wisland
         private void SyncMediaUI()
         {
             DisplayedMediaContext rawContext = ResolveDisplayedMediaContext();
-            DisplayedMediaContext context = ApplyAiOverride(rawContext);
-            string? nextContentIdentity = CreateContentIdentity(context.DisplayedSession, context.ShowTransportSwitchingHint);
+            // P4d: AI override now lives in AiOverridePolicy and is carried on
+            // the frame. Apply it to the displayed context for rendering.
+            DisplayedMediaContext context = ApplyFrameAiOverride(rawContext, _latestFrame?.AiOverride);
+
+            // Direction / switching hint come from the machine frame, not from
+            // local identity diffing. Falling back to None when no frame yet.
+            MediaPresentationFrame? frame = _latestFrame;
+            ContentTransitionDirection directionHint = FrameTransitionToDirection(frame?.Transition ?? FrameTransitionKind.None);
+            bool showTransportSwitchingHint = frame?.Kind == PresentationKind.Switching;
+
+            MediaTrackFingerprint nextFingerprint = frame?.Fingerprint ?? ComputeFallbackFingerprint(context.DisplayedSession);
+            bool contentChanged = !FingerprintEquals(_lastDisplayedFingerprint, nextFingerprint);
+
             string? nextProgressIdentity = CreateProgressIdentity(context.DisplayedSession);
-            bool contentChanged = !string.Equals(_lastDisplayedContentIdentity, nextContentIdentity, StringComparison.Ordinal);
             bool progressSourceChanged = !string.Equals(_lastDisplayedProgressIdentity, nextProgressIdentity, StringComparison.Ordinal);
-            ContentTransitionDirection directionHint = contentChanged
-                ? GetPendingMediaTransitionDirection()
-                : ContentTransitionDirection.None;
 
             _displayedSessionKey = context.DisplayedSession?.SessionKey;
             _mediaService.SetDisplayedSessionKey(_displayedSessionKey);
@@ -86,15 +102,26 @@ namespace wisland
 
             CompactContent.Update(context.CompactText, directionHint);
 
-            if (!_controller.IsNotifying)
+            if (!_controller.IsForcedExpanded)
             {
+                // Sync immersive dimensions on the controller
+                _controller.UseImmersiveDimensions = IsImmersiveActive;
+
                 ExpandedContent.UpdateMedia(
                     context.DisplayedSession,
                     context.DisplayIndex,
                     context.OrderedSessions.Count,
                     context.OrderedSessions,
                     directionHint,
-                    context.ShowTransportSwitchingHint);
+                    showTransportSwitchingHint);
+
+                ImmersiveContent.UpdateMedia(
+                    context.DisplayedSession,
+                    context.DisplayIndex,
+                    context.OrderedSessions.Count,
+                    context.OrderedSessions,
+                    directionHint,
+                    showTransportSwitchingHint);
             }
             else
             {
@@ -105,112 +132,51 @@ namespace wisland
 
             if (contentChanged)
             {
-                _lastDisplayedContentIdentity = nextContentIdentity;
-                ClearPendingMediaTransitionDirection();
-                TryRequestAiResolveAsync(rawContext);
+                _lastDisplayedFingerprint = nextFingerprint;
             }
         }
 
-        private DisplayedMediaContext ApplyAiOverride(DisplayedMediaContext context)
+        private static ContentTransitionDirection FrameTransitionToDirection(FrameTransitionKind kind) => kind switch
         {
-            if (!context.DisplayedSession.HasValue)
+            FrameTransitionKind.SlideForward => ContentTransitionDirection.Forward,
+            FrameTransitionKind.SlideBackward => ContentTransitionDirection.Backward,
+            _ => ContentTransitionDirection.None
+        };
+
+        private static bool FingerprintEquals(MediaTrackFingerprint a, MediaTrackFingerprint b)
+            => string.Equals(a.SessionKey, b.SessionKey, StringComparison.Ordinal)
+            && string.Equals(a.Title, b.Title, StringComparison.Ordinal)
+            && string.Equals(a.Artist, b.Artist, StringComparison.Ordinal)
+            && string.Equals(a.ThumbnailHash, b.ThumbnailHash, StringComparison.Ordinal);
+
+        private static MediaTrackFingerprint ComputeFallbackFingerprint(MediaSessionSnapshot? session)
+            => session.HasValue
+                ? new MediaTrackFingerprint(session.Value.SessionKey, session.Value.Title, session.Value.Artist, string.Empty)
+                : MediaTrackFingerprint.Empty;
+
+        private static DisplayedMediaContext ApplyFrameAiOverride(
+            DisplayedMediaContext context, AiOverrideSnapshot? aiOverride)
+        {
+            if (aiOverride == null || !context.DisplayedSession.HasValue)
                 return context;
 
             var session = context.DisplayedSession.Value;
-            var cached = GetCachedAiOverride(session);
-            if (cached == null)
-                return context;
-
-            Logger.Trace($"AI override applied: '{session.Title}' → '{cached.Title}'");
-            var overridden = session with { Title = cached.Title, Artist = cached.Artist };
+            var overridden = session with { Title = aiOverride.Title, Artist = aiOverride.Artist };
             return context with
             {
                 DisplayedSession = overridden,
-                CompactText = cached.Title
+                CompactText = aiOverride.Title
             };
-        }
-
-        private async void TryRequestAiResolveAsync(DisplayedMediaContext context)
-        {
-            if (!_settings.AiSongOverrideEnabled || _aiSongResolver == null || !context.DisplayedSession.HasValue)
-                return;
-
-            var session = context.DisplayedSession.Value;
-
-            // Already resolved from cache — no need to call AI
-            var cached = GetCachedAiOverride(session);
-            if (cached != null)
-                return;
-
-            // Cancel any previous in-flight request
-            _aiResolveCts?.Cancel();
-            _aiResolveCts?.Dispose();
-            var cts = new CancellationTokenSource();
-            _aiResolveCts = cts;
-
-            string contentIdentity = CreateContentIdentity(context.DisplayedSession, context.ShowTransportSwitchingHint) ?? string.Empty;
-            _lastAiResolveContentIdentity = contentIdentity;
-
-            try
-            {
-                string sourceName = MediaSourceAppResolver.TryResolveDisplayName(session.SourceAppId)
-                    ?? session.SourceName;
-
-                var result = await _aiSongResolver.ResolveAsync(
-                    session.SourceAppId, session.Title, session.Artist,
-                    sourceName, session.DurationSeconds,
-                    cts.Token);
-
-                if (cts.Token.IsCancellationRequested)
-                    return;
-
-                // Only update UI if we're still displaying the same content
-                if (result != null && string.Equals(_lastAiResolveContentIdentity, contentIdentity, StringComparison.Ordinal))
-                {
-                    ResetAiOverrideLookupState();
-                    SyncMediaUI();
-                }
-            }
-            catch (OperationCanceledException) { }
-            catch (Exception ex)
-            {
-                Logger.Warn($"AI resolve failed: {ex.Message}");
-            }
         }
 
         internal void OnAiSettingsChanged()
         {
             DispatcherQueue?.TryEnqueue(() =>
             {
-                ResetAiOverrideLookupState();
-                _lastAiResolveContentIdentity = null;
-                _lastDisplayedContentIdentity = null;
+                _presentationMachine?.Dispatch(new SettingsChangedEvent(SettingsChangeScope.AiOverride));
+                _lastDisplayedFingerprint = MediaTrackFingerprint.Empty;
                 SyncMediaUI();
             });
-        }
-
-        private AiSongResult? GetCachedAiOverride(MediaSessionSnapshot session)
-        {
-            if (!_settings.AiSongOverrideEnabled || _aiSongResolver == null)
-            {
-                ResetAiOverrideLookupState();
-                return null;
-            }
-
-            string lookupIdentity = CreateAiLookupIdentity(session);
-            if (!string.Equals(_lastAiOverrideLookupIdentity, lookupIdentity, StringComparison.Ordinal))
-            {
-                _lastAiOverrideLookupIdentity = lookupIdentity;
-                _lastAiOverrideLookupResult = _aiSongResolver.TryGetCached(session.SourceAppId, session.Title, session.Artist);
-            }
-
-            return _lastAiOverrideLookupResult;
-        }
-
-        private void ResetAiOverrideLookupState()
-        {
-            _lastAiOverrideLookupIdentity = null;
-            _lastAiOverrideLookupResult = null;
         }
 
         private MediaSessionSnapshot? GetDisplayedMediaSessionSnapshot()
@@ -231,9 +197,6 @@ namespace wisland
             IReadOnlyList<MediaSessionSnapshot> prioritySessions = GetPriorityOrderedSessions();
             if (prioritySessions.Count == 0)
             {
-                ClearManualSelectionLockInternal();
-                _sessionVisualOrderKeys.Clear();
-                SyncAutoFocusTimer(null);
                 return new DisplayedMediaContext(
                     DisplayedSession: null,
                     OrderedSessions: prioritySessions,
@@ -242,29 +205,25 @@ namespace wisland
                     ShowTransportSwitchingHint: false);
             }
 
-            bool hasManualLock = IsManualSelectionLocked();
-            if (!hasManualLock && (_selectionLockUntilUtc.HasValue || !string.IsNullOrWhiteSpace(_selectedSessionKey)))
-            {
-                ClearManualSelectionLockInternal();
-            }
+            // P4c-2b: ManualSelectionLockPolicy in the Machine owns lock
+            // expiry and the "locked session no longer present" cleanup, so
+            // MainWindow no longer mirrors that state.
 
-            if (!string.IsNullOrWhiteSpace(_selectedSessionKey)
-                && !prioritySessions.Any(session => string.Equals(session.SessionKey, _selectedSessionKey, StringComparison.Ordinal)))
-            {
-                ClearManualSelectionLockInternal();
-                hasManualLock = false;
-            }
-
-            MediaFocusDecision focusDecision = _focusArbiter.Resolve(
-                prioritySessions,
-                _displayedSessionKey,
-                _selectedSessionKey,
-                hasManualLock,
-                DateTimeOffset.UtcNow);
-            SyncAutoFocusTimer(focusDecision.PendingAutoSwitchDueUtc);
-
-            MediaSessionSnapshot displayedSession = focusDecision.DisplayedSession ?? prioritySessions[0];
-            IReadOnlyList<MediaSessionSnapshot> orderedSessions = GetVisualOrderedSessions(prioritySessions);
+            // P4c-2: DisplayedSession comes from the Machine's last-emitted frame.
+            // _autoFocusTimer scheduling is now driven by Machine via the
+            // AutoFocusTimerScheduleRequested event; see
+            // OnAutoFocusTimerScheduleRequested below.
+            MediaSessionSnapshot displayedSession =
+                _latestFrame?.Session
+                ?? prioritySessions[0];
+            // Visual stability is now owned by MediaPresentationMachine and
+            // arrives via _latestFrame.OrderedSessions. Fall back to the
+            // priority list if no frame has been produced yet (e.g. very first
+            // paint before the machine's bootstrap frame lands).
+            IReadOnlyList<MediaSessionSnapshot> orderedSessions =
+                _latestFrame?.OrderedSessions?.Count > 0
+                    ? _latestFrame.OrderedSessions
+                    : prioritySessions;
             int displayIndex = FindSessionIndex(orderedSessions, displayedSession.SessionKey);
             if (displayIndex < 0)
             {
@@ -272,7 +231,9 @@ namespace wisland
                 displayIndex = FindSessionIndex(orderedSessions, displayedSession.SessionKey);
             }
 
-            bool showTransportSwitchingHint = ShouldShowTransportSwitchingHint(displayedSession);
+            // Kind-based switching hint now comes from the machine frame; legacy
+            // fallback: use session.IsStabilizing when no frame has arrived yet.
+            bool showTransportSwitchingHint = displayedSession.IsStabilizing;
 
             return new DisplayedMediaContext(
                 DisplayedSession: displayedSession,
@@ -292,7 +253,7 @@ namespace wisland
         {
             try
             {
-                RegisterPendingMediaTransitionDirection(ContentTransitionDirection.Forward);
+                _presentationMachine?.Dispatch(new UserSkipRequestedEvent(ContentTransitionDirection.Forward));
                 await _mediaService.SkipNextAsync(_displayedSessionKey);
             }
             catch (Exception ex) { Logger.Warn($"SkipNext failed: {ex.Message}"); }
@@ -302,10 +263,23 @@ namespace wisland
         {
             try
             {
-                RegisterPendingMediaTransitionDirection(ContentTransitionDirection.Backward);
+                _presentationMachine?.Dispatch(new UserSkipRequestedEvent(ContentTransitionDirection.Backward));
                 await _mediaService.SkipPreviousAsync(_displayedSessionKey);
             }
             catch (Exception ex) { Logger.Warn($"SkipPrevious failed: {ex.Message}"); }
+        }
+
+        private async void ImmersiveContent_SeekRequested(object? sender, double ratio)
+        {
+            try
+            {
+                MediaSessionSnapshot? displayed = _mediaService.GetSessionSnapshot(_displayedSessionKey);
+                if (!displayed.HasValue) return;
+                if (!displayed.Value.HasTimeline || displayed.Value.DurationSeconds <= 0) return;
+                double target = Math.Clamp(ratio, 0, 1) * displayed.Value.DurationSeconds;
+                await _mediaService.SeekAsync(_displayedSessionKey, target);
+            }
+            catch (Exception ex) { Logger.Warn($"Seek failed: {ex.Message}"); }
         }
 
         private void RootGrid_PointerWheelChanged(object sender, Microsoft.UI.Xaml.Input.PointerRoutedEventArgs e)
@@ -313,7 +287,7 @@ namespace wisland
             if (_isClosed
                 || HasBlockingSurfaceOpen
                 || _controller.IsDragging
-                || _controller.IsNotifying
+                || _controller.IsForcedExpanded
                 || _controller.Current.ExpandedOpacity <= IslandConfig.HitTestOpacityThreshold)
             {
                 return;
@@ -364,18 +338,14 @@ namespace wisland
             }
 
             bool displayedSessionChanged = !string.Equals(_displayedSessionKey, sessionKey, StringComparison.Ordinal);
-            _selectedSessionKey = sessionKey;
-            _selectionLockUntilUtc = DateTimeOffset.UtcNow.AddMilliseconds(IslandConfig.SelectionLockDurationMs);
-            RestartSelectionLockTimer();
-            SyncAutoFocusTimer(null);
-
             if (displayedSessionChanged)
             {
                 Logger.Debug($"Session selected: key={sessionKey}, direction={direction}");
-                if (direction != ContentTransitionDirection.None)
-                {
-                    RegisterPendingMediaTransitionDirection(direction);
-                }
+                // P4c-2b: lock state + expiry live in ManualSelectionLockPolicy;
+                // dispatching the event both arms the lock and (via the policy's
+                // ScheduleManualLockExpiryTimer call) restarts MainWindow's
+                // _selectionLockTimer through OnManualLockExpiryScheduleRequested.
+                _presentationMachine?.Dispatch(new UserSelectSessionEvent(sessionKey, direction));
             }
 
             SyncMediaUI();
@@ -384,7 +354,10 @@ namespace wisland
 
         private ContentTransitionDirection GetDirectionToSession(string sessionKey)
         {
-            IReadOnlyList<MediaSessionSnapshot> orderedSessions = GetVisualOrderedSessions(GetPriorityOrderedSessions());
+            IReadOnlyList<MediaSessionSnapshot> orderedSessions =
+                _latestFrame?.OrderedSessions?.Count > 0
+                    ? _latestFrame.OrderedSessions
+                    : GetPriorityOrderedSessions();
             int currentIndex = FindSessionIndex(orderedSessions, _displayedSessionKey);
             int targetIndex = FindSessionIndex(orderedSessions, sessionKey);
 
@@ -398,147 +371,56 @@ namespace wisland
                 : ContentTransitionDirection.Backward;
         }
 
-        private IReadOnlyList<MediaSessionSnapshot> GetVisualOrderedSessions(IReadOnlyList<MediaSessionSnapshot> prioritySessions)
-        {
-            if (prioritySessions.Count == 0)
-            {
-                _sessionVisualOrderKeys.Clear();
-                return prioritySessions;
-            }
-
-            Dictionary<string, MediaSessionSnapshot> sessionsByKey = prioritySessions.ToDictionary(
-                session => session.SessionKey,
-                StringComparer.Ordinal);
-
-            HashSet<string> activeKeys = new(sessionsByKey.Keys, StringComparer.Ordinal);
-            _sessionVisualOrderKeys.RemoveAll(sessionKey => !activeKeys.Contains(sessionKey));
-
-            HashSet<string> visualKeySet = new(_sessionVisualOrderKeys, StringComparer.Ordinal);
-            for (int priorityIndex = 0; priorityIndex < prioritySessions.Count; priorityIndex++)
-            {
-                string sessionKey = prioritySessions[priorityIndex].SessionKey;
-                if (visualKeySet.Contains(sessionKey))
-                {
-                    continue;
-                }
-
-                int insertIndex = ResolveVisualInsertIndex(prioritySessions, priorityIndex, visualKeySet);
-                _sessionVisualOrderKeys.Insert(insertIndex, sessionKey);
-                visualKeySet.Add(sessionKey);
-            }
-
-            return _sessionVisualOrderKeys
-                .Where(sessionsByKey.ContainsKey)
-                .Select(sessionKey => sessionsByKey[sessionKey])
-                .ToArray();
-        }
-
-        private int ResolveVisualInsertIndex(IReadOnlyList<MediaSessionSnapshot> prioritySessions, int priorityIndex, HashSet<string> visualKeySet)
-        {
-            for (int index = priorityIndex - 1; index >= 0; index--)
-            {
-                string previousKey = prioritySessions[index].SessionKey;
-                if (!visualKeySet.Contains(previousKey))
-                {
-                    continue;
-                }
-
-                int previousVisualIndex = _sessionVisualOrderKeys.FindIndex(
-                    sessionKey => string.Equals(sessionKey, previousKey, StringComparison.Ordinal));
-                if (previousVisualIndex >= 0)
-                {
-                    return previousVisualIndex + 1;
-                }
-            }
-
-            for (int index = priorityIndex + 1; index < prioritySessions.Count; index++)
-            {
-                string nextKey = prioritySessions[index].SessionKey;
-                if (!visualKeySet.Contains(nextKey))
-                {
-                    continue;
-                }
-
-                int nextVisualIndex = _sessionVisualOrderKeys.FindIndex(
-                    sessionKey => string.Equals(sessionKey, nextKey, StringComparison.Ordinal));
-                if (nextVisualIndex >= 0)
-                {
-                    return nextVisualIndex;
-                }
-            }
-
-            return _sessionVisualOrderKeys.Count;
-        }
-
         private void SelectionLockTimer_Tick(object? sender, object e)
         {
-            if (IsManualSelectionLocked())
-            {
-                RestartSelectionLockTimer();
-                return;
-            }
-
-            ClearManualSelectionLockInternal();
-            SyncMediaUI();
-            UpdateRenderLoopState();
+            _selectionLockTimer.Stop();
+            // P4c-2b: ManualSelectionLockPolicy observes expiry on any event;
+            // an AutoFocusTimerFiredEvent is cheap and triggers the necessary
+            // reconciliation. The resulting frame flows back via OnFrameProduced.
+            _presentationMachine?.Dispatch(new AutoFocusTimerFiredEvent());
         }
 
         private void AutoFocusTimer_Tick(object? sender, object e)
         {
             _autoFocusTimer.Stop();
-            SyncMediaUI();
-            UpdateRenderLoopState();
+            // P4c-2: let the Machine re-reconcile (ManualSelectionLockPolicy will
+            // see expiry, FocusArbitrationPolicy will pick a new winner). The
+            // resulting frame flows back via OnFrameProduced → SyncMediaUI.
+            _presentationMachine?.Dispatch(new AutoFocusTimerFiredEvent());
         }
 
-        private bool IsManualSelectionLocked()
-            => _selectionLockUntilUtc.HasValue
-                && _selectionLockUntilUtc.Value > DateTimeOffset.UtcNow
-                && !string.IsNullOrWhiteSpace(_selectedSessionKey);
+        private void OnAutoFocusTimerScheduleRequested(DateTimeOffset? dueUtc)
+            => RestartUiTimer(_autoFocusTimer, dueUtc);
 
-        private void RestartSelectionLockTimer()
+        private void OnManualLockExpiryScheduleRequested(DateTimeOffset? dueUtc)
+            => RestartUiTimer(_selectionLockTimer, dueUtc);
+
+        private void OnMetadataSettleTimerScheduleRequested(DateTimeOffset? dueUtc)
+            => RestartUiTimer(_metadataSettleTimer, dueUtc);
+
+        private void MetadataSettleTimer_Tick(object? sender, object e)
         {
-            if (!_selectionLockUntilUtc.HasValue)
-            {
-                _selectionLockTimer.Stop();
-                return;
-            }
-
-            TimeSpan remaining = _selectionLockUntilUtc.Value - DateTimeOffset.UtcNow;
-            if (remaining <= TimeSpan.Zero)
-            {
-                _selectionLockTimer.Stop();
-                return;
-            }
-
-            _selectionLockTimer.Stop();
-            _selectionLockTimer.Interval = remaining < TimeSpan.FromMilliseconds(50)
-                ? TimeSpan.FromMilliseconds(50)
-                : remaining;
-            _selectionLockTimer.Start();
+            _metadataSettleTimer?.Stop();
+            _presentationMachine?.Dispatch(new MetadataSettleTimerFiredEvent());
         }
 
-        private void SyncAutoFocusTimer(DateTimeOffset? dueUtc)
+        private static void RestartUiTimer(Microsoft.UI.Xaml.DispatcherTimer timer, DateTimeOffset? dueUtc)
         {
             if (!dueUtc.HasValue || dueUtc.Value <= DateTimeOffset.UtcNow)
             {
-                _autoFocusTimer.Stop();
+                timer.Stop();
                 return;
             }
-
             TimeSpan remaining = dueUtc.Value - DateTimeOffset.UtcNow;
-            _autoFocusTimer.Stop();
-            _autoFocusTimer.Interval = remaining < TimeSpan.FromMilliseconds(50)
+            timer.Stop();
+            timer.Interval = remaining < TimeSpan.FromMilliseconds(50)
                 ? TimeSpan.FromMilliseconds(50)
                 : remaining;
-            _autoFocusTimer.Start();
+            timer.Start();
         }
 
-        private void ClearManualSelectionLockInternal()
-        {
-            _selectedSessionKey = null;
-            _selectionLockUntilUtc = null;
-            _selectionLockTimer.Stop();
-        }
+        private bool IsManualSelectionLocked()
+            => _presentationMachine?.HasManualLock == true;
 
         private void RequestMediaProgressReset(bool hideAfterReset)
         {
@@ -555,6 +437,10 @@ namespace wisland
                 return;
             }
 
+            // Snap the bar to zero immediately so the new session's position can
+            // start growing from 0 on the next frame — avoids the 2-3 second drain
+            // physics that made it look like the bar wasn't moving.
+            IslandProgressBar.SnapToZero();
             _isMediaProgressResetPending = true;
             _hideMediaProgressWhenResetCompletes = hideAfterReset;
             UpdateRenderLoopState();
@@ -562,31 +448,11 @@ namespace wisland
 
         private void RegisterPendingMediaTransitionDirection(ContentTransitionDirection direction)
         {
-            _pendingMediaTransitionDirection = direction;
-            _pendingMediaTransitionTimestamp = Environment.TickCount64;
-        }
-
-        private ContentTransitionDirection GetPendingMediaTransitionDirection()
-        {
-            if (_pendingMediaTransitionDirection == ContentTransitionDirection.None)
-            {
-                return ContentTransitionDirection.None;
-            }
-
-            long elapsed = Environment.TickCount64 - _pendingMediaTransitionTimestamp;
-            if (elapsed > IslandConfig.TrackSwitchIntentWindowMs)
-            {
-                ClearPendingMediaTransitionDirection();
-                return ContentTransitionDirection.None;
-            }
-
-            return _pendingMediaTransitionDirection;
-        }
-
-        private void ClearPendingMediaTransitionDirection()
-        {
-            _pendingMediaTransitionDirection = ContentTransitionDirection.None;
-            _pendingMediaTransitionTimestamp = 0;
+            // P2b: intent is now owned by MediaPresentationMachine via UserSkipRequestedEvent /
+            // UserSelectSessionEvent. Legacy callers (drag gesture, etc.) still invoke this;
+            // forward to the machine if one exists. This shim is removed in P4.
+            if (direction == ContentTransitionDirection.None) return;
+            _presentationMachine?.Dispatch(new UserSkipRequestedEvent(direction));
         }
 
         private static int FindSessionIndex(IReadOnlyList<MediaSessionSnapshot> sessions, string? sessionKey)
@@ -623,31 +489,6 @@ namespace wisland
                 _ => 5
             };
         }
-
-        private static bool ShouldShowTransportSwitchingHint(MediaSessionSnapshot session)
-            => session.IsStabilizing;
-
-        private static string? CreateContentIdentity(MediaSessionSnapshot? session, bool showTransportSwitchingHint)
-            => session.HasValue
-                ? string.Concat(
-                    session.Value.SessionKey,
-                    "\u001f",
-                    session.Value.Title,
-                    "\u001f",
-                    session.Value.Artist,
-                    "\u001f",
-                    session.Value.Presence,
-                    "\u001f",
-                    showTransportSwitchingHint ? "switching" : "steady")
-                : null;
-
-        private static string CreateAiLookupIdentity(MediaSessionSnapshot session)
-            => string.Concat(
-                session.SourceAppId,
-                "\u001f",
-                session.Title,
-                "\u001f",
-                session.Artist);
 
         private static string? CreateProgressIdentity(MediaSessionSnapshot? session)
             => session.HasValue

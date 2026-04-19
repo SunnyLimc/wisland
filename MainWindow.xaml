@@ -47,11 +47,18 @@
                 <!-- Compact State Content -->
                 <views:CompactView x:Name="CompactContent" Opacity="1" />
 
-                <!-- Expanded State Content -->
+                <!-- Expanded State Content (classic) -->
                 <views:ExpandedMediaView x:Name="ExpandedContent" Opacity="0" IsHitTestVisible="False"
                                          BackClick="SkipPrevious_Click"
                                          PlayPauseClick="PlayPause_Click"
                                          ForwardClick="SkipNext_Click" />
+
+                <!-- Expanded State Content (immersive) -->
+                <views:ImmersiveMediaView x:Name="ImmersiveContent" Opacity="0" IsHitTestVisible="False"
+                                          BackClick="SkipPrevious_Click"
+                                          PlayPauseClick="PlayPause_Click"
+                                          ForwardClick="SkipNext_Click"
+                                          SeekRequested="ImmersiveContent_SeekRequested" />
             </Grid>
         </Border>
     </Grid>

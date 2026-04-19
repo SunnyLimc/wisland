@@ -51,7 +51,17 @@ namespace wisland.Services
             {
                 lock (_gate)
                 {
-                    return _sessions;
+                    // Rebuild on every read so wall-clock-extrapolated progress in
+                    // CreateSnapshot reflects the true elapsed time since each source's
+                    // last position anchor. The cached _sessions array (refreshed only
+                    // on PrepareStateChange_NoLock) would otherwise surface stale
+                    // Progress values on session switch-back.
+                    var tracked = _trackedSourcesByKey.Values;
+                    if (tracked.Count == 0) return System.Array.Empty<MediaSessionSnapshot>();
+                    var fresh = new MediaSessionSnapshot[tracked.Count];
+                    int i = 0;
+                    foreach (TrackedSource source in tracked) fresh[i++] = CreateSnapshot(source);
+                    return fresh;
                 }
             }
         }
@@ -148,6 +158,7 @@ namespace wisland.Services
                     }
 
                     tracked.CurrentPositionSeconds = nextPosition;
+                    tracked.PositionUpdatedUtc = DateTimeOffset.UtcNow;
                     tracked.Progress = nextPosition / tracked.DurationSeconds;
                 }
             }
@@ -271,6 +282,29 @@ namespace wisland.Services
             catch (Exception ex)
             {
                 Logger.Error(ex, "SkipPrevious failed");
+            }
+            finally
+            {
+                StartRefreshBurst();
+            }
+        }
+
+        public async Task SeekAsync(string? sessionKey, double positionSeconds)
+        {
+            try
+            {
+                Logger.Debug($"Seek requested for session '{sessionKey}' to {positionSeconds:F2}s");
+                GlobalSystemMediaTransportControlsSession? session = GetSession(sessionKey);
+                if (session != null)
+                {
+                    // GSMTC expects ticks (100-nanosecond units).
+                    long ticks = (long)Math.Max(0, positionSeconds * TimeSpan.TicksPerSecond);
+                    await session.TryChangePlaybackPositionAsync(ticks);
+                }
+            }
+            catch (Exception ex)
+            {
+                Logger.Error(ex, "Seek failed");
             }
             finally
             {

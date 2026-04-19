@@ -62,11 +62,8 @@ namespace wisland
 
             _mediaService.SessionsChanged -= OnMediaServiceChanged;
             _mediaService.TrackChanged -= OnTrackChanged;
+            DisposePresentationMachine();
             _mediaService.Dispose();
-
-            _aiResolveCts?.Cancel();
-            _aiResolveCts?.Dispose();
-            _aiResolveCts = null;
 
             DisposeSessionPickerOverlay();
             _shellVisibilityService.Dispose();

@@ -1,6 +1,7 @@
 using System;
 using wisland.Models;
 using Windows.Media.Control;
+using Windows.Storage.Streams;
 
 namespace wisland.Services
 {
@@ -23,6 +24,7 @@ namespace wisland.Services
                 LastActivityUtc = nowUtc;
                 LastSeenUtc = nowUtc;
                 Presence = MediaSessionPresence.Active;
+                PositionUpdatedUtc = nowUtc;
                 PendingTitle = UnknownTrackTitle;
                 PendingArtist = UnknownArtistName;
                 PendingPlaybackStatus = GlobalSystemMediaTransportControlsSessionPlaybackStatus.Closed;
@@ -44,9 +46,27 @@ namespace wisland.Services
             public DateTimeOffset? MissingSinceUtc { get; set; }
             public MediaSessionPresence Presence { get; set; }
             public double CurrentPositionSeconds { get; set; }
+            /// <summary>
+            /// Wall-clock timestamp at which <see cref="CurrentPositionSeconds"/> was last written.
+            /// Used to compute the effective (auto-advanced) position on read without relying
+            /// on the UI render loop's Tick cadence. The render loop is suspended when the island
+            /// is idle or displaying a different session, so Tick-based accumulation freezes for
+            /// backgrounded sessions. Wall-clock anchoring fills that gap.
+            /// </summary>
+            public DateTimeOffset PositionUpdatedUtc { get; set; }
             public double DurationSeconds { get; set; }
             public DateTimeOffset? LastDisplayedUtc { get; set; }
             public DateTimeOffset? LastSystemCurrentUtc { get; set; }
+            public IRandomAccessStreamReference? Thumbnail { get; set; }
+            /// <summary>
+            /// xxhash64 (hex, 16 chars) of the first 4KB of the thumbnail stream. Computed
+            /// asynchronously after the Thumbnail reference updates. Empty until the first
+            /// async compute completes or when no thumbnail is present. Used by the
+            /// MediaPresentationMachine to build stable MediaTrackFingerprints so that two
+            /// streams that happen to reference different IRandomAccessStreamReference
+            /// instances but identical underlying bytes are considered the same track.
+            /// </summary>
+            public string ThumbnailHash { get; set; } = string.Empty;
             public bool HasPendingReconnect { get; set; }
             public string PendingTitle { get; set; }
             public string PendingArtist { get; set; }
@@ -64,6 +84,14 @@ namespace wisland.Services
             public DateTimeOffset StabilizationExpiresAtUtc { get; set; }
             public string StabilizationBaselineTitle { get; set; } = string.Empty;
             public string StabilizationBaselineArtist { get; set; } = string.Empty;
+            // Position observed at the moment stabilization was armed. Used by
+            // ShouldReleaseStabilization_NoLock to distinguish a true track restart
+            // (current position dropped below baseline) from a metadata-only flicker
+            // where the position keeps advancing on the prior playback (Chrome can
+            // briefly surface another tab's title/artist while the timeline still
+            // reflects the previous track). See ShouldReleaseStabilization_NoLock.
+            public double StabilizationBaselinePositionSeconds { get; set; }
+            public bool StabilizationBaselineHasTimeline { get; set; }
             public MediaSessionSnapshot FrozenSnapshot { get; set; }
         }
 
@@ -73,7 +101,8 @@ namespace wisland.Services
             GlobalSystemMediaTransportControlsSessionPlaybackStatus PlaybackStatus,
             bool HasTimeline,
             double PositionSeconds,
-            double DurationSeconds)
+            double DurationSeconds,
+            IRandomAccessStreamReference? Thumbnail)
         {
             public static readonly PrefetchedSessionState Empty = new(
                 UnknownTrackTitle,
@@ -81,7 +110,8 @@ namespace wisland.Services
                 GlobalSystemMediaTransportControlsSessionPlaybackStatus.Closed,
                 HasTimeline: false,
                 PositionSeconds: 0,
-                DurationSeconds: 0);
+                DurationSeconds: 0,
+                Thumbnail: null);
 
             public bool HasConcreteMetadata => MediaService.HasConcreteMetadata(Title);
         }

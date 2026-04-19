@@ -351,6 +351,7 @@ Rules that contributors must preserve:
 | Change tray actions | `MainWindow.Tray.cs` | `CreateTrayMenu()` entrypoint |
 | Add a persisted setting | `SettingsService`, relevant model, `MainWindow.Lifetime.cs` | Keep values typed at the shell boundary |
 | Change media behavior | `Services/Media/*.cs`, `MainWindow.Media.cs`, `MainWindow.Notifications.cs` | Service owns GSMTC; window owns focus policy |
+| Change media presentation / transition rules | `Services/Media/Presentation/*.cs`, `docs/MediaPresentationMachine.design.md` | Single-threaded state machine emits `MediaPresentationFrame`; see design doc §4–§6 for Confirming, `SwitchIntent.Source`, and `AiOverrideLookup` |
 | Change diagnostics | `Helpers/Logger.cs` | Local-file based, 7-day retention |
 | Add/change localized string | `Strings/*/Resources.resw` + XAML or code-behind caller | Add key to **all three** `.resw` files |
 | Add a new language | `Strings/{tag}/Resources.resw`, `Views/Settings/AppearancePage.xaml` | Copy, translate, add ComboBox entry |

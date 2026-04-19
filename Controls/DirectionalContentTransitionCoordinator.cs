@@ -43,6 +43,11 @@ namespace wisland.Controls
             _secondarySlot = secondarySlot;
             _profile = profile;
             _viewport.Clip = _viewportClip;
+            // Keep the viewport clip rect in sync with the viewport's actual
+            // size. Without this, the clip rect is captured once at Initialize
+            // time (usually when the viewport is narrow / still animating in)
+            // and permanently clips content once the viewport grows.
+            _viewport.SizeChanged += (_, _) => UpdateViewportBounds();
         }
 
         public int ActiveSlotIndex => _activeSlotIndex;

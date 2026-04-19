@@ -338,6 +338,24 @@ namespace wisland.Services
             return result;
         }
 
+        /// <summary>
+        /// GSMTC reports TimelineProperties.Position as a cached value that is only
+        /// refreshed when the OS polls the source. For a playing session, the real
+        /// position at "now" is <c>Position + (Now - LastUpdatedTime)</c>. Without
+        /// this adjustment the bar snaps backward to the last-cached sample every
+        /// time a TimelinePropertiesChanged event fires or we re-query the session
+        /// (e.g. after session switch-back).
+        /// </summary>
+        private static double AdjustTimelinePositionForWallClock(
+            double positionSeconds, double durationSeconds, DateTimeOffset lastUpdatedTime)
+        {
+            if (lastUpdatedTime == default) return positionSeconds;
+            double elapsed = (DateTimeOffset.UtcNow - lastUpdatedTime).TotalSeconds;
+            if (elapsed <= 0 || elapsed > 12 * 3600) return positionSeconds;
+            double adjusted = positionSeconds + elapsed;
+            return durationSeconds > 0 ? Math.Min(adjusted, durationSeconds) : adjusted;
+        }
+
         private static async Task<PrefetchedSessionState> CaptureSessionStateAsync(GlobalSystemMediaTransportControlsSession session)
         {
             try
@@ -350,6 +368,12 @@ namespace wisland.Services
                 bool hasTimeline = timeline != null && timeline.EndTime.TotalSeconds > 0;
                 double positionSeconds = hasTimeline ? timeline!.Position.TotalSeconds : 0;
                 double durationSeconds = hasTimeline ? timeline!.EndTime.TotalSeconds : 0;
+                if (hasTimeline
+                    && playbackStatus == GlobalSystemMediaTransportControlsSessionPlaybackStatus.Playing)
+                {
+                    positionSeconds = AdjustTimelinePositionForWallClock(
+                        positionSeconds, durationSeconds, timeline!.LastUpdatedTime);
+                }
 
                 GlobalSystemMediaTransportControlsSessionMediaProperties? mediaProperties =
                     await session.TryGetMediaPropertiesAsync();
@@ -359,6 +383,7 @@ namespace wisland.Services
                 string artist = string.IsNullOrWhiteSpace(mediaProperties?.Artist)
                     ? UnknownArtistName
                     : mediaProperties!.Artist;
+                Windows.Storage.Streams.IRandomAccessStreamReference? thumbnail = mediaProperties?.Thumbnail;
 
                 Logger.Trace($"Prefetched session state: '{session.SourceAppUserModelId}' Title='{title}', Artist='{artist}', Status={playbackStatus}, pos={positionSeconds:F1}s, dur={durationSeconds:F1}s");
 
@@ -368,7 +393,8 @@ namespace wisland.Services
                     playbackStatus,
                     hasTimeline,
                     positionSeconds,
-                    durationSeconds);
+                    durationSeconds,
+                    thumbnail);
             }
             catch (Exception ex)
             {
@@ -441,6 +467,7 @@ namespace wisland.Services
 
                 string nextTitle = string.IsNullOrWhiteSpace(props.Title) ? UnknownTrackTitle : props.Title;
                 string nextArtist = string.IsNullOrWhiteSpace(props.Artist) ? UnknownArtistName : props.Artist;
+                Windows.Storage.Streams.IRandomAccessStreamReference? nextThumbnail = props.Thumbnail;
                 DateTimeOffset nowUtc = DateTimeOffset.UtcNow;
                 ServiceChangeResult changeResult = default;
                 bool hasChanges = false;
@@ -453,6 +480,24 @@ namespace wisland.Services
                     }
 
                     hasChanges = ApplyMediaProperties_NoLock(tracked, nextTitle, nextArtist, nowUtc);
+
+                    // Always update the raw thumbnail reference so it is current
+                    // when stabilization eventually releases, but only treat it as
+                    // a visible state change when the stabilization gate is open.
+                    // Otherwise a thumbnail-only change during a skip transition
+                    // would bypass the gate and dispatch an intermediate snapshot
+                    // (e.g. Chrome briefly reporting another tab's paused media).
+                    if (!ReferenceEquals(tracked.Thumbnail, nextThumbnail))
+                    {
+                        tracked.Thumbnail = nextThumbnail;
+                        // Hash is stale until the async compute below finishes.
+                        tracked.ThumbnailHash = string.Empty;
+                        if (tracked.StabilizationReason == MediaSessionStabilizationReason.None)
+                        {
+                            hasChanges = true;
+                        }
+                    }
+
                     if (hasChanges)
                     {
                         Logger.Debug($"Media properties updated for '{tracked.SessionKey}': Title='{nextTitle}', Artist='{nextArtist}'");
@@ -464,10 +509,88 @@ namespace wisland.Services
                 {
                     DispatchChange(changeResult);
                 }
+
+                // Kick off async thumbnail hashing after the visible dispatch.
+                // The hash result arrives on a later SessionsChanged event once it
+                // has been stored on the tracked source; its only consumer today
+                // is the MediaPresentationMachine's fingerprint.
+                if (nextThumbnail != null)
+                {
+                    _ = ComputeAndStoreThumbnailHashAsync(session, nextThumbnail);
+                }
             }
             catch (Exception ex)
             {
                 Logger.Error(ex, "Failed to update media properties");
+            }
+        }
+
+        private async Task ComputeAndStoreThumbnailHashAsync(
+            GlobalSystemMediaTransportControlsSession session,
+            Windows.Storage.Streams.IRandomAccessStreamReference thumbnailRef)
+        {
+            string hash;
+            try
+            {
+                using var stream = await thumbnailRef.OpenReadAsync();
+                if (stream == null)
+                {
+                    return;
+                }
+
+                // Hash the first 4KB per spec. Full-image hashing is overkill for
+                // dedup and adds latency; the first 4KB of a typical JPEG/PNG is
+                // distinct enough for album art diffing.
+                const int sampleSize = 4096;
+                long length = Math.Min(sampleSize, (long)stream.Size);
+                if (length <= 0)
+                {
+                    return;
+                }
+
+                var buffer = new Windows.Storage.Streams.Buffer((uint)length);
+                var read = await stream.ReadAsync(buffer, (uint)length, Windows.Storage.Streams.InputStreamOptions.None);
+                byte[] bytes = new byte[read.Length];
+                using (var reader = Windows.Storage.Streams.DataReader.FromBuffer(read))
+                {
+                    reader.ReadBytes(bytes);
+                }
+
+                ulong h = System.IO.Hashing.XxHash64.HashToUInt64(bytes);
+                hash = h.ToString("x16");
+            }
+            catch (Exception ex)
+            {
+                Logger.Trace($"Thumbnail hash compute failed: {ex.Message}");
+                return;
+            }
+
+            ServiceChangeResult changeResult = default;
+            bool dispatched = false;
+            lock (_gate)
+            {
+                if (_isDisposed || !_trackedSourcesBySession.TryGetValue(session, out TrackedSource? tracked))
+                {
+                    return;
+                }
+                // Bail if the thumbnail reference has been replaced since we
+                // started: a newer hash computation is (or will be) in flight.
+                if (!ReferenceEquals(tracked.Thumbnail, thumbnailRef))
+                {
+                    return;
+                }
+                if (string.Equals(tracked.ThumbnailHash, hash, StringComparison.Ordinal))
+                {
+                    return;
+                }
+                tracked.ThumbnailHash = hash;
+                changeResult = PrepareStateChange_NoLock();
+                dispatched = true;
+            }
+
+            if (dispatched)
+            {
+                DispatchChange(changeResult);
             }
         }
 
@@ -516,6 +639,16 @@ namespace wisland.Services
                 bool hasTimeline = timeline != null && timeline.EndTime.TotalSeconds > 0;
                 double nextPositionSeconds = hasTimeline ? timeline!.Position.TotalSeconds : 0;
                 double nextDurationSeconds = hasTimeline ? timeline!.EndTime.TotalSeconds : 0;
+                if (hasTimeline)
+                {
+                    var playbackStatus = session.GetPlaybackInfo()?.PlaybackStatus
+                        ?? GlobalSystemMediaTransportControlsSessionPlaybackStatus.Closed;
+                    if (playbackStatus == GlobalSystemMediaTransportControlsSessionPlaybackStatus.Playing)
+                    {
+                        nextPositionSeconds = AdjustTimelinePositionForWallClock(
+                            nextPositionSeconds, nextDurationSeconds, timeline!.LastUpdatedTime);
+                    }
+                }
                 DateTimeOffset nowUtc = DateTimeOffset.UtcNow;
                 ServiceChangeResult changeResult = default;
                 bool hasChanges = false;

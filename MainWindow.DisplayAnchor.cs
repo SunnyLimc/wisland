@@ -110,7 +110,7 @@ namespace wisland
         private bool SupportsDockedLinePresentation(RectInt32 workArea)
         {
             if (!_controller.IsDocked
-                || _controller.IsNotifying
+                || _controller.IsForcedExpanded
                 || _controller.IsDragging
                 || _controller.IsTransientSurfaceOpen)
             {

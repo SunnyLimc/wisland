@@ -42,19 +42,40 @@ namespace wisland.Services
             string trackTitle = string.Empty;
             string trackArtist = string.Empty;
 
-            if (_systemCurrentSessionKey != null
-                && _trackedSourcesByKey.TryGetValue(_systemCurrentSessionKey, out TrackedSource? tracked)
-                && tracked.Presence == MediaSessionPresence.Active
-                && HasConcreteMetadata(tracked.Title))
+            // Use the just-built snapshot (which respects the stabilization
+            // freeze) for track-change detection instead of the raw tracked
+            // fields.  Raw fields are written even while the stabilization gate
+            // is closed (e.g. Chrome briefly reporting another tab's paused
+            // media during a skip transition), so referencing them here would
+            // fire a false TrackChanged notification with the wrong metadata
+            // and corrupt _lastSystemCurrentTrackSignature.
+            MediaSessionSnapshot currentSnapshot = default;
+            bool foundCurrent = false;
+            if (_systemCurrentSessionKey != null)
             {
-                string signature = CreateTrackSignature(tracked.Title, tracked.Artist);
+                foreach (MediaSessionSnapshot s in _sessions)
+                {
+                    if (string.Equals(s.SessionKey, _systemCurrentSessionKey, StringComparison.Ordinal))
+                    {
+                        currentSnapshot = s;
+                        foundCurrent = true;
+                        break;
+                    }
+                }
+            }
+
+            if (foundCurrent
+                && currentSnapshot.Presence == MediaSessionPresence.Active
+                && HasConcreteMetadata(currentSnapshot.Title))
+            {
+                string signature = CreateTrackSignature(currentSnapshot.Title, currentSnapshot.Artist);
                 if (_lastSystemCurrentTrackSignature != null
                     && !string.Equals(_lastSystemCurrentTrackSignature, signature, StringComparison.Ordinal))
                 {
                     shouldNotifyTrack = true;
-                    trackTitle = tracked.Title;
-                    trackArtist = tracked.Artist;
-                    Logger.Info($"Track changed for system current '{tracked.SessionKey}': '{trackTitle}' by '{trackArtist}'");
+                    trackTitle = currentSnapshot.Title;
+                    trackArtist = currentSnapshot.Artist;
+                    Logger.Info($"Track changed for system current '{currentSnapshot.SessionKey}': '{trackTitle}' by '{trackArtist}'");
                 }
 
                 _lastSystemCurrentTrackSignature = signature;

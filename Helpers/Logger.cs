@@ -76,9 +76,18 @@ namespace wisland.Helpers
 
         public static bool IsEnabled(LogLevel level) => level >= _minimumLevel;
 
-        private static void Write(LogLevel level, string tag, string message, string? filePath, string? memberName)
+        /// <summary>
+        /// Emits a log line that bypasses <see cref="_minimumLevel"/>. Intended
+        /// for short-lived diagnostic instrumentation so noisy traces show up
+        /// even when the configured log level would otherwise suppress them.
+        /// Prefer <see cref="Trace"/>/<see cref="Debug"/> for permanent logging.
+        /// </summary>
+        public static void Force(string message, [CallerFilePath] string? filePath = null, [CallerMemberName] string? memberName = null)
+            => Write(LogLevel.Error, "FORCE", message, filePath, memberName, bypassLevelFilter: true);
+
+        private static void Write(LogLevel level, string tag, string message, string? filePath, string? memberName, bool bypassLevelFilter = false)
         {
-            if (level < _minimumLevel)
+            if (!bypassLevelFilter && level < _minimumLevel)
             {
                 return;
             }

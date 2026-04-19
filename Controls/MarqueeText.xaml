@@ -2,25 +2,40 @@
     x:Class="wisland.Controls.MarqueeText"
     xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
     xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    xmlns:local="using:wisland.Controls"
     xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
     xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
     mc:Ignorable="d"
-    IsTabStop="False">
+    IsTabStop="False"
+    HorizontalAlignment="Stretch">
 
-    <ScrollViewer x:Name="Scroller"
-                  HorizontalScrollBarVisibility="Hidden"
-                  VerticalScrollBarVisibility="Disabled"
-                  HorizontalScrollMode="Disabled"
-                  VerticalScrollMode="Disabled"
-                  IsTabStop="False"
-                  Padding="0"
-                  BorderThickness="0">
-        <TextBlock x:Name="InnerText"
-                   Text="{x:Bind Text, Mode=OneWay}"
-                   FontSize="{x:Bind MarqueeFontSize, Mode=OneWay}"
-                   FontWeight="{x:Bind MarqueeFontWeight, Mode=OneWay}"
-                   Foreground="{x:Bind MarqueeForeground, Mode=OneWay}"
-                   TextWrapping="NoWrap"
-                   IsTextSelectionEnabled="False" />
-    </ScrollViewer>
+    <!--
+      Layout model:
+        - UnboundedWidthPanel measures its child with double.PositiveInfinity
+          for width, so the TextBlock's ActualWidth is its true natural width.
+          The panel itself reports its child's DesiredSize so vertical sizing
+          propagates correctly to surrounding layouts.
+        - A rectangle Clip is applied to Viewport (this UserControl's content)
+          from code-behind so the overflowing text is hidden.
+        - RenderTransform (TranslateTransform) is used for scrolling rather
+          than Composition Offset, because Composition Offset on a XAML
+          element is clobbered by every layout pass.
+    -->
+    <Grid x:Name="Viewport" HorizontalAlignment="Stretch">
+        <local:UnboundedWidthPanel x:Name="TextHost" HorizontalAlignment="Stretch">
+            <TextBlock x:Name="InnerText"
+                       Text="{x:Bind Text, Mode=OneWay}"
+                       FontSize="{x:Bind MarqueeFontSize, Mode=OneWay}"
+                       FontWeight="{x:Bind MarqueeFontWeight, Mode=OneWay}"
+                       Foreground="{x:Bind MarqueeForeground, Mode=OneWay}"
+                       TextAlignment="{x:Bind HorizontalTextAlignment, Mode=OneWay}"
+                       HorizontalAlignment="Left"
+                       TextWrapping="NoWrap"
+                       IsTextSelectionEnabled="False">
+                <TextBlock.RenderTransform>
+                    <TranslateTransform x:Name="TextTranslate" X="0" Y="0" />
+                </TextBlock.RenderTransform>
+            </TextBlock>
+        </local:UnboundedWidthPanel>
+    </Grid>
 </UserControl>

@@ -525,4 +525,19 @@
   <data name="TestProgress.Content" xml:space="preserve">
     <value>Test Progress Bar</value>
   </data>
+  <data name="Appearance/ImmersiveMediaToggle" xml:space="preserve">
+    <value>Immersive media experience</value>
+  </data>
+  <data name="Appearance/ImmersiveMediaOn" xml:space="preserve">
+    <value>On</value>
+  </data>
+  <data name="Appearance/ImmersiveMediaOff" xml:space="preserve">
+    <value>Off</value>
+  </data>
+  <data name="Appearance/ImmersiveMediaExperimentTitle" xml:space="preserve">
+    <value>Experimental feature</value>
+  </data>
+  <data name="Appearance/ImmersiveMediaExperimentMessage" xml:space="preserve">
+    <value>The immersive media view is still experimental. Layout, animations, and performance may change, and some media sources may not render correctly.</value>
+  </data>
 </root>

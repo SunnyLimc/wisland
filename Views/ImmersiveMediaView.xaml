@@ -1,0 +1,442 @@
+<UserControl
+    x:Class="wisland.Views.ImmersiveMediaView"
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    xmlns:controls="using:wisland.Controls"
+    xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+    xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+    mc:Ignorable="d"
+    RequestedTheme="Dark">
+
+    <UserControl.Resources>
+        <Style x:Key="TransportButtonStyle" TargetType="Button">
+            <Setter Property="Background" Value="Transparent" />
+            <Setter Property="BorderThickness" Value="0" />
+            <Setter Property="Padding" Value="0" />
+            <Setter Property="MinWidth" Value="0" />
+            <Setter Property="MinHeight" Value="0" />
+            <Setter Property="Width" Value="36" />
+            <Setter Property="Height" Value="36" />
+            <Setter Property="CornerRadius" Value="18" />
+            <Setter Property="HorizontalContentAlignment" Value="Center" />
+            <Setter Property="VerticalContentAlignment" Value="Center" />
+        </Style>
+        <Style x:Key="PlayPauseButtonStyle" TargetType="Button">
+            <Setter Property="BorderThickness" Value="0" />
+            <Setter Property="Padding" Value="0" />
+            <Setter Property="MinWidth" Value="0" />
+            <Setter Property="MinHeight" Value="0" />
+            <Setter Property="Width" Value="40" />
+            <Setter Property="Height" Value="40" />
+            <Setter Property="CornerRadius" Value="20" />
+            <Setter Property="HorizontalContentAlignment" Value="Center" />
+            <Setter Property="VerticalContentAlignment" Value="Center" />
+        </Style>
+        <Style x:Key="HeaderChipButtonStyle" TargetType="Button">
+            <Setter Property="Background" Value="Transparent" />
+            <Setter Property="BorderThickness" Value="0" />
+            <Setter Property="Padding" Value="0" />
+            <Setter Property="MinWidth" Value="0" />
+            <Setter Property="MinHeight" Value="0" />
+            <Setter Property="UseSystemFocusVisuals" Value="False" />
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="Button">
+                        <ContentPresenter Content="{TemplateBinding Content}"
+                                          ContentTemplate="{TemplateBinding ContentTemplate}" />
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+    </UserControl.Resources>
+
+    <Grid x:Name="RootGrid">
+        <!-- Background layer: gradient from album art colors -->
+        <Grid x:Name="BackgroundLayer">
+            <!-- Outgoing gradient (fades out during transition) -->
+            <Border x:Name="GradientBackgroundOutgoing" CornerRadius="0" Opacity="0">
+                <Border.Background>
+                    <LinearGradientBrush StartPoint="0,0" EndPoint="1,1">
+                        <GradientStop x:Name="OutgoingGradientStop0" Color="#FF282832" Offset="0.0" />
+                        <GradientStop x:Name="OutgoingGradientStop1" Color="#FF191923" Offset="0.6" />
+                        <GradientStop x:Name="OutgoingGradientStop2" Color="#FF20202A" Offset="1.0" />
+                    </LinearGradientBrush>
+                </Border.Background>
+            </Border>
+            <!-- Active gradient -->
+            <Border x:Name="GradientBackground" CornerRadius="0">
+                <Border.Background>
+                    <LinearGradientBrush StartPoint="0,0" EndPoint="1,1">
+                        <GradientStop x:Name="GradientStop0" Color="#FF282832" Offset="0.0" />
+                        <GradientStop x:Name="GradientStop1" Color="#FF191923" Offset="0.6" />
+                        <GradientStop x:Name="GradientStop2" Color="#FF20202A" Offset="1.0" />
+                    </LinearGradientBrush>
+                </Border.Background>
+            </Border>
+            <!-- Album art blurred background (composition visual host) -->
+            <Border x:Name="BlurHost"
+                    IsHitTestVisible="False" />
+            <!-- Dark scrim for text legibility -->
+            <Border Background="#59000000" IsHitTestVisible="False" />
+        </Grid>
+
+        <!-- Content layer -->
+        <Grid Margin="20,10,20,12" RowSpacing="6">
+            <Grid.RowDefinitions>
+                <RowDefinition Height="Auto" /> <!-- Header chip -->
+                <RowDefinition Height="*" />    <!-- Media content -->
+                <RowDefinition Height="Auto" /> <!-- Progress -->
+                <RowDefinition Height="Auto" /> <!-- Transport -->
+            </Grid.RowDefinitions>
+
+            <!-- Row 0: Header chip with source info -->
+            <Grid Grid.Row="0" HorizontalAlignment="Center">
+                <Button x:Name="SessionHeaderButton"
+                        Style="{StaticResource HeaderChipButtonStyle}"
+                        HorizontalAlignment="Center"
+                        Click="OnSessionHeader_Click">
+                    <Grid x:Name="HeaderChipRoot">
+                        <Border x:Name="HeaderChipFocusRing"
+                                Margin="-2"
+                                CornerRadius="13"
+                                BorderThickness="1"
+                                Background="Transparent"
+                                Opacity="0"
+                                IsHitTestVisible="False" />
+
+                        <Border x:Name="HeaderChipBorder"
+                                HorizontalAlignment="Center"
+                                CornerRadius="11"
+                                BorderThickness="1"
+                                SizeChanged="HeaderChipBorder_SizeChanged">
+                            <Grid>
+                                <Border x:Name="HeaderChipHoverLayer"
+                                        CornerRadius="10"
+                                        BorderThickness="1"
+                                        Opacity="0"
+                                        IsHitTestVisible="False" />
+
+                                <Border x:Name="HeaderChipPressLayer"
+                                        Margin="1"
+                                        CornerRadius="9"
+                                        BorderThickness="1"
+                                        Opacity="0"
+                                        IsHitTestVisible="False" />
+
+                                <Grid x:Name="HeaderChipContentRoot"
+                                      Margin="7,1,8,1"
+                                      Height="20"
+                                      HorizontalAlignment="Left"
+                                      ColumnSpacing="2">
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="Auto" />
+                                        <ColumnDefinition Width="Auto" />
+                                    </Grid.ColumnDefinitions>
+
+                                    <Grid x:Name="HeaderAvatarViewport"
+                                          Grid.Column="0"
+                                          Width="0"
+                                          Height="16"
+                                          VerticalAlignment="Center"
+                                          SizeChanged="HeaderAvatarViewport_SizeChanged">
+                                        <Border x:Name="HeaderAvatarPresenter0"
+                                                Width="16" Height="16"
+                                                CornerRadius="8"
+                                                HorizontalAlignment="Left"
+                                                VerticalAlignment="Center">
+                                            <Grid>
+                                                <Image x:Name="HeaderAvatarPresenter0Image"
+                                                       Stretch="Uniform"
+                                                       Margin="2"/>
+                                                <TextBlock x:Name="HeaderAvatarPresenter0Fallback"
+                                                           HorizontalAlignment="Center"
+                                                           VerticalAlignment="Center"
+                                                           FontSize="8.5"
+                                                           FontWeight="Bold"/>
+                                            </Grid>
+                                        </Border>
+
+                                        <Border x:Name="HeaderAvatarPresenter1"
+                                                Width="16" Height="16"
+                                                CornerRadius="8"
+                                                HorizontalAlignment="Left"
+                                                VerticalAlignment="Center">
+                                            <Grid>
+                                                <Image x:Name="HeaderAvatarPresenter1Image"
+                                                       Stretch="Uniform"
+                                                       Margin="2"/>
+                                                <TextBlock x:Name="HeaderAvatarPresenter1Fallback"
+                                                           HorizontalAlignment="Center"
+                                                           VerticalAlignment="Center"
+                                                           FontSize="8.5"
+                                                           FontWeight="Bold"/>
+                                            </Grid>
+                                        </Border>
+
+                                        <Border x:Name="HeaderAvatarPresenter2"
+                                                Width="16" Height="16"
+                                                CornerRadius="8"
+                                                HorizontalAlignment="Left"
+                                                VerticalAlignment="Center">
+                                            <Grid>
+                                                <Image x:Name="HeaderAvatarPresenter2Image"
+                                                       Stretch="Uniform"
+                                                       Margin="2"/>
+                                                <TextBlock x:Name="HeaderAvatarPresenter2Fallback"
+                                                           HorizontalAlignment="Center"
+                                                           VerticalAlignment="Center"
+                                                           FontSize="8.5"
+                                                           FontWeight="Bold"/>
+                                            </Grid>
+                                        </Border>
+
+                                        <Border x:Name="HeaderAvatarPresenter3"
+                                                Width="16" Height="16"
+                                                CornerRadius="8"
+                                                HorizontalAlignment="Left"
+                                                VerticalAlignment="Center"
+                                                Visibility="Collapsed">
+                                            <Grid>
+                                                <Image x:Name="HeaderAvatarPresenter3Image"
+                                                       Stretch="Uniform"
+                                                       Margin="2"/>
+                                                <TextBlock x:Name="HeaderAvatarPresenter3Fallback"
+                                                           HorizontalAlignment="Center"
+                                                           VerticalAlignment="Center"
+                                                           FontSize="8.5"
+                                                           FontWeight="Bold"/>
+                                            </Grid>
+                                        </Border>
+
+                                        <Rectangle x:Name="HeaderAvatarOverflowFade"
+                                                   Width="8"
+                                                   HorizontalAlignment="Right"
+                                                   VerticalAlignment="Stretch"
+                                                   Visibility="Collapsed"
+                                                   IsHitTestVisible="False"/>
+                                    </Grid>
+
+                                    <Grid x:Name="HeaderLabelViewport"
+                                          Grid.Column="1"
+                                          SizeChanged="HeaderLabelViewport_SizeChanged">
+                                        <Grid x:Name="HeaderLabelSlotPrimary">
+                                            <StackPanel Orientation="Horizontal"
+                                                        Spacing="4"
+                                                        VerticalAlignment="Center">
+                                                <TextBlock x:Name="HeaderLabelPrimary"
+                                                           VerticalAlignment="Center"
+                                                           FontSize="10.5"
+                                                           FontWeight="SemiBold"
+                                                           TextTrimming="CharacterEllipsis"
+                                                           MaxWidth="176"/>
+                                                <FontIcon x:Name="HeaderExpandGlyphPrimary"
+                                                          Glyph="&#xE70D;"
+                                                          FontSize="9"
+                                                          VerticalAlignment="Center"
+                                                          Visibility="Collapsed"/>
+                                            </StackPanel>
+                                        </Grid>
+
+                                        <Grid x:Name="HeaderLabelSlotSecondary" Visibility="Collapsed">
+                                            <StackPanel Orientation="Horizontal"
+                                                        Spacing="4"
+                                                        VerticalAlignment="Center">
+                                                <TextBlock x:Name="HeaderLabelSecondary"
+                                                           VerticalAlignment="Center"
+                                                           FontSize="10.5"
+                                                           FontWeight="SemiBold"
+                                                           TextTrimming="CharacterEllipsis"
+                                                           MaxWidth="176"/>
+                                                <FontIcon x:Name="HeaderExpandGlyphSecondary"
+                                                          Glyph="&#xE70D;"
+                                                          FontSize="9"
+                                                          VerticalAlignment="Center"
+                                                          Visibility="Collapsed"/>
+                                            </StackPanel>
+                                        </Grid>
+                                    </Grid>
+                                </Grid>
+                            </Grid>
+                        </Border>
+                    </Grid>
+                </Button>
+            </Grid>
+
+            <!-- Row 1: Album art + metadata side by side -->
+            <Grid Grid.Row="1" ColumnSpacing="14" VerticalAlignment="Center">
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="Auto" />
+                    <ColumnDefinition Width="*" />
+                </Grid.ColumnDefinitions>
+
+                <!-- Album art with rounded corners and subtle shadow -->
+                <Grid Grid.Column="0" Width="80" Height="80">
+                    <Border CornerRadius="10"
+                            Background="#20FFFFFF">
+                        <Border x:Name="AlbumArtBorder" CornerRadius="10">
+                            <Grid>
+                                <Image x:Name="AlbumArtImageOutgoing"
+                                       Stretch="UniformToFill"
+                                       Width="80" Height="80"
+                                       Opacity="0" />
+                                <Image x:Name="AlbumArtImage"
+                                       Stretch="UniformToFill"
+                                       Width="80" Height="80" />
+                                <!-- Fallback icon when no album art -->
+                                <FontIcon x:Name="AlbumArtFallback"
+                                          Glyph="&#xE8D6;"
+                                          FontSize="28"
+                                          HorizontalAlignment="Center"
+                                          VerticalAlignment="Center"
+                                          Visibility="Collapsed" />
+                            </Grid>
+                        </Border>
+                    </Border>
+                    <!-- Source badge (app icon, bottom-right overlay) -->
+                    <Border x:Name="SourceBadge"
+                            Width="22" Height="22"
+                            CornerRadius="6"
+                            HorizontalAlignment="Right"
+                            VerticalAlignment="Bottom"
+                            Margin="0,0,-4,-4"
+                            Padding="2"
+                            Background="#CC000000">
+                        <Image x:Name="SourceBadgeIcon"
+                               Stretch="Uniform" />
+                    </Border>
+                </Grid>
+
+                <!-- Metadata column -->
+                <StackPanel Grid.Column="1" VerticalAlignment="Center" Spacing="2">
+                    <Grid x:Name="MetadataViewport" Height="48">
+                        <Grid x:Name="MetadataSlotPrimary">
+                            <StackPanel VerticalAlignment="Center" Spacing="2">
+                                <controls:MarqueeText x:Name="TitlePrimary"
+                                    MarqueeFontSize="15"
+                                    MarqueeFontWeight="SemiBold"
+                                    HorizontalAlignment="Stretch" />
+                                <controls:MarqueeText x:Name="ArtistPrimary"
+                                    MarqueeFontSize="12"
+                                    HorizontalAlignment="Stretch" />
+                            </StackPanel>
+                        </Grid>
+                        <Grid x:Name="MetadataSlotSecondary" Visibility="Collapsed">
+                            <StackPanel VerticalAlignment="Center" Spacing="2">
+                                <controls:MarqueeText x:Name="TitleSecondary"
+                                    MarqueeFontSize="15"
+                                    MarqueeFontWeight="SemiBold"
+                                    HorizontalAlignment="Stretch" />
+                                <controls:MarqueeText x:Name="ArtistSecondary"
+                                    MarqueeFontSize="12"
+                                    HorizontalAlignment="Stretch" />
+                            </StackPanel>
+                        </Grid>
+                    </Grid>
+                </StackPanel>
+            </Grid>
+
+            <!-- Row 2: Progress bar + time labels -->
+            <Grid Grid.Row="2" ColumnSpacing="8" Margin="0,2,0,0">
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="Auto" />
+                    <ColumnDefinition Width="*" />
+                    <ColumnDefinition Width="Auto" />
+                </Grid.ColumnDefinitions>
+
+                <TextBlock x:Name="ElapsedTimeText"
+                           Grid.Column="0"
+                           FontSize="10"
+                           Foreground="#C8C8C8D2"
+                           VerticalAlignment="Center"
+                           Text="0:00" />
+
+                <Grid x:Name="ProgressInteractionGrid"
+                      Grid.Column="1"
+                      VerticalAlignment="Center"
+                      Background="Transparent"
+                      Padding="0,8,0,8"
+                      PointerPressed="ProgressInteractionGrid_PointerPressed"
+                      PointerMoved="ProgressInteractionGrid_PointerMoved"
+                      PointerReleased="ProgressInteractionGrid_PointerReleased"
+                      PointerCanceled="ProgressInteractionGrid_PointerCanceled"
+                      PointerCaptureLost="ProgressInteractionGrid_PointerCaptureLost">
+                    <Grid Height="4" VerticalAlignment="Center" CornerRadius="2">
+                        <Border x:Name="ProgressTrack"
+                                CornerRadius="2"
+                                Background="#55FFFFFF" />
+                        <Border x:Name="ProgressFill"
+                                CornerRadius="2"
+                                HorizontalAlignment="Stretch"
+                                RenderTransformOrigin="0,0.5">
+                            <Border.RenderTransform>
+                                <ScaleTransform x:Name="ProgressFillScale" ScaleX="0" ScaleY="1" />
+                            </Border.RenderTransform>
+                            <Border.Background>
+                                <SolidColorBrush x:Name="ProgressFillBrush" Color="#FFFFFFFF" />
+                            </Border.Background>
+                        </Border>
+                    </Grid>
+                </Grid>
+
+                <TextBlock x:Name="TotalTimeText"
+                           Grid.Column="2"
+                           FontSize="10"
+                           Foreground="#C8C8C8D2"
+                           VerticalAlignment="Center"
+                           Text="0:00" />
+            </Grid>
+
+            <!-- Row 3: Transport controls -->
+            <StackPanel Grid.Row="3"
+                        Orientation="Horizontal"
+                        HorizontalAlignment="Center"
+                        Spacing="20"
+                        Margin="0,2,0,0">
+                <Button x:Name="BtnBack"
+                        Style="{StaticResource TransportButtonStyle}"
+                        Foreground="White"
+                        RenderTransformOrigin="0.5,0.5"
+                        PointerPressed="TransportButton_PointerPressed"
+                        PointerReleased="TransportButton_PointerReleased"
+                        PointerCanceled="TransportButton_PointerCanceled"
+                        PointerExited="TransportButton_PointerCanceled"
+                        Click="BtnBack_Click">
+                    <Button.RenderTransform>
+                        <ScaleTransform ScaleX="1" ScaleY="1" />
+                    </Button.RenderTransform>
+                    <FontIcon Glyph="&#xE892;" FontSize="16" Foreground="White" />
+                </Button>
+
+                <Button x:Name="BtnPlayPause"
+                        Style="{StaticResource PlayPauseButtonStyle}"
+                        Foreground="White"
+                        RenderTransformOrigin="0.5,0.5"
+                        PointerPressed="TransportButton_PointerPressed"
+                        PointerReleased="TransportButton_PointerReleased"
+                        PointerCanceled="TransportButton_PointerCanceled"
+                        PointerExited="TransportButton_PointerCanceled"
+                        Click="BtnPlayPause_Click">
+                    <Button.RenderTransform>
+                        <ScaleTransform ScaleX="1" ScaleY="1" />
+                    </Button.RenderTransform>
+                    <FontIcon x:Name="PlayPauseIcon" Glyph="&#xE769;" FontSize="18" Foreground="White" />
+                </Button>
+
+                <Button x:Name="BtnForward"
+                        Style="{StaticResource TransportButtonStyle}"
+                        Foreground="White"
+                        RenderTransformOrigin="0.5,0.5"
+                        PointerPressed="TransportButton_PointerPressed"
+                        PointerReleased="TransportButton_PointerReleased"
+                        PointerCanceled="TransportButton_PointerCanceled"
+                        PointerExited="TransportButton_PointerCanceled"
+                        Click="BtnForward_Click">
+                    <Button.RenderTransform>
+                        <ScaleTransform ScaleX="1" ScaleY="1" />
+                    </Button.RenderTransform>
+                    <FontIcon Glyph="&#xE893;" FontSize="16" Foreground="White" />
+                </Button>
+            </StackPanel>
+        </Grid>
+    </Grid>
+</UserControl>
