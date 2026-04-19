@@ -321,30 +321,38 @@ UI 仍然拿得到动画机会（如果 intent 仍然有效）。
 
 ## 7. 分阶段实施
 
-### P1 · 骨架迁移（行为不变）
+> 实施状态（截至当前分支）：P1 / P2 / P3a / P3b-1 / P4a / P4b / P4c-1 / P4c-2a / P4c-2b / P5-log / P5-assert / P5-tests 均已合并。
+> P3b-2（Confirming 250ms settle）与 P4d（AI override 迁入 AiOverridePolicy）仍为待办。
+
+### P1 · 骨架迁移（行为不变）— ✅
 - 新建 `Services/Media/Presentation/*` 骨架。
 - `MediaFocusArbiter / Stabilization / SelectionLock / Ai override 缓存` 搬进 Policies，保持原行为。
 - `MediaPresentationMachine` 作为 `MediaService.SessionsChanged` 的下游，输出 frame；`MainWindow.Media` 仍临时沿用旧逻辑双订阅，方便 A/B 对比。
 
-### P2 · 动画三大根因
+### P2 · 动画三大根因 — ✅
 - `Fingerprint` 与 `PresentationKind` 分离，`CreateContentIdentity` 删除。
 - `SwitchIntent` 替代 `_pendingMediaTransitionDirection`；Deadline = `SkipTransitionTimeoutMs`。
 - `NotifyingOverlay` pass‑through + `ResumeAfterNotification`，彻底不再在通知中吞 identity。
 - 删除 `TrackSwitchIntentWindowMs`（合并到 intent deadline）。
 
-### P3 · 泄露三大根因
-- 引入 `Confirming` + `MetadataSettleMs=250ms`。
-- `MediaService` 新增 `pendingThumbnail`；`ArmSkipStabilization` re‑arm 时拒绝 baseline 被非 fresh raw 覆盖。
-- 删除 `StabilizationMetadataConfirmationHoldMs=80ms` 路径。
+### P3 · 泄露三大根因 — 🟡（P3a/P3b-1 完成；P3b-2 推迟）
+- ✅ `ArmSkipStabilization` re-arm 时拒绝 baseline 被非 fresh raw 覆盖（P3a）。
+- ✅ 删除 `StabilizationMetadataConfirmationHoldMs=80ms` 路径（P3a）。
+- ✅ `MediaService` 新增 `ThumbnailHash` (xxhash64 前 4KB，异步算，ref-change 时清空)，入 `MediaTrackFingerprint`（P3b-1）。
+- ⏸ 引入 `Confirming` + `MetadataSettleMs=250ms`（P3b-2，推迟；会改 5+ 条现有测试，待 P4d 后再评估）。
 
-### P4 · View 解耦
-- `ExpandedMediaView.UpdateMedia(frame)` / `ImmersiveMediaView.UpdateMedia(frame)` 仅按 `frame.Transition` 执行；不再接 `ContentTransitionDirection direction` 参数。
-- 专辑图 / progress / avatar 绑定 `frame.Fingerprint`；移除 `_lastAlbumArtIdentity / _isBusyTransport` 独立判定。
+### P4 · View 解耦 — 🟡（P4a/P4b/P4c 完成；P4d 待办）
+- ✅ `ExpandedMediaView.UpdateMedia(frame)` / `ImmersiveMediaView.UpdateMedia(frame)` 薄封装已落地；Immersive 的 `_lastAlbumArtIdentity` 改用 `MediaTrackFingerprint`（P4a）。
+- ✅ Visual ordering 搬入 Machine，`frame.OrderedSessions` 是稳定序；MainWindow `_sessionVisualOrderKeys` 删（P4b）。
+- ✅ `frame.Session` 作为 DisplayedSession，MainWindow `_focusArbiter` 删（P4c-1/2a）。
+- ✅ Manual-lock 状态 (`_selectedSessionKey` / `_selectionLockUntilUtc`) 全部搬入 `ManualSelectionLockPolicy`；MainWindow 只留 UI-thread DispatcherTimer 转发（P4c-2b）。
+- ⏸ AI override 逻辑仍在 MainWindow.Media（`TryRequestAiResolveForFrame` / `ApplyAiOverrideToContext`）；待 P4d 迁入 `AiOverridePolicy` + `AiResolveCompletedEvent` 驱动 frame 再发。
 
-### P5 · 观测 & 测试
-- Machine 输出结构化日志 `{seq, state_from, state_to, reason, fingerprint, intent}`。
-- 单测覆盖 §4.4 全部迁移 + §5 全部场景，沿用 `MediaFocusArbiterTests.cs` 的风格。
-- 在 `UpdateMedia` 里写入 §6 不变量的 debug assertion。
+### P5 · 观测 & 测试 — 🟡（P5-log / P5-assert / P5-tests 完成；P3b-2 重评待办）
+- ✅ Machine 每次事件与每次 emit 都输出结构化日志 `{seq, state_from, state_to, transition, fp_from, fp_to, intent, notification, fallback}`（P5-log）。
+- ✅ `EmitFrame` 中以 `Debug.Assert` 写入 §6 不变式 #1/#2/#3；#4/#5/#6 推迟到 P3b-2/ policy-level（P5-assert）。
+- ✅ 7 条端到端测试覆盖 Steady → PendingUserSwitch → Steady(Slide) 全程、反向 skip 覆盖、thumbnail-hash-only 变化、stabilization 超时、AI resolve、seq 单调递增（P5-tests，现 73/73）。
+- ⏸ P3b-2 需要在真实日志观测后再决定是否引入 `Confirming` state。
 
 ---
 
