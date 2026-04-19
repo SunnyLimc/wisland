@@ -67,8 +67,30 @@ namespace wisland.Services.Media.Presentation.Policies
                 _expiresAtUtc = default;
             }
 
+            // Guard: if the locked session is no longer present in the
+            // GSMTC list, drop the lock. Replaces MainWindow's manual
+            // cleanup branches in ResolveDisplayedMediaContext (P4c-2b).
+            if (_lockedKey != null)
+            {
+                bool stillPresent = false;
+                for (int i = 0; i < context.Sessions.Count; i++)
+                {
+                    if (string.Equals(context.Sessions[i].SessionKey, _lockedKey, StringComparison.Ordinal))
+                    {
+                        stillPresent = true;
+                        break;
+                    }
+                }
+                if (!stillPresent)
+                {
+                    _lockedKey = null;
+                    _expiresAtUtc = default;
+                }
+            }
+
             context.ManualLockedSessionKey = _lockedKey;
             context.HasManualLock = _lockedKey != null;
+            context.ScheduleManualLockExpiryTimer(_lockedKey != null ? _expiresAtUtc : (DateTimeOffset?)null);
         }
     }
 }

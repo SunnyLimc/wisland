@@ -12,9 +12,7 @@ namespace wisland
 {
     public sealed partial class MainWindow
     {
-        private string? _selectedSessionKey;
         private string? _displayedSessionKey;
-        private DateTimeOffset? _selectionLockUntilUtc;
         private string? _lastDisplayedProgressIdentity;
         private MediaTrackFingerprint _lastDisplayedFingerprint = MediaTrackFingerprint.Empty;
         private MediaPresentationFrame? _latestFrame;
@@ -33,6 +31,7 @@ namespace wisland
                 {
                     _presentationMachine.FrameProduced += OnFrameProduced;
                     _presentationMachine.AutoFocusTimerScheduleRequested += OnAutoFocusTimerScheduleRequested;
+                    _presentationMachine.ManualLockExpiryScheduleRequested += OnManualLockExpiryScheduleRequested;
                 }
                 await _mediaService.InitializeAsync();
                 // Bootstrap: feed the machine the initial priority-ordered
@@ -277,7 +276,6 @@ namespace wisland
             IReadOnlyList<MediaSessionSnapshot> prioritySessions = GetPriorityOrderedSessions();
             if (prioritySessions.Count == 0)
             {
-                ClearManualSelectionLockInternal();
                 return new DisplayedMediaContext(
                     DisplayedSession: null,
                     OrderedSessions: prioritySessions,
@@ -286,18 +284,9 @@ namespace wisland
                     ShowTransportSwitchingHint: false);
             }
 
-            bool hasManualLock = IsManualSelectionLocked();
-            if (!hasManualLock && (_selectionLockUntilUtc.HasValue || !string.IsNullOrWhiteSpace(_selectedSessionKey)))
-            {
-                ClearManualSelectionLockInternal();
-            }
-
-            if (!string.IsNullOrWhiteSpace(_selectedSessionKey)
-                && !prioritySessions.Any(session => string.Equals(session.SessionKey, _selectedSessionKey, StringComparison.Ordinal)))
-            {
-                ClearManualSelectionLockInternal();
-                hasManualLock = false;
-            }
+            // P4c-2b: ManualSelectionLockPolicy in the Machine owns lock
+            // expiry and the "locked session no longer present" cleanup, so
+            // MainWindow no longer mirrors that state.
 
             // P4c-2: DisplayedSession comes from the Machine's last-emitted frame.
             // _autoFocusTimer scheduling is now driven by Machine via the
@@ -428,13 +417,13 @@ namespace wisland
             }
 
             bool displayedSessionChanged = !string.Equals(_displayedSessionKey, sessionKey, StringComparison.Ordinal);
-            _selectedSessionKey = sessionKey;
-            _selectionLockUntilUtc = DateTimeOffset.UtcNow.AddMilliseconds(IslandConfig.SelectionLockDurationMs);
-            RestartSelectionLockTimer();
-
             if (displayedSessionChanged)
             {
                 Logger.Debug($"Session selected: key={sessionKey}, direction={direction}");
+                // P4c-2b: lock state + expiry live in ManualSelectionLockPolicy;
+                // dispatching the event both arms the lock and (via the policy's
+                // ScheduleManualLockExpiryTimer call) restarts MainWindow's
+                // _selectionLockTimer through OnManualLockExpiryScheduleRequested.
                 _presentationMachine?.Dispatch(new UserSelectSessionEvent(sessionKey, direction));
             }
 
@@ -463,15 +452,11 @@ namespace wisland
 
         private void SelectionLockTimer_Tick(object? sender, object e)
         {
-            if (IsManualSelectionLocked())
-            {
-                RestartSelectionLockTimer();
-                return;
-            }
-
-            ClearManualSelectionLockInternal();
-            SyncMediaUI();
-            UpdateRenderLoopState();
+            _selectionLockTimer.Stop();
+            // P4c-2b: ManualSelectionLockPolicy observes expiry on any event;
+            // an AutoFocusTimerFiredEvent is cheap and triggers the necessary
+            // reconciliation. The resulting frame flows back via OnFrameProduced.
+            _presentationMachine?.Dispatch(new AutoFocusTimerFiredEvent());
         }
 
         private void AutoFocusTimer_Tick(object? sender, object e)
@@ -484,55 +469,28 @@ namespace wisland
         }
 
         private void OnAutoFocusTimerScheduleRequested(DateTimeOffset? dueUtc)
+            => RestartUiTimer(_autoFocusTimer, dueUtc);
+
+        private void OnManualLockExpiryScheduleRequested(DateTimeOffset? dueUtc)
+            => RestartUiTimer(_selectionLockTimer, dueUtc);
+
+        private static void RestartUiTimer(Microsoft.UI.Xaml.DispatcherTimer timer, DateTimeOffset? dueUtc)
         {
-            // Invoked by Machine on the UI dispatcher. Drives MainWindow's
-            // existing DispatcherTimer; the Machine does not own a timer source.
             if (!dueUtc.HasValue || dueUtc.Value <= DateTimeOffset.UtcNow)
             {
-                _autoFocusTimer.Stop();
+                timer.Stop();
                 return;
             }
             TimeSpan remaining = dueUtc.Value - DateTimeOffset.UtcNow;
-            _autoFocusTimer.Stop();
-            _autoFocusTimer.Interval = remaining < TimeSpan.FromMilliseconds(50)
+            timer.Stop();
+            timer.Interval = remaining < TimeSpan.FromMilliseconds(50)
                 ? TimeSpan.FromMilliseconds(50)
                 : remaining;
-            _autoFocusTimer.Start();
+            timer.Start();
         }
 
         private bool IsManualSelectionLocked()
-            => _selectionLockUntilUtc.HasValue
-                && _selectionLockUntilUtc.Value > DateTimeOffset.UtcNow
-                && !string.IsNullOrWhiteSpace(_selectedSessionKey);
-
-        private void RestartSelectionLockTimer()
-        {
-            if (!_selectionLockUntilUtc.HasValue)
-            {
-                _selectionLockTimer.Stop();
-                return;
-            }
-
-            TimeSpan remaining = _selectionLockUntilUtc.Value - DateTimeOffset.UtcNow;
-            if (remaining <= TimeSpan.Zero)
-            {
-                _selectionLockTimer.Stop();
-                return;
-            }
-
-            _selectionLockTimer.Stop();
-            _selectionLockTimer.Interval = remaining < TimeSpan.FromMilliseconds(50)
-                ? TimeSpan.FromMilliseconds(50)
-                : remaining;
-            _selectionLockTimer.Start();
-        }
-
-        private void ClearManualSelectionLockInternal()
-        {
-            _selectedSessionKey = null;
-            _selectionLockUntilUtc = null;
-            _selectionLockTimer.Stop();
-        }
+            => _presentationMachine?.HasManualLock == true;
 
         private void RequestMediaProgressReset(bool hideAfterReset)
         {

@@ -50,6 +50,7 @@ namespace wisland.Services.Media.Presentation
             _context.ScheduleStabilizationTimerCallback = ScheduleStabilizationTimer;
             _context.ScheduleMetadataSettleTimerCallback = ScheduleMetadataSettleTimer;
             _context.ScheduleAutoFocusTimerCallback = ScheduleAutoFocusTimer;
+            _context.ScheduleManualLockExpiryTimerCallback = ScheduleManualLockExpiryTimer;
 
             foreach (var policy in _policies)
             {
@@ -66,6 +67,22 @@ namespace wisland.Services.Media.Presentation
         /// timer to fire at <c>dueUtc</c>; the timer tick handler should
         /// <see cref="Dispatch"/> <see cref="AutoFocusTimerFiredEvent"/>.</summary>
         public event Action<DateTimeOffset?>? AutoFocusTimerScheduleRequested;
+
+        /// <summary>Fired when ManualSelectionLockPolicy wants the host to
+        /// schedule (or cancel with null) a tick at lock-expiry time. The host
+        /// must restart its timer to fire at <c>dueUtc</c>; the tick handler
+        /// should <see cref="Dispatch"/> any event (e.g. <see cref="AutoFocusTimerFiredEvent"/>)
+        /// so the policy's OnEvent runs and expiry is published.</summary>
+        public event Action<DateTimeOffset?>? ManualLockExpiryScheduleRequested;
+
+        /// <summary>Public snapshot of ManualSelectionLockPolicy's current
+        /// decision. Intended for MainWindow's rendering-path queries
+        /// (e.g. "is the user currently holding focus?").</summary>
+        public bool HasManualLock => _context.HasManualLock;
+
+        /// <summary>Session key currently held by ManualSelectionLockPolicy;
+        /// null when no lock is active.</summary>
+        public string? ManualLockedSessionKey => _context.ManualLockedSessionKey;
 
         public void Start()
         {
@@ -609,6 +626,13 @@ namespace wisland.Services.Media.Presentation
             // thread (DispatcherTimer requires its owner's thread).
             var local = dueUtc;
             _dispatcherPoster.Post(() => AutoFocusTimerScheduleRequested?.Invoke(local));
+        }
+
+        private void ScheduleManualLockExpiryTimer(DateTimeOffset? dueUtc)
+        {
+            Logger.Trace($"[Machine] ScheduleManualLockExpiryTimer due={dueUtc?.ToString("HH:mm:ss.fff") ?? "-"}");
+            var local = dueUtc;
+            _dispatcherPoster.Post(() => ManualLockExpiryScheduleRequested?.Invoke(local));
         }
 
         internal long NextSequence() => Interlocked.Increment(ref _sequence);

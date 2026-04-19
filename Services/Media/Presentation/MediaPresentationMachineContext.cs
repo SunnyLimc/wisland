@@ -43,6 +43,7 @@ namespace wisland.Services.Media.Presentation
         internal Action<DateTimeOffset>? ScheduleStabilizationTimerCallback { get; set; }
         internal Action<DateTimeOffset>? ScheduleMetadataSettleTimerCallback { get; set; }
         internal Action<DateTimeOffset?>? ScheduleAutoFocusTimerCallback { get; set; }
+        internal Action<DateTimeOffset?>? ScheduleManualLockExpiryTimerCallback { get; set; }
 
         public void ScheduleStabilizationTimer(DateTimeOffset dueUtc)
             => ScheduleStabilizationTimerCallback?.Invoke(dueUtc);
@@ -52,6 +53,9 @@ namespace wisland.Services.Media.Presentation
 
         public void ScheduleAutoFocusTimer(DateTimeOffset? dueUtc)
             => ScheduleAutoFocusTimerCallback?.Invoke(dueUtc);
+
+        public void ScheduleManualLockExpiryTimer(DateTimeOffset? dueUtc)
+            => ScheduleManualLockExpiryTimerCallback?.Invoke(dueUtc);
     }
 
     /// <summary>
