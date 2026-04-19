@@ -91,9 +91,17 @@ namespace wisland
         private void ClearNotificationState()
         {
             _controller.IsForcedExpanded = false;
+            // Dispatch the overlay end and let the machine's Resume frame
+            // drive the media-view refresh via OnFrameProduced. Calling
+            // SyncMediaUI() synchronously here used the still-stale
+            // _latestFrame (pre-Resume, possibly carrying the pre-overlay
+            // track when a skip landed during the notification), which
+            // produced a one-tick flicker of old metadata before the Slide
+            // or Crossfade animation from the Resume frame arrived.
+            // HandleNotificationEnd always emits a ResumeAfterNotification
+            // frame, so OnFrameProduced will refresh the views.
             _presentationMachine?.Dispatch(new NotificationEndEvent());
             UpdateState();
-            SyncMediaUI();
         }
     }
 }
