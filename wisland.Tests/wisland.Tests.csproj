@@ -25,6 +25,7 @@
     <Compile Include="..\Services\Media\MediaFocusArbiter.cs" Link="Services\Media\MediaFocusArbiter.cs" />
     <Compile Include="..\Services\Media\MediaSourceNameFormatter.cs" Link="Services\Media\MediaSourceNameFormatter.cs" />
     <Compile Include="..\Services\Media\SessionPickerRowProjector.cs" Link="Services\Media\SessionPickerRowProjector.cs" />
+    <Compile Include="..\Services\Media\StabilizationReleaseGuards.cs" Link="Services\Media\StabilizationReleaseGuards.cs" />
     <Compile Include="..\Services\IslandController.cs" Link="Services\IslandController.cs" />
     <Compile Include="..\Helpers\SessionPickerPlacementResolver.cs" Link="Helpers\SessionPickerPlacementResolver.cs" />
     <Compile Include="..\Models\MediaSessionPresence.cs" Link="Models\MediaSessionPresence.cs" />

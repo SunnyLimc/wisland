@@ -107,6 +107,11 @@ namespace wisland.Models
         public const int NaturalEndingTransitionTimeoutMs = 3000;
         public const double NaturalEndingDetectionThresholdSeconds = 10.0;
         public const double SkipTransitionFreshTrackPositionSeconds = 3.0;
+        // Minimum amount the playback position must drop below the stabilization
+        // baseline for a metadata change to be treated as a true track restart.
+        // Filters out metadata-only flickers where Chrome briefly surfaces another
+        // tab's title/artist while the timeline keeps advancing on the prior track.
+        public const double SkipTransitionPositionRestartMarginSeconds = 0.5;
         public const int MediaMetadataSettleMs = 250;
         public const int SelectionLockDurationMs = 10000;
         public const double SessionPickerOverlayWidth = 312.0;

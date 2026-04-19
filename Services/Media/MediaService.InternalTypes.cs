@@ -84,6 +84,14 @@ namespace wisland.Services
             public DateTimeOffset StabilizationExpiresAtUtc { get; set; }
             public string StabilizationBaselineTitle { get; set; } = string.Empty;
             public string StabilizationBaselineArtist { get; set; } = string.Empty;
+            // Position observed at the moment stabilization was armed. Used by
+            // ShouldReleaseStabilization_NoLock to distinguish a true track restart
+            // (current position dropped below baseline) from a metadata-only flicker
+            // where the position keeps advancing on the prior playback (Chrome can
+            // briefly surface another tab's title/artist while the timeline still
+            // reflects the previous track). See ShouldReleaseStabilization_NoLock.
+            public double StabilizationBaselinePositionSeconds { get; set; }
+            public bool StabilizationBaselineHasTimeline { get; set; }
             public MediaSessionSnapshot FrozenSnapshot { get; set; }
         }
 
