@@ -359,15 +359,61 @@ On Resume the UI can pick `Crossfade` or `Slide` (strategy is configurable):
 
 ```
 Skip(1): Steady(A) → PendingUserSwitch{ frozen=A, intent1(A→?, Forward, t1) }
+         ArmSkipStabilization(): fresh arm, baseline=A @ pos_A
 (800ms later, raw has already been updated by Chrome to paused tab B, but
 baseline is unchanged)
 Skip(2): UserSkipRequested(Forward)
-         re-arm guard: raw is not Playing/fresh → refuse to replace baseline with B
+         ArmSkipStabilization(): re-arm — ONLY extends expiry.
+                                  baseline stays at A @ pos_A (never advanced).
          intent = SwitchIntent(A, Forward, new deadline t2)  ← Origin is still A
 Eventually C arrives → Confirming → Steady(C), SlideForward
 ```
 
-B is never sealed into the frozen baseline, and never leaks.
+B is never sealed into the frozen baseline, and never leaks. Re-arm also
+does not promote the frozen snapshot, so consecutive clicks cannot cause
+the release guard to be compared against a near-zero baseline position
+(see §11.8).
+
+### 5.3b Very rapid ≥3 clicks — 10 s hang (fixed)
+
+Previously a >3-skip-in-<100 ms burst could produce a ~10 s UI freeze
+even though Chrome had already settled on the new track. Two stacked
+causes, both in `MediaService.Stabilization`:
+
+1. The re-arm path used to overwrite the baseline whenever `raw looks
+   fresh`. After the first release (baseline=A@30s dropped, B becomes
+   visible at pos≈0.5s), the second click's re-arm captured baseline=B
+   @ 0.5s. The next real track C arrives at pos≈0s — but the release
+   guard required `currentPos < baselinePos − 0.5s`, i.e. `0 < 0`,
+   which can never be true. The gate stayed closed until
+   `SkipTransitionTimeoutMs = 10 s`.
+2. Even without baseline corruption, Chrome's first timeline report
+   for a new track can land at 0.5–1.2 s due to GSMTC latency. When
+   the baseline was naturally low (`~1 s`, first click hit just after
+   a natural track change), the new-track write at `~0.7 s` still
+   failed the margin-subtracted delta check.
+
+Fixes:
+
+- **(1)** `ArmSkipStabilization` re-arm now extends only the expiry;
+  baseline + frozen snapshot are never promoted. Keeping the original
+  baseline maximises the position delta a real new track has to clear.
+  Paused-tab leaks remain blocked by `metadataDifferentFromBaseline`
+  plus `LooksLikeFreshTrackShape`; we no longer rely on baseline
+  promotion to guard against them.
+- **(2)** `PositionLooksRestarted` now also accepts any strict drop
+  (`currentPos < baselinePos`) as long as `currentPos` also lands
+  within `SkipTransitionFreshTrackPositionSeconds (3 s)`. Because the
+  caller's fresh-track shape check already requires `pos ≤ 3 s`, this
+  broader rescue only applies to plausible restarts. The leak scenario
+  (`currentPos ≥ baselinePos`) is still rejected by the strict-drop
+  condition.
+
+Observability: every rejection branch in
+`ShouldReleaseStabilization_NoLock` now emits a structured
+`Stabilization release denied for '...'` log (Trace for shape/presence/
+metadata, Debug for position restart) so future regressions can be
+pinpointed from logs alone.
 
 ### 5.4 Stabilization timeout fallback
 
@@ -422,8 +468,19 @@ The UI still gets an animation opportunity as long as the intent is intact.
 - Removed `TrackSwitchIntentWindowMs` (folded into intent deadline).
 
 ### P3 · The three leak root causes — ✅
-- ✅ `ArmSkipStabilization` re-arm now refuses to let baseline be overwritten
-  by non-fresh raw (P3a).
+- ✅ `ArmSkipStabilization` re-arm no longer advances the baseline at all
+  (P3a + rapid-skip hardening). Previously the re-arm would promote
+  baseline to the current raw when raw "looked fresh"; this caused a
+  ~10 s gate hang after a third rapid click because the baseline's
+  position got sealed near zero and the release guard could never
+  satisfy `currentPos < baselinePos − margin`. Baseline is now only
+  ever written on the initial fresh arm.
+- ✅ `PositionLooksRestarted` accepts any strict drop that lands within
+  `SkipTransitionFreshTrackPositionSeconds` in addition to the
+  margin-delta path. Covers the case where Chrome's first timeline
+  report for a new track lands at 0.5–1.2 s due to GSMTC latency;
+  does not regress the tab-metadata leak scenario (`currentPos ≥
+  baselinePos` is still rejected).
 - ✅ Removed the `StabilizationMetadataConfirmationHoldMs=80ms` path (P3a).
 - ✅ `MediaService` computes `ThumbnailHash` (xxhash64 of the first 4KB,
   async, cleared on ref-change) and folds it into `MediaTrackFingerprint`
@@ -800,8 +857,10 @@ public sealed class ManualSelectionLockPolicy : IPresentationPolicy
 public sealed class StabilizationPolicy : IPresentationPolicy
 {
     public StabilizationPolicy(IStabilizationConfig config);
-    // Owns SkipTransition / NaturalEnding / fresh-track; re-arm is gated by
-    // "raw must look fresh (Playing + pos small + title concrete)".
+    // Owns SkipTransition / NaturalEnding / fresh-track. Re-arm only
+    // extends expiry; baseline is never advanced (see §5.3b for why
+    // promoting baseline on re-arm caused a 10 s gate hang under rapid
+    // consecutive skips).
 }
 
 public sealed class AiOverridePolicy : IPresentationPolicy

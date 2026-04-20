@@ -46,42 +46,34 @@ namespace wisland.Services
                 if (tracked.StabilizationReason == MediaSessionStabilizationReason.SkipTransition
                     && tracked.StabilizationExpiresAtUtc > nowUtc)
                 {
-                    // Re-arm for consecutive skip: update baseline + frozen to the
-                    // current raw state ONLY when the raw state actually looks like a
-                    // freshly-resolved next track (Playing + HasTimeline + position ≤
-                    // fresh-track threshold + concrete metadata). Otherwise the raw
-                    // title may still be the paused B tab that Chrome briefly reports
-                    // between skips, and swallowing that into the baseline would cause
-                    // the next re-arm + fresh-track check to never fire (baseline ==
-                    // tab title, so tab metadata "matches" baseline and releases are
-                    // suppressed). In that case we keep the original baseline and just
-                    // extend the expiry so the real resolved track still has time.
+                    // Re-arm for consecutive skip: only extend the expiry. Do
+                    // NOT advance the baseline even when the current raw state
+                    // "looks fresh".
+                    //
+                    // Historical rationale (now disproven): if a transient new
+                    // track had slipped into raw while we were still stabilizing,
+                    // we'd want to capture it so subsequent release checks
+                    // compared against that "newer" baseline.
+                    //
+                    // Why that hurts rapid skips: each re-arm that lands while a
+                    // just-released new track is playing (e.g. baseline=B @ pos≈0.5)
+                    // sealed an essentially-zero baseline position. The next
+                    // legitimate new track arrives at pos≈0, but the release
+                    // guard requires currentPos < baselinePos − margin (0.5s),
+                    // which is impossible when baselinePos is already near zero.
+                    // The gate then stays closed until SkipTransitionTimeoutMs
+                    // (~10s) expires — exactly the symptom reported for rapid
+                    // consecutive skips.
+                    //
+                    // Keeping the original baseline maximises the position
+                    // delta a real new track has to clear, which is exactly
+                    // what the guard is comparing against. The paused-tab leak
+                    // is still blocked by metadataDifferentFromBaseline plus
+                    // LooksLikeFreshTrackShape; we don't need baseline
+                    // promotion to guard against it.
                     tracked.StabilizationExpiresAtUtc = nowUtc.AddMilliseconds(IslandConfig.SkipTransitionTimeoutMs);
-
-                    bool rawLooksLikeFreshTrack = StabilizationReleaseGuards.LooksLikeFreshTrackShape(
-                            tracked.PlaybackStatus,
-                            tracked.HasTimeline,
-                            tracked.DurationSeconds,
-                            tracked.CurrentPositionSeconds)
-                        && HasConcreteMetadata(tracked.Title);
-
-                    if (rawLooksLikeFreshTrack)
-                    {
-                        tracked.StabilizationBaselineTitle = tracked.Title;
-                        tracked.StabilizationBaselineArtist = tracked.Artist;
-                        tracked.StabilizationBaselinePositionSeconds = tracked.CurrentPositionSeconds;
-                        tracked.StabilizationBaselineHasTimeline = tracked.HasTimeline;
-                        tracked.FrozenSnapshot = CreateRawSnapshot(tracked) with
-                        {
-                            StabilizationReason = tracked.StabilizationReason
-                        };
-                        Logger.Debug($"Skip stabilization re-armed for '{sessionKey}' (baseline updated to fresh raw='{tracked.Title}')");
-                    }
-                    else
-                    {
-                        Logger.Debug($"Skip stabilization re-armed for '{sessionKey}' (baseline preserved='{tracked.StabilizationBaselineTitle}', raw='{tracked.Title}' not fresh)");
-                    }
                     RescheduleStabilizationTimer_NoLock(nowUtc);
+                    Logger.Debug($"Skip stabilization re-armed for '{sessionKey}' (baseline preserved='{tracked.StabilizationBaselineTitle}' @ {tracked.StabilizationBaselinePositionSeconds:F2}s, raw='{tracked.Title}' @ {tracked.CurrentPositionSeconds:F2}s)");
                     return;
                 }
 
@@ -164,6 +156,7 @@ namespace wisland.Services
             if (tracked.HasPendingReconnect
                 || tracked.Presence != MediaSessionPresence.Active)
             {
+                Logger.Trace($"Stabilization release denied for '{tracked.SessionKey}': presence={tracked.Presence}, pendingReconnect={tracked.HasPendingReconnect}");
                 return false;
             }
 
@@ -172,19 +165,26 @@ namespace wisland.Services
                 || !string.Equals(tracked.Artist, tracked.StabilizationBaselineArtist, StringComparison.Ordinal);
             if (!metadataDifferentFromBaseline)
             {
+                Logger.Trace($"Stabilization release denied for '{tracked.SessionKey}': metadata matches baseline (title='{tracked.Title}', baseline='{tracked.StabilizationBaselineTitle}')");
                 return false;
             }
 
             if (!HasConcreteMetadata(tracked.Title))
             {
+                Logger.Trace($"Stabilization release denied for '{tracked.SessionKey}': title not concrete ('{tracked.Title}')");
                 return false;
             }
 
-            bool looksLikeFreshTrack = StabilizationReleaseGuards.LooksLikeFreshTrackShape(
+            bool freshShape = StabilizationReleaseGuards.LooksLikeFreshTrackShape(
                 tracked.PlaybackStatus,
                 tracked.HasTimeline,
                 tracked.DurationSeconds,
                 tracked.CurrentPositionSeconds);
+            if (!freshShape)
+            {
+                Logger.Trace($"Stabilization release denied for '{tracked.SessionKey}': not fresh shape (status={tracked.PlaybackStatus}, hasTimeline={tracked.HasTimeline}, dur={tracked.DurationSeconds:F1}s, pos={tracked.CurrentPositionSeconds:F2}s)");
+                return false;
+            }
 
             // Require the position to have actually dropped below the baseline.
             // Without this, a metadata-only flicker (Chrome briefly surfacing another
@@ -194,19 +194,19 @@ namespace wisland.Services
             //   write 1: title='Sacred' pos=2.9 (no change)
             //   write 2: title='OtherTab' artist='Unknown' pos=2.9 ← position did NOT
             //            reset; this is NOT a track restart, it's tab metadata noise.
-            // A genuine fresh track resets the timeline (pos drops to ~0), so requiring
-            // current pos < baseline pos filters out the noise without affecting real
-            // track changes (which always reset position).
-            if (looksLikeFreshTrack
-                && !StabilizationReleaseGuards.PositionLooksRestarted(
+            // A genuine fresh track resets the timeline (pos drops below baseline), so
+            // requiring currentPos < baselinePos filters out the noise without
+            // affecting real track changes.
+            if (!StabilizationReleaseGuards.PositionLooksRestarted(
                     tracked.CurrentPositionSeconds,
                     tracked.StabilizationBaselinePositionSeconds,
                     tracked.StabilizationBaselineHasTimeline))
             {
-                looksLikeFreshTrack = false;
+                Logger.Debug($"Stabilization release denied for '{tracked.SessionKey}': position has not restarted (curr={tracked.CurrentPositionSeconds:F2}s, baseline={tracked.StabilizationBaselinePositionSeconds:F2}s, baselineHasTimeline={tracked.StabilizationBaselineHasTimeline})");
+                return false;
             }
 
-            return looksLikeFreshTrack;
+            return true;
         }
 
         /// <summary>
