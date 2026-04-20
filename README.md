@@ -6,8 +6,10 @@ A WinUI 3 desktop widget that recreates the Dynamic Island interaction pattern o
 
 - **Compact floating shell** — always-on-top, rounded island widget with frame-driven motion
 - **Hover expansion** — expands into a rich media panel on hover with exponential-decay animation
+- **Immersive media panel** — full-bleed album-art view with extracted palette and liquid progress bar
 - **Multi-session media** — integrates with Windows GSMTC for track metadata, playback controls, and progress across multiple apps simultaneously
 - **Session management** — focused-session model with manual lock, stable visual tab ordering, wheel cycling, and an independent session picker overlay
+- **Unified presentation machine** — a single event-driven state machine (`MediaPresentationMachine`) owns focus arbitration, manual-lock, skip/natural-ending stabilization, AI override, and notification overlay — emits `MediaPresentationFrame` as the single source of truth for media UI
 - **Direction-aware transitions** — Composition API–driven content animations for track switching and header changes
 - **Drag and dock** — drag-to-reposition anywhere, snap-to-dock at the top edge
 - **Docked line mode** — collapses into a native Win32 1px progress strip when docked over maximized apps
@@ -62,7 +64,20 @@ Models/                       Constants (IslandConfig), render state (IslandStat
 Services/
 ├── IslandController.cs       Pure state engine — targets + exponential-decay animation (no WinUI deps)
 ├── Media/                    GSMTC session discovery, source tracking, focus arbitration,
-│                             reconnect grace, burst refresh, row projection (6 partial files)
+│   │                         reconnect grace, burst refresh, row projection, stabilization
+│   ├── MediaService.*.cs     Raw GSMTC layer (cs / State / SourceTracking / Refresh / Stabilization / InternalTypes)
+│   ├── MediaFocusArbiter.cs  Winner selection across multiple sessions (debounced)
+│   ├── StabilizationReleaseGuards.cs  Fresh-track shape + position-restart guard (see docs/)
+│   ├── SessionPickerRowProjector.cs   Pure projection from snapshots → picker rows
+│   └── Presentation/         The unified media presentation state machine (P2+ refactor)
+│       ├── MediaPresentationMachine.cs       Event-driven core, emits MediaPresentationFrame
+│       ├── MediaPresentationMachineContext.cs
+│       ├── MediaPresentationState.cs
+│       ├── PresentationEvent.cs              Input event ADT
+│       ├── SwitchIntent.cs                   Direction + deadline for user-initiated switches
+│       ├── IPresentationPolicy.cs / IAiOverrideResolver.cs
+│       └── Policies/         FocusArbitration, ManualSelectionLock, Stabilization,
+│                              NotificationOverlay, AiOverride
 ├── AiSongResolverService.cs  Dual-path AI resolver (Google GenAI native + OpenAI-compatible)
 ├── AiSongPromptBuilder.cs    Locale-aware prompt templates (zh-Hans, zh-Hant, ja, en)
 ├── SettingsService.cs        JSON persistence to %LocalAppData%/Wisland/ with DPAPI key encryption
@@ -73,6 +88,7 @@ Services/
 Views/
 ├── CompactView               Single-line compact content with directional text transitions
 ├── ExpandedMediaView         Header avatar strip, metadata transitions, playback controls
+├── ImmersiveMediaView        Full-bleed album-art panel with palette extraction + header chip
 ├── SessionPickerOverlayView  Scrollable session list with composition-driven reveal
 └── Settings/                 Appearance, AI Models, AI Song Override, Diagnostics pages
 
@@ -110,5 +126,10 @@ wisland.Tests/                xUnit tests via source-file linking (no project re
 | --- | --- |
 | **README.md** | Project entrypoint — what it is, how to build, where things live |
 | **ARCHITECTURE.md** | Implementation guide — runtime flow, module responsibilities, state model, invariants, change guide |
+| **docs/MediaPresentationMachine.design.md** | Design of the unified media presentation state machine — legacy chain inventory, conflict matrix, state set, event set, transitions, invariants, rollout log |
 
 Read `ARCHITECTURE.md` before editing behavior across multiple modules.
+When touching anything under `Services/Media/`, also read
+`docs/MediaPresentationMachine.design.md` — it documents the invariants
+the frame pipeline relies on (e.g. "fingerprint change ⇒ exactly one
+non-None transition", rapid-skip stabilization rules).
