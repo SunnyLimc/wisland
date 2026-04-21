@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.Numerics;
+using System.Threading;
 using System.Threading.Tasks;
 using Microsoft.Graphics.Canvas.Effects;
 using Microsoft.UI.Composition;
@@ -36,6 +37,13 @@ namespace wisland.Views
         private MediaTrackFingerprint _lastAlbumArtFingerprint; // Fingerprint-based key for album art change detection
         private ImageSource? _previousAlbumArtSource; // Holds the old art for crossfade outgoing slot
         private string? _lastSourceIconIdentity;
+
+        // Serialize album-art loads: a newer request cancels any in-flight prior
+        // one so we never have two LoadThumbnailAsync / palette-extract / blur-
+        // surface chains racing each other. Prevents the outgoing slot / palette /
+        // blur from desyncing when fingerprints change in rapid succession.
+        private CancellationTokenSource? _albumArtCts;
+        private CancellationTokenSource? _sourceIconCts;
         private bool _isBusyTransport; // True during transport switching grace period
         private bool _hasAlbumArt;     // True when album art is currently displayed
         private double _lastAnimatedProgress;
@@ -98,6 +106,15 @@ namespace wisland.Views
             StopProgressTicker();
             StopSessionSwitchAnimation();
             StopScaleAnimation();
+
+            // Cancel any in-flight async work so it doesn't touch disposed UI state.
+            _albumArtCts?.Cancel();
+            _albumArtCts?.Dispose();
+            _albumArtCts = null;
+            _sourceIconCts?.Cancel();
+            _sourceIconCts?.Dispose();
+            _sourceIconCts = null;
+
             if (_progressTimer != null)
             {
                 _progressTimer.Tick -= OnProgressTick;
@@ -539,10 +556,20 @@ namespace wisland.Views
             // currently visible before the new load begins.
             ImageSource? previousForThisLoad = AlbumArtImage.Source;
 
+            // Cancel any prior in-flight album-art load. A newer fingerprint
+            // always wins, so the old load should stop touching shared state
+            // (_previousAlbumArtSource, AlbumArtImage.Source, palette, blur).
+            _albumArtCts?.Cancel();
+            _albumArtCts?.Dispose();
+            var cts = new CancellationTokenSource();
+            _albumArtCts = cts;
+            CancellationToken ct = cts.Token;
+
             try
             {
                 // --- Phase 1: Load everything in the background ---
                 BitmapImage? albumArt = await AlbumArtColorExtractor.LoadThumbnailAsync(targetRef);
+                if (ct.IsCancellationRequested) return;
                 if (!targetFingerprint.Equals(_lastAlbumArtFingerprint)) return;
                 if (_isBusyTransport) { _lastAlbumArtFingerprint = MediaTrackFingerprint.Empty; return; }
 
@@ -552,19 +579,28 @@ namespace wisland.Views
                     return;
                 }
 
-                // Start color extraction in parallel while we wait for image realization
-                string colorKey = $"{session.SessionKey}:{session.Title}:{session.Artist}";
+                // Start color extraction in parallel while we wait for image realization.
+                // Keyed by ThumbnailHash when available so two sessions sharing the
+                // same artwork share the cached palette (0-cost when hash matches).
+                string colorKey = !string.IsNullOrEmpty(session.ThumbnailHash)
+                    ? "h:" + session.ThumbnailHash
+                    : $"s:{session.SessionKey}:{session.Title}:{session.Artist}";
                 Task<AlbumArtPalette?> paletteTask = AlbumArtColorExtractor.ExtractAsync(targetRef, colorKey);
 
                 // --- Phase 2: Pre-realize the image before crossfading ---
+                // Only capture _previousAlbumArtSource AFTER decoding succeeded and
+                // cancellation has not fired, so a superseded load cannot corrupt
+                // the outgoing slot captured by the winning load.
                 _previousAlbumArtSource = previousForThisLoad;
 
                 bool imageReady = await PreRealizeAlbumArtAsync(albumArt);
+                if (ct.IsCancellationRequested) return;
                 if (!targetFingerprint.Equals(_lastAlbumArtFingerprint)) return;
                 if (_isBusyTransport) { _lastAlbumArtFingerprint = MediaTrackFingerprint.Empty; return; }
                 if (!imageReady) return;
 
                 AlbumArtPalette? palette = await paletteTask;
+                if (ct.IsCancellationRequested) return;
                 if (!targetFingerprint.Equals(_lastAlbumArtFingerprint)) return;
                 if (_isBusyTransport) { _lastAlbumArtFingerprint = MediaTrackFingerprint.Empty; return; }
 
@@ -579,6 +615,11 @@ namespace wisland.Views
                 }
 
                 await LoadBlurredBackgroundAsync(targetRef);
+                if (ct.IsCancellationRequested) return;
+            }
+            catch (OperationCanceledException)
+            {
+                // Superseded by a newer load — expected, nothing to do.
             }
             catch (Exception ex)
             {
@@ -922,11 +963,24 @@ namespace wisland.Views
 
         private async void LoadSourceIcon(string sourceAppId)
         {
+            // Cancel any prior in-flight icon resolve so a rapid session switch
+            // cannot land an older icon after a newer one.
+            _sourceIconCts?.Cancel();
+            _sourceIconCts?.Dispose();
+            var cts = new CancellationTokenSource();
+            _sourceIconCts = cts;
+            CancellationToken ct = cts.Token;
+
             try
             {
                 var icon = await IconResolver.ResolveAsync(sourceAppId);
+                if (ct.IsCancellationRequested) return;
                 SourceBadgeIcon.Source = icon;
                 SourceBadge.Visibility = icon != null ? Visibility.Visible : Visibility.Collapsed;
+            }
+            catch (OperationCanceledException)
+            {
+                // Superseded by a newer resolve — expected.
             }
             catch (Exception ex)
             {

@@ -481,21 +481,36 @@ namespace wisland.Services
 
                     hasChanges = ApplyMediaProperties_NoLock(tracked, nextTitle, nextArtist, nowUtc);
 
-                    // Always update the raw thumbnail reference so it is current
-                    // when stabilization eventually releases, but only treat it as
-                    // a visible state change when the stabilization gate is open.
-                    // Otherwise a thumbnail-only change during a skip transition
-                    // would bypass the gate and dispatch an intermediate snapshot
-                    // (e.g. Chrome briefly reporting another tab's paused media).
+                    // Update the raw thumbnail reference so it is current when
+                    // stabilization eventually releases. Hash handling rules:
+                    //  * If the new reference is null (art removed), clear the
+                    //    hash and surface the change so the view can drop art.
+                    //  * If the new reference is non-null, KEEP the previous hash
+                    //    as an optimistic value and do not flag hasChanges for
+                    //    the ref swap alone. The async
+                    //    ComputeAndStoreThumbnailHashAsync below will dispatch a
+                    //    dedicated frame iff the bytes actually hash differently.
+                    //    This stops GSMTC hosts (Chrome/Edge/Spotify) from
+                    //    reissuing the same artwork as a new IRandomAccessStream
+                    //    reference and producing a transient hash="" fingerprint
+                    //    that downstream views mistake for a real art change
+                    //    (causing unnecessary reloads on pause/play/seek and
+                    //    SessionsChanged reshuffles).
                     if (!ReferenceEquals(tracked.Thumbnail, nextThumbnail))
                     {
                         tracked.Thumbnail = nextThumbnail;
-                        // Hash is stale until the async compute below finishes.
-                        tracked.ThumbnailHash = string.Empty;
-                        if (tracked.StabilizationReason == MediaSessionStabilizationReason.None)
+                        if (nextThumbnail == null)
                         {
-                            hasChanges = true;
+                            if (!string.IsNullOrEmpty(tracked.ThumbnailHash))
+                            {
+                                tracked.ThumbnailHash = string.Empty;
+                                if (tracked.StabilizationReason == MediaSessionStabilizationReason.None)
+                                {
+                                    hasChanges = true;
+                                }
+                            }
                         }
+                        // else: keep old hash; the async recompute will reconcile.
                     }
 
                     if (hasChanges)

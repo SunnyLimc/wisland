@@ -586,6 +586,30 @@ The UI still gets an animation opportunity as long as the intent is intact.
    the same bytes under a new reference). `MediaService` must compute a
    stable hash when it gets the thumbnail, otherwise "cover art changed
    but fingerprint didn't" is unsolvable.
+7. **Thumbnail hash must never transiently empty for the currently
+   displayed track** (added post-P4). Two mechanisms enforce this:
+   - Upstream, `MediaService.Refresh.UpdateMediaPropertiesAsync` keeps
+     `TrackedSource.ThumbnailHash` across a thumbnail reference swap —
+     the async recompute (`ComputeAndStoreThumbnailHashAsync`) only
+     dispatches a frame if the new bytes hash differently. The hash is
+     cleared only when the thumbnail becomes `null`. This prevents GSMTC
+     hosts (Chrome / Edge / Spotify) that reissue identical artwork as a
+     new stream reference on pause / play / seek / SessionsChanged
+     reshuffle from producing a transient `hash=""` fingerprint that
+     views mistake for a real art change.
+   - Downstream, `MediaPresentationMachine.BuildFingerprint` absorbs an
+     empty `ThumbnailHash` on a snapshot whose identity
+     (`SessionKey + Title + Artist`) matches the machine's last
+     displayed fingerprint: the previously displayed non-empty hash is
+     carried forward. This is a safety net — a future upstream
+     regression that reintroduces hash churn cannot reach the frame
+     stream as long as identity is unchanged.
+   - An identity change (different title/artist/session) with
+     `hash=""` still emits a fresh frame normally; absorption is
+     strictly same-identity. Covered by
+     `EmptyHashOnSameIdentityDoesNotChangeFingerprint` and
+     `EmptyHashWithIdentityChangeStillEmitsFrame` in
+     `MediaPresentationMachineTests`.
 
 ---
 
@@ -618,6 +642,15 @@ The UI still gets an animation opportunity as long as the intent is intact.
   frame is marked `ThumbnailHashIsFallback = true`.
 - Key constraint: the fingerprint must be ready before the frame is
   emitted, otherwise we hit "same content Slide" false positives.
+- **P4 refinement (post-implementation)**: a thumbnail stream-reference
+  swap alone no longer clears `TrackedSource.ThumbnailHash`; the old hash
+  is preserved as an optimistic value and replaced atomically only when
+  the async recompute produces a genuinely different hash (or the
+  thumbnail becomes `null`). The machine additionally absorbs empty
+  hashes that arrive on a snapshot with unchanged
+  session+title+artist identity (see §6 item 7). Together these ensure
+  that pause/play/seek/SessionsChanged never ripples through to the
+  view's album-art / palette / blur reload path.
 
 ### D4 · `NotificationOverlayPolicy` scope — **resolved, responsibilities split**
 - The policy owns: notification lifecycle (Begin/End/Duration/Cancel), the

@@ -26,9 +26,10 @@ namespace wisland.Tests
         {
             public MediaPresentationMachine Machine { get; }
             public List<MediaPresentationFrame> Frames { get; } = new();
+            public DateTimeOffset Now { get; set; } = new DateTimeOffset(2024, 1, 1, 0, 0, 0, TimeSpan.Zero);
             public Harness(params IPresentationPolicy[] policies)
             {
-                Machine = new MediaPresentationMachine(policies, new InlineDispatcher());
+                Machine = new MediaPresentationMachine(policies, new InlineDispatcher(), () => Now);
                 Machine.FrameProduced += frame => Frames.Add(frame);
             }
             public void Dispose() => Machine.Dispose();
@@ -381,15 +382,32 @@ namespace wisland.Tests
         // Intent expiry
         // ---------------------------------------------------------------
 
-        [Fact(Skip = "Requires controllable clock injection into MediaPresentationMachine — tracked for P5 follow-up. NoIntentMeansReplaceNotSlide already covers the structural fallback.")]
+        [Fact]
         public void ExpiredIntentFallsBackToReplace()
         {
-            // Intentionally empty. The real-time expiry path needs a synthetic
-            // clock to exercise deterministically (SwitchIntent.Deadline is
-            // now + SkipTransitionTimeoutMs = 10s, and ProcessEvent samples
-            // DateTimeOffset.UtcNow directly). Until that injection lands,
-            // the "no intent" equivalent is locked in by
-            // NoIntentMeansReplaceNotSlide.
+            using var h = NewHarness();
+            h.Machine.ProcessForTests(new GsmtcSessionsChangedEvent(new[] { Session("s1", "Song A") }));
+            h.Frames.Clear();
+
+            // User skips — intent is armed with a deadline of now + SkipTransitionTimeoutMs.
+            h.Machine.ProcessForTests(new UserSkipRequestedEvent(ContentTransitionDirection.Forward));
+
+            // Advance clock well past the intent deadline (default 10s). After this
+            // the intent must be considered expired by ProcessEvent's UtcNow sample.
+            h.Now += TimeSpan.FromMilliseconds(
+                wisland.Models.IslandConfig.SkipTransitionTimeoutMs + 1_000);
+
+            // A fp change now must NOT emit a Slide: the intent has expired, so the
+            // machine falls back to Replace (same structural outcome as "no intent").
+            // Confirming must also not be entered because intentForcesConfirming
+            // requires !IsExpired.
+            h.Machine.ProcessForTests(new GsmtcSessionsChangedEvent(new[] { Session("s1", "Song B") }));
+
+            Assert.Single(h.Frames);
+            Assert.Equal(FrameTransitionKind.Replace, h.Frames[0].Transition);
+            Assert.NotEqual(FrameTransitionKind.SlideForward, h.Frames[0].Transition);
+            Assert.NotEqual(FrameTransitionKind.SlideBackward, h.Frames[0].Transition);
+            Assert.Equal(PresentationKind.Steady, h.Frames[0].Kind);
         }
 
         // ---------------------------------------------------------------
@@ -505,6 +523,52 @@ namespace wisland.Tests
             Assert.Single(h.Frames);
             Assert.Equal(FrameTransitionKind.None, h.Frames[0].Transition);
             Assert.Equal("deadbeef12345678", h.Frames[0].Fingerprint.ThumbnailHash);
+        }
+
+        // P4 safety net: once the machine has displayed a track with a real
+        // ThumbnailHash, a subsequent snapshot for the SAME logical track with
+        // an empty hash (e.g. a transient upstream refresh, or a future upstream
+        // regression) must NOT produce a fingerprint change, MUST NOT emit a
+        // frame, and must not erase the stored hash. This guards against any
+        // regression where hash="" could leak through and cause views to
+        // reload album art / palette / blur background unnecessarily.
+        [Fact]
+        public void EmptyHashOnSameIdentityDoesNotChangeFingerprint()
+        {
+            using var h = NewHarness();
+            var baseSession = Session("s1", "Song A");
+            var withHash = baseSession with { ThumbnailHash = "abc123def4567890" };
+            h.Machine.ProcessForTests(new GsmtcSessionsChangedEvent(new[] { withHash }));
+            h.Frames.Clear();
+
+            // Same identity, empty hash — should be absorbed, no frame.
+            var sameIdentityEmptyHash = baseSession with { ThumbnailHash = string.Empty };
+            h.Machine.ProcessForTests(new GsmtcSessionsChangedEvent(new[] { sameIdentityEmptyHash }));
+            Assert.Empty(h.Frames);
+
+            // Follow-up refresh that reasserts the original hash must likewise
+            // be a no-op (the machine kept the stored hash).
+            h.Machine.ProcessForTests(new GsmtcSessionsChangedEvent(new[] { withHash }));
+            Assert.Empty(h.Frames);
+        }
+
+        // Counterpart to EmptyHashOnSameIdentityDoesNotChangeFingerprint:
+        // an identity change (new title) with an empty hash MUST still emit a
+        // proper frame. Absorption is strictly scoped to same-identity cases.
+        [Fact]
+        public void EmptyHashWithIdentityChangeStillEmitsFrame()
+        {
+            using var h = NewHarness();
+            var first = Session("s1", "Song A") with { ThumbnailHash = "hash_a" };
+            h.Machine.ProcessForTests(new GsmtcSessionsChangedEvent(new[] { first }));
+            h.Frames.Clear();
+
+            // Different title (identity change) with empty hash — must not absorb.
+            var second = Session("s1", "Song B") with { ThumbnailHash = string.Empty };
+            h.Machine.ProcessForTests(new GsmtcSessionsChangedEvent(new[] { second }));
+            Assert.Single(h.Frames);
+            Assert.Equal("Song B", h.Frames[0].Fingerprint.Title);
+            Assert.Equal(string.Empty, h.Frames[0].Fingerprint.ThumbnailHash);
         }
 
         // Scenario: stabilization timer fires without any metadata arriving.

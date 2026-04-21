@@ -30,16 +30,19 @@ namespace wisland.Services.Media.Presentation
         private readonly Channel<PresentationEvent> _events;
         private readonly CancellationTokenSource _cts = new();
         private readonly IDispatcherPoster _dispatcherPoster;
+        private readonly Func<DateTimeOffset> _nowProvider;
         private Task? _worker;
         private long _sequence;
         private bool _isDisposed;
 
         public MediaPresentationMachine(
             IReadOnlyList<IPresentationPolicy> policies,
-            IDispatcherPoster dispatcherPoster)
+            IDispatcherPoster dispatcherPoster,
+            Func<DateTimeOffset>? nowProvider = null)
         {
             _policies = policies;
             _dispatcherPoster = dispatcherPoster;
+            _nowProvider = nowProvider ?? (() => DateTimeOffset.UtcNow);
             _events = Channel.CreateUnbounded<PresentationEvent>(new UnboundedChannelOptions
             {
                 SingleReader = true,
@@ -130,7 +133,7 @@ namespace wisland.Services.Media.Presentation
 
         private void ProcessEvent(PresentationEvent evt)
         {
-            _context.NowUtc = DateTimeOffset.UtcNow;
+            _context.NowUtc = _nowProvider();
 
             if (evt is GsmtcSessionsChangedEvent sessionsChanged)
             {
@@ -842,16 +845,40 @@ namespace wisland.Services.Media.Presentation
             return _visualOrderKeys.Count;
         }
 
-        private static MediaTrackFingerprint BuildFingerprint(MediaSessionSnapshot session)
+        private MediaTrackFingerprint BuildFingerprint(MediaSessionSnapshot session)
+        {
             // P3: ThumbnailHash is xxhash64(first 4KB) populated asynchronously by
             // MediaService after the thumbnail reference updates. Empty until the
             // first compute completes; that is treated as its own fingerprint
             // value so a hash arriving on a later dispatch surfaces as a fp
             // change and can trigger the appropriate frame.
-            => new(session.SessionKey ?? string.Empty,
-                   session.Title ?? string.Empty,
-                   session.Artist ?? string.Empty,
-                   session.ThumbnailHash ?? string.Empty);
+            //
+            // P4 safety net: absorb a transient empty ThumbnailHash on the same
+            // logical track. Upstream (MediaService.Refresh) already keeps the old
+            // hash when a thumbnail stream-reference is reissued with identical
+            // bytes, but an empty hash can still legitimately appear before any
+            // art is known. If identity (session+title+artist) matches whatever
+            // the machine last displayed with a non-empty hash, carry that hash
+            // forward so a future refactor upstream can't accidentally reintroduce
+            // hash="" fingerprint churn for the currently-shown track.
+            string hash = session.ThumbnailHash ?? string.Empty;
+            if (string.IsNullOrEmpty(hash)
+                && !string.IsNullOrEmpty(_state.DisplayedFingerprint.ThumbnailHash)
+                && string.Equals(session.SessionKey ?? string.Empty,
+                    _state.DisplayedFingerprint.SessionKey, StringComparison.Ordinal)
+                && string.Equals(session.Title ?? string.Empty,
+                    _state.DisplayedFingerprint.Title, StringComparison.Ordinal)
+                && string.Equals(session.Artist ?? string.Empty,
+                    _state.DisplayedFingerprint.Artist, StringComparison.Ordinal))
+            {
+                hash = _state.DisplayedFingerprint.ThumbnailHash;
+            }
+            return new MediaTrackFingerprint(
+                session.SessionKey ?? string.Empty,
+                session.Title ?? string.Empty,
+                session.Artist ?? string.Empty,
+                hash);
+        }
 
         private static bool FingerprintEquals(MediaTrackFingerprint a, MediaTrackFingerprint b)
             => string.Equals(a.SessionKey, b.SessionKey, StringComparison.Ordinal)
