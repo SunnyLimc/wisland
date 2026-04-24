@@ -64,6 +64,8 @@ namespace wisland
             _mediaService.TrackChanged -= OnTrackChanged;
             DisposePresentationMachine();
             _mediaService.Dispose();
+            _visualCache?.Dispose();
+            _visualCache = null;
 
             DisposeSessionPickerOverlay();
             _shellVisibilityService.Dispose();

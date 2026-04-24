@@ -27,7 +27,8 @@ namespace wisland.Services
                     Title: ResolveTitle(session),
                     Subtitle: ResolveSubtitle(session),
                     StatusText: ResolveStatusText(session),
-                    IsSelected: string.Equals(session.SessionKey, selectedSessionKey, StringComparison.Ordinal));
+                    IsSelected: string.Equals(session.SessionKey, selectedSessionKey, StringComparison.Ordinal),
+                    ThumbnailHash: session.ThumbnailHash ?? string.Empty);
             }
 
             return rows;

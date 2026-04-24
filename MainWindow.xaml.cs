@@ -15,6 +15,7 @@ using WinUIEx;
 using wisland.Helpers;
 using wisland.Models;
 using wisland.Services;
+using wisland.Services.Media;
 using Microsoft.UI.Input;
 
 namespace wisland
@@ -27,6 +28,7 @@ namespace wisland
     {
         private readonly WindowAppearanceService _appearanceService = new();
         private readonly MediaService _mediaService = new();
+        private MediaVisualCache? _visualCache;
         private readonly SettingsService _settings = new();
         private readonly IslandController _controller = new();
         private readonly ForegroundWindowMonitor _foregroundWindowMonitor;

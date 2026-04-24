@@ -1,82 +1,17 @@
 using System;
-using System.Collections.Concurrent;
-using System.Threading.Tasks;
-using Microsoft.UI.Xaml.Media.Imaging;
-using Windows.Graphics.Imaging;
-using Windows.Storage.Streams;
 using Windows.UI;
 
 namespace wisland.Helpers
 {
     /// <summary>
-    /// Extracts dominant colors from album art thumbnails for gradient backgrounds.
-    /// Results are cached by stream reference identity to avoid redundant computation.
+    /// Stateless palette analyzer for BGRA8 pre-multiplied pixel buffers.
+    /// All decoding + caching of album art lives in
+    /// <see cref="wisland.Services.Media.MediaVisualCache"/>; this helper is
+    /// purely the histogram-based dominant-color pass it calls into.
     /// </summary>
     internal static class AlbumArtColorExtractor
     {
-        private static readonly ConcurrentDictionary<string, AlbumArtPalette> _cache = new(StringComparer.Ordinal);
-
-        public static async Task<AlbumArtPalette?> ExtractAsync(IRandomAccessStreamReference? thumbnailRef, string cacheKey)
-        {
-            if (thumbnailRef == null || string.IsNullOrEmpty(cacheKey))
-                return null;
-
-            if (_cache.TryGetValue(cacheKey, out AlbumArtPalette cached))
-                return cached;
-
-            try
-            {
-                using IRandomAccessStreamWithContentType stream = await thumbnailRef.OpenReadAsync();
-                BitmapDecoder decoder = await BitmapDecoder.CreateAsync(stream);
-
-                // Downsample to 32×32 for fast histogram analysis
-                const uint sampleSize = 32;
-                BitmapTransform transform = new()
-                {
-                    ScaledWidth = sampleSize,
-                    ScaledHeight = sampleSize,
-                    InterpolationMode = BitmapInterpolationMode.Linear
-                };
-
-                PixelDataProvider pixelData = await decoder.GetPixelDataAsync(
-                    BitmapPixelFormat.Bgra8,
-                    BitmapAlphaMode.Premultiplied,
-                    transform,
-                    ExifOrientationMode.IgnoreExifOrientation,
-                    ColorManagementMode.DoNotColorManage);
-
-                byte[] pixels = pixelData.DetachPixelData();
-                AlbumArtPalette palette = AnalyzePixels(pixels);
-                _cache.TryAdd(cacheKey, palette);
-                return palette;
-            }
-            catch (Exception ex)
-            {
-                Logger.Warn($"Album art color extraction failed: {ex.Message}");
-                return null;
-            }
-        }
-
-        public static async Task<BitmapImage?> LoadThumbnailAsync(IRandomAccessStreamReference? thumbnailRef)
-        {
-            if (thumbnailRef == null)
-                return null;
-
-            try
-            {
-                using IRandomAccessStreamWithContentType stream = await thumbnailRef.OpenReadAsync();
-                BitmapImage bitmap = new();
-                await bitmap.SetSourceAsync(stream);
-                return bitmap;
-            }
-            catch (Exception ex)
-            {
-                Logger.Warn($"Album art thumbnail load failed: {ex.Message}");
-                return null;
-            }
-        }
-
-        private static AlbumArtPalette AnalyzePixels(byte[] pixels)
+        internal static AlbumArtPalette AnalyzePixels(byte[] pixels)
         {
             // Histogram-based dominant color extraction.
             // Quantize to 4-bit per channel (16×16×16 = 4096 buckets) for fast analysis.
@@ -173,7 +108,6 @@ namespace wisland.Helpers
                 (byte)(c.B * factor));
         }
 
-        public static void ClearCache() => _cache.Clear();
     }
 
     internal readonly record struct AlbumArtPalette(Color Dominant, Color Secondary, Color Average)

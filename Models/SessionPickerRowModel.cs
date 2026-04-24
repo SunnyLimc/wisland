@@ -7,5 +7,6 @@ namespace wisland.Models
         string Title,
         string Subtitle,
         string StatusText,
-        bool IsSelected);
+        bool IsSelected,
+        string ThumbnailHash = "");
 }

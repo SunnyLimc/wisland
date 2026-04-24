@@ -17,6 +17,7 @@ using Windows.UI;
 using wisland.Controls;
 using wisland.Helpers;
 using wisland.Models;
+using wisland.Services.Media;
 
 namespace wisland.Views
 {
@@ -33,16 +34,16 @@ namespace wisland.Views
         private Color _subColor = Color.FromArgb(255, 180, 180, 190);
         private bool _canOpenSessionPicker;
 
-        private IRandomAccessStreamReference? _lastThumbnailRef;
-        private MediaTrackFingerprint _lastAlbumArtFingerprint; // Fingerprint-based key for album art change detection
+        // Album-art cache integration. The cache owns all decoded BitmapImage /
+        // LoadedImageSurface / AlbumArtPalette triples keyed by ThumbnailHash.
+        // Switching sessions becomes a synchronous hash lookup; no stream opens,
+        // no BitmapImage decode, no per-switch LoadedImageSurface allocation.
+        private MediaVisualCache? _visualCache;
+        private string _currentArtHash = string.Empty;   // "" while no art or cache empty.
+        private string _pendingArtHash = string.Empty;   // non-empty while we're awaiting AssetsReady for this hash.
+        private ContentTransitionDirection _pendingArtDirection = ContentTransitionDirection.None;
         private ImageSource? _previousAlbumArtSource; // Holds the old art for crossfade outgoing slot
         private string? _lastSourceIconIdentity;
-
-        // Serialize album-art loads: a newer request cancels any in-flight prior
-        // one so we never have two LoadThumbnailAsync / palette-extract / blur-
-        // surface chains racing each other. Prevents the outgoing slot / palette /
-        // blur from desyncing when fingerprints change in rapid succession.
-        private CancellationTokenSource? _albumArtCts;
         private CancellationTokenSource? _sourceIconCts;
         private bool _isBusyTransport; // True during transport switching grace period
         private bool _hasAlbumArt;     // True when album art is currently displayed
@@ -108,12 +109,15 @@ namespace wisland.Views
             StopScaleAnimation();
 
             // Cancel any in-flight async work so it doesn't touch disposed UI state.
-            _albumArtCts?.Cancel();
-            _albumArtCts?.Dispose();
-            _albumArtCts = null;
             _sourceIconCts?.Cancel();
             _sourceIconCts?.Dispose();
             _sourceIconCts = null;
+
+            if (_visualCache != null)
+            {
+                _visualCache.AssetsReady -= OnVisualCacheAssetsReady;
+                _visualCache = null;
+            }
 
             if (_progressTimer != null)
             {
@@ -208,23 +212,14 @@ namespace wisland.Views
             // Track switching state — hold old album art/background during grace period
             _isBusyTransport = showBusyTransportState;
 
-            // Album art — reload when the track identity changes (content-based),
-            // not when the thumbnail reference is reissued by GSMTC.
+            // Album art — route through the visual cache. Cache hit = synchronous
+            // swap with no stream open / no decode; cache miss = retain current
+            // visuals and wait for AssetsReady to fire for this hash. A switch
+            // from one cached session to another is therefore a single frame-
+            // atomic update with zero reload flicker.
             if (session.HasValue && !showBusyTransportState)
             {
-                var thumbnailRef = session.Value.Thumbnail;
-                MediaTrackFingerprint newFingerprint = BuildAlbumArtFingerprint(session.Value);
-                if (!newFingerprint.Equals(_lastAlbumArtFingerprint))
-                {
-                    _lastAlbumArtFingerprint = newFingerprint;
-                    _lastThumbnailRef = thumbnailRef;
-                    if (thumbnailRef != null)
-                    {
-                        LoadAlbumArt(session.Value);
-                    }
-                    // If thumbnail is null but we had art before, keep the old art
-                    // (GSMTC may send null briefly during track transitions)
-                }
+                ApplyAlbumArtFromCache(session.Value, direction);
             }
             else if (!session.HasValue)
             {
@@ -530,12 +525,9 @@ namespace wisland.Views
 
         private static MediaTrackFingerprint BuildAlbumArtFingerprint(MediaSessionSnapshot session)
         {
-            // Fingerprint-based key so reissued IRandomAccessStreamReference objects
-            // with the same underlying art don't cause reloads. A track change
-            // (different title/artist) or a content-hash change flips the fp and
-            // triggers a reload. When the thumbnail is absent we fall back to
-            // session+title+artist only (ThumbnailHash stays empty), which means a
-            // thumbnail arriving later will produce a hash and trigger a reload.
+            // Kept only because MediaTrackFingerprint is still referenced by the
+            // outer SyncMediaUI frame-diff path. Album-art routing no longer uses
+            // a fingerprint — the cache keys on session.ThumbnailHash directly.
             string hash = session.Thumbnail != null
                 ? (session.ThumbnailHash ?? string.Empty)
                 : string.Empty;
@@ -546,144 +538,198 @@ namespace wisland.Views
                 hash);
         }
 
-        private async void LoadAlbumArt(MediaSessionSnapshot session)
+        /// <summary>
+        /// Attaches the shared <see cref="MediaVisualCache"/>. Must be called once
+        /// by the host (MainWindow) before any session updates flow through
+        /// <see cref="UpdateMedia(MediaPresentationFrame)"/>. Safe to re-attach
+        /// (detaches the previous subscription first).
+        /// </summary>
+        internal void SetVisualCache(MediaVisualCache? cache)
         {
-            var targetRef = session.Thumbnail;
-            MediaTrackFingerprint targetFingerprint = BuildAlbumArtFingerprint(session);
-
-            // Save the previous art source SYNCHRONOUSLY before any await so rapid
-            // switches don't corrupt the outgoing slot. This captures whatever is
-            // currently visible before the new load begins.
-            ImageSource? previousForThisLoad = AlbumArtImage.Source;
-
-            // Cancel any prior in-flight album-art load. A newer fingerprint
-            // always wins, so the old load should stop touching shared state
-            // (_previousAlbumArtSource, AlbumArtImage.Source, palette, blur).
-            _albumArtCts?.Cancel();
-            _albumArtCts?.Dispose();
-            var cts = new CancellationTokenSource();
-            _albumArtCts = cts;
-            CancellationToken ct = cts.Token;
-
-            try
+            if (ReferenceEquals(_visualCache, cache)) return;
+            if (_visualCache != null)
             {
-                // --- Phase 1: Load everything in the background ---
-                BitmapImage? albumArt = await AlbumArtColorExtractor.LoadThumbnailAsync(targetRef);
-                if (ct.IsCancellationRequested) return;
-                if (!targetFingerprint.Equals(_lastAlbumArtFingerprint)) return;
-                if (_isBusyTransport) { _lastAlbumArtFingerprint = MediaTrackFingerprint.Empty; return; }
-
-                if (albumArt == null)
-                {
-                    if (!_hasAlbumArt) ClearAlbumArt();
-                    return;
-                }
-
-                // Start color extraction in parallel while we wait for image realization.
-                // Keyed by ThumbnailHash when available so two sessions sharing the
-                // same artwork share the cached palette (0-cost when hash matches).
-                string colorKey = !string.IsNullOrEmpty(session.ThumbnailHash)
-                    ? "h:" + session.ThumbnailHash
-                    : $"s:{session.SessionKey}:{session.Title}:{session.Artist}";
-                Task<AlbumArtPalette?> paletteTask = AlbumArtColorExtractor.ExtractAsync(targetRef, colorKey);
-
-                // --- Phase 2: Pre-realize the image before crossfading ---
-                // Only capture _previousAlbumArtSource AFTER decoding succeeded and
-                // cancellation has not fired, so a superseded load cannot corrupt
-                // the outgoing slot captured by the winning load.
-                _previousAlbumArtSource = previousForThisLoad;
-
-                bool imageReady = await PreRealizeAlbumArtAsync(albumArt);
-                if (ct.IsCancellationRequested) return;
-                if (!targetFingerprint.Equals(_lastAlbumArtFingerprint)) return;
-                if (_isBusyTransport) { _lastAlbumArtFingerprint = MediaTrackFingerprint.Empty; return; }
-                if (!imageReady) return;
-
-                AlbumArtPalette? palette = await paletteTask;
-                if (ct.IsCancellationRequested) return;
-                if (!targetFingerprint.Equals(_lastAlbumArtFingerprint)) return;
-                if (_isBusyTransport) { _lastAlbumArtFingerprint = MediaTrackFingerprint.Empty; return; }
-
-                // --- Phase 3: Perform all crossfades atomically ---
-                CrossfadeAlbumArtFromPreRealized();
-                _hasAlbumArt = true;
-                AlbumArtFallback.Visibility = Visibility.Collapsed;
-
-                if (palette.HasValue)
-                {
-                    CrossfadeBackgroundPalette(palette.Value);
-                }
-
-                await LoadBlurredBackgroundAsync(targetRef);
-                if (ct.IsCancellationRequested) return;
+                _visualCache.AssetsReady -= OnVisualCacheAssetsReady;
             }
-            catch (OperationCanceledException)
+            _visualCache = cache;
+            if (_visualCache != null)
             {
-                // Superseded by a newer load — expected, nothing to do.
-            }
-            catch (Exception ex)
-            {
-                Logger.Warn($"Failed to load album art: {ex.Message}");
-                // Don't clear on error if we already have art — degrade gracefully
+                _visualCache.AssetsReady += OnVisualCacheAssetsReady;
             }
         }
 
-        /// <summary>
-        /// Sets the new art on AlbumArtImage (which is currently hidden at composition level)
-        /// and waits for the ImageOpened event so the GPU texture is ready.
-        /// Returns true if the image was successfully realized.
-        /// </summary>
-        private async Task<bool> PreRealizeAlbumArtAsync(BitmapImage newArt)
+        private void OnVisualCacheAssetsReady(string hash)
         {
-            var tcs = new TaskCompletionSource<bool>();
-
-            void OnOpened(object s, RoutedEventArgs e)
-            {
-                AlbumArtImage.ImageOpened -= OnOpened;
-                AlbumArtImage.ImageFailed -= OnFailed;
-                tcs.TrySetResult(true);
-            }
-
-            void OnFailed(object s, ExceptionRoutedEventArgs e)
-            {
-                AlbumArtImage.ImageOpened -= OnOpened;
-                AlbumArtImage.ImageFailed -= OnFailed;
-                tcs.TrySetResult(false);
-            }
-
-            AlbumArtImage.ImageOpened += OnOpened;
-            AlbumArtImage.ImageFailed += OnFailed;
-
-            // Keep AlbumArtImage invisible at composition level while loading
-            if (_compositor != null)
-                ElementCompositionPreview.GetElementVisual(AlbumArtImage).Opacity = 0f;
-
-            AlbumArtImage.Source = newArt;
-
-            // Timeout after 2 seconds — don't block forever
-            var timeoutTask = Task.Delay(2000);
-            var completedTask = await Task.WhenAny(tcs.Task, timeoutTask);
-
-            if (completedTask == timeoutTask)
-            {
-                AlbumArtImage.ImageOpened -= OnOpened;
-                AlbumArtImage.ImageFailed -= OnFailed;
-                // Realization took longer than expected. The BitmapImage was already
-                // decoded by SetSourceAsync upstream, so the pixel data exists; the
-                // ImageOpened event may simply be delayed because the Image element
-                // starts at composition-opacity 0. Proceed with the crossfade — the
-                // animation takes long enough that the rendered texture will catch up.
-                return true;
-            }
-
-            return tcs.Task.Result;
+            // Cache hands this back on the UI dispatcher already; still check we
+            // actually wanted this hash (user may have scrolled past it).
+            if (!string.Equals(_pendingArtHash, hash, StringComparison.Ordinal)) return;
+            if (_visualCache is null) return;
+            if (!_visualCache.TryGet(hash, out MediaVisualAssets? assets) || assets is null) return;
+            _pendingArtHash = string.Empty;
+            ApplyAlbumArtAssets(assets, _pendingArtDirection);
         }
 
         /// <summary>
-        /// Performs the crossfade animation after the new art has been pre-realized on AlbumArtImage.
-        /// AlbumArtImage already has the new Source set (hidden at composition opacity=0).
+        /// Routes a session's album art through the cache. Synchronously applies
+        /// on cache hit; otherwise registers the hash as pending and returns —
+        /// the current visuals remain in place until <see cref="OnVisualCacheAssetsReady"/>
+        /// fires for this hash.
+        /// <para>
+        /// The <paramref name="direction"/> parameter is plumbed through to the
+        /// art-swap pipeline so a future dual-slot directional coordinator can
+        /// slide the whole art+blur+gradient stack left/right. The current
+        /// implementation uses the existing crossfade; no behavior change for now.
+        /// </para>
         /// </summary>
-        private void CrossfadeAlbumArtFromPreRealized()
+        private void ApplyAlbumArtFromCache(MediaSessionSnapshot session, ContentTransitionDirection direction)
+        {
+            string hash = session.ThumbnailHash ?? string.Empty;
+
+            if (session.Thumbnail is null || string.IsNullOrEmpty(hash))
+            {
+                // No resolvable art reference yet. Keep current visuals unless we
+                // had none — in which case fall back to the default palette.
+                if (!_hasAlbumArt) ClearAlbumArt();
+                _pendingArtHash = string.Empty;
+                return;
+            }
+
+            // Already displaying this exact art payload — no-op.
+            if (string.Equals(_currentArtHash, hash, StringComparison.Ordinal))
+            {
+                _pendingArtHash = string.Empty;
+                return;
+            }
+
+            if (_visualCache != null
+                && _visualCache.TryGet(hash, out MediaVisualAssets? assets)
+                && assets is not null)
+            {
+                _pendingArtHash = string.Empty;
+                ApplyAlbumArtAssets(assets, direction);
+                return;
+            }
+
+            // Miss: retain current visuals; remember the hash we're waiting for.
+            // A subsequent AssetsReady(hash) will apply it.
+            _pendingArtHash = hash;
+            _pendingArtDirection = direction;
+        }
+
+        private void ApplyAlbumArtAssets(MediaVisualAssets assets, ContentTransitionDirection direction)
+        {
+            if (_isBusyTransport) return;
+
+            // Capture the currently-displayed image source for the crossfade's
+            // outgoing slot. Do this before swapping the primary source.
+            _previousAlbumArtSource = AlbumArtImage.Source;
+
+            // Synchronous swap — bitmap is already decoded, surface already on GPU.
+            AlbumArtImage.Source = assets.Bitmap;
+            if (_blurSurfaceBrush != null)
+            {
+                _blurSurfaceBrush.Surface = assets.BlurSurface;
+            }
+
+            _currentArtHash = assets.Hash;
+            _hasAlbumArt = true;
+            AlbumArtFallback.Visibility = Visibility.Collapsed;
+
+            // Visuals: slide the art horizontally in-sync with the metadata
+            // coordinator for directional switches; crossfade for non-directional
+            // changes (first load / same-position refresh). Gradient palette and
+            // blur crossfade in parallel regardless of direction — the sliding
+            // art reads as the "hero" of the swipe.
+            if (direction == ContentTransitionDirection.None)
+            {
+                CrossfadeAlbumArtLayers();
+            }
+            else
+            {
+                SlideAlbumArtLayers(direction);
+            }
+            CrossfadeBackgroundPalette(assets.Palette);
+            EnsureBlurLayerVisible();
+        }
+
+        private void SlideAlbumArtLayers(ContentTransitionDirection direction)
+        {
+            if (_compositor == null)
+            {
+                // Non-composition fallback: just snap.
+                AlbumArtImageOutgoing.Source = _previousAlbumArtSource;
+                AlbumArtImage.Opacity = 1;
+                AlbumArtImageOutgoing.Opacity = 0;
+                return;
+            }
+
+            // Sign: Forward (wheel-down / next tab) → new comes from right, old exits left.
+            float sign = direction == ContentTransitionDirection.Forward ? 1f : -1f;
+            const float slideDistance = 96f; // Slightly > art width (80) so it fully clears the rounded-corner clip.
+            const int durationMs = 360;
+
+            Visual outgoingVisual = ElementCompositionPreview.GetElementVisual(AlbumArtImageOutgoing);
+            Visual incomingVisual = ElementCompositionPreview.GetElementVisual(AlbumArtImage);
+
+            AlbumArtImageOutgoing.Source = _previousAlbumArtSource;
+            outgoingVisual.Opacity = _previousAlbumArtSource != null ? 1f : 0f;
+            outgoingVisual.Offset = Vector3.Zero;
+            // Anchor scale to the image center so the zoom breathes around the
+            // art's middle rather than collapsing toward the top-left.
+            outgoingVisual.CenterPoint = new Vector3(
+                (float)(AlbumArtImageOutgoing.ActualWidth * 0.5),
+                (float)(AlbumArtImageOutgoing.ActualHeight * 0.5),
+                0f);
+            outgoingVisual.Scale = Vector3.One;
+
+            incomingVisual.Opacity = 1f;
+            incomingVisual.Offset = new Vector3(slideDistance * sign, 0f, 0f);
+            incomingVisual.CenterPoint = new Vector3(
+                (float)(AlbumArtImage.ActualWidth * 0.5),
+                (float)(AlbumArtImage.ActualHeight * 0.5),
+                0f);
+            incomingVisual.Scale = new Vector3(0.96f, 0.96f, 1f);
+
+            var enterEasing = _compositor.CreateCubicBezierEasingFunction(
+                new Vector2(0.18f, 1.0f), new Vector2(0.32f, 1.0f));
+            var exitEasing = _compositor.CreateCubicBezierEasingFunction(
+                new Vector2(0.42f, 0.0f), new Vector2(0.92f, 0.52f));
+
+            var outOffset = _compositor.CreateVector3KeyFrameAnimation();
+            outOffset.InsertKeyFrame(1f, new Vector3(-slideDistance * sign, 0f, 0f), exitEasing);
+            outOffset.Duration = TimeSpan.FromMilliseconds(durationMs);
+
+            var outOpacity = _compositor.CreateScalarKeyFrameAnimation();
+            outOpacity.InsertKeyFrame(0.55f, 1f);
+            outOpacity.InsertKeyFrame(1f, 0f, exitEasing);
+            outOpacity.Duration = TimeSpan.FromMilliseconds(durationMs);
+
+            // Outgoing shrinks slightly as it leaves — reads as "stepping back".
+            var outScale = _compositor.CreateVector3KeyFrameAnimation();
+            outScale.InsertKeyFrame(1f, new Vector3(0.94f, 0.94f, 1f), exitEasing);
+            outScale.Duration = TimeSpan.FromMilliseconds(durationMs);
+
+            var inOffset = _compositor.CreateVector3KeyFrameAnimation();
+            inOffset.InsertKeyFrame(1f, Vector3.Zero, enterEasing);
+            inOffset.Duration = TimeSpan.FromMilliseconds(durationMs);
+
+            // Incoming eases out from 0.96 to 1.0 — subtle "settle" bounce.
+            var inScale = _compositor.CreateVector3KeyFrameAnimation();
+            inScale.InsertKeyFrame(1f, Vector3.One, enterEasing);
+            inScale.Duration = TimeSpan.FromMilliseconds(durationMs);
+
+            outgoingVisual.StartAnimation("Offset", outOffset);
+            outgoingVisual.StartAnimation("Opacity", outOpacity);
+            outgoingVisual.StartAnimation("Scale", outScale);
+            incomingVisual.StartAnimation("Offset", inOffset);
+            incomingVisual.StartAnimation("Scale", inScale);
+
+            // Reset incoming offset storage to zero after animation completes so
+            // the next apply starts from a clean Vector3.Zero snapshot. The Offset
+            // animation lands on (0,0,0) anyway; explicit reset is defensive.
+        }
+
+        private void CrossfadeAlbumArtLayers()
         {
             if (_compositor != null)
             {
@@ -693,10 +739,9 @@ namespace wisland.Views
                 Visual outgoingVisual = ElementCompositionPreview.GetElementVisual(AlbumArtImageOutgoing);
                 Visual incomingVisual = ElementCompositionPreview.GetElementVisual(AlbumArtImage);
 
-                // Move old art to outgoing
                 AlbumArtImageOutgoing.Source = _previousAlbumArtSource;
-                outgoingVisual.Opacity = 1f;
-                // incomingVisual already at 0f from PreRealize
+                outgoingVisual.Opacity = _previousAlbumArtSource != null ? 1f : 0f;
+                incomingVisual.Opacity = 0f;
 
                 var fadeIn = _compositor.CreateScalarKeyFrameAnimation();
                 fadeIn.InsertKeyFrame(0f, 0f);
@@ -704,7 +749,7 @@ namespace wisland.Views
                 fadeIn.Duration = TimeSpan.FromMilliseconds(ArtCrossfadeDurationMs);
 
                 var fadeOut = _compositor.CreateScalarKeyFrameAnimation();
-                fadeOut.InsertKeyFrame(0f, 1f);
+                fadeOut.InsertKeyFrame(0f, outgoingVisual.Opacity);
                 fadeOut.InsertKeyFrame(1f, 0f, easing);
                 fadeOut.Duration = TimeSpan.FromMilliseconds(ArtCrossfadeDurationMs);
 
@@ -717,6 +762,20 @@ namespace wisland.Views
                 AlbumArtImage.Opacity = 1;
                 AlbumArtImageOutgoing.Opacity = 0;
             }
+        }
+
+        private void EnsureBlurLayerVisible()
+        {
+            if (_compositor == null) return;
+            Visual blurVisual = ElementCompositionPreview.GetElementVisual(BlurHost);
+            if (blurVisual.Opacity >= 0.1f) return; // Already visible — instant surface swap suffices.
+
+            var easing = _compositor.CreateCubicBezierEasingFunction(
+                new Vector2(0.25f, 0.1f), new Vector2(0.25f, 1.0f));
+            var fadeIn = _compositor.CreateScalarKeyFrameAnimation();
+            fadeIn.InsertKeyFrame(1f, 0.6f, easing);
+            fadeIn.Duration = TimeSpan.FromMilliseconds(500);
+            blurVisual.StartAnimation("Opacity", fadeIn);
         }
 
         /// <summary>
@@ -777,8 +836,8 @@ namespace wisland.Views
             _previousAlbumArtSource = null;
             AlbumArtFallback.Visibility = Visibility.Visible;
             ClearBlurSurface();
-            _lastThumbnailRef = null;
-            _lastAlbumArtFingerprint = MediaTrackFingerprint.Empty;
+            _currentArtHash = string.Empty;
+            _pendingArtHash = string.Empty;
             _hasAlbumArt = false;
             ApplyDefaultBackgroundPalette();
 
@@ -902,55 +961,8 @@ namespace wisland.Views
 
             ElementCompositionPreview.SetElementChildVisual(BlurHost, _blurVisual);
 
-            // Start invisible — LoadBlurredBackgroundAsync fades in on first load.
+            // Start invisible — EnsureBlurLayerVisible fades it in on first art.
             ElementCompositionPreview.GetElementVisual(BlurHost).Opacity = 0f;
-        }
-
-        private async Task LoadBlurredBackgroundAsync(IRandomAccessStreamReference? thumbnailRef)
-        {
-            if (thumbnailRef == null || _blurSurfaceBrush == null || _compositor == null) return;
-
-            try
-            {
-                // Load the surface while old blur is still visible — no fade-out first
-                using var stream = await thumbnailRef.OpenReadAsync();
-                var surface = LoadedImageSurface.StartLoadFromStream(stream);
-
-                // Wait for the surface to be loaded before swapping
-                var tcs = new TaskCompletionSource<bool>();
-                void OnLoaded(LoadedImageSurface s, LoadedImageSourceLoadCompletedEventArgs a)
-                {
-                    surface.LoadCompleted -= OnLoaded;
-                    tcs.TrySetResult(a.Status == LoadedImageSourceLoadStatus.Success);
-                }
-                surface.LoadCompleted += OnLoaded;
-
-                var timeoutTask = Task.Delay(2000);
-                var completedTask = await Task.WhenAny(tcs.Task, timeoutTask);
-
-                // Swap surface and crossfade
-                _blurSurfaceBrush.Surface = surface;
-
-                var easing = _compositor.CreateCubicBezierEasingFunction(
-                    new Vector2(0.25f, 0.1f), new Vector2(0.25f, 1.0f));
-
-                Visual blurVisual = ElementCompositionPreview.GetElementVisual(BlurHost);
-
-                // If blur was already visible, just hold it; if first time, fade in
-                float currentOpacity = blurVisual.Opacity;
-                if (currentOpacity < 0.1f)
-                {
-                    var fadeIn = _compositor.CreateScalarKeyFrameAnimation();
-                    fadeIn.InsertKeyFrame(1f, 0.6f, easing);
-                    fadeIn.Duration = TimeSpan.FromMilliseconds(500);
-                    blurVisual.StartAnimation("Opacity", fadeIn);
-                }
-                // If already visible (≥0.1), the surface swap is seamless under the blur
-            }
-            catch (Exception ex)
-            {
-                Logger.Warn($"Failed to load blur background surface: {ex.Message}");
-            }
         }
 
         private void ClearBlurSurface()

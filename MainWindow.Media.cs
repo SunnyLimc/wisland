@@ -6,6 +6,7 @@ using System.Threading.Tasks;
 using wisland.Helpers;
 using wisland.Models;
 using wisland.Services;
+using wisland.Services.Media;
 using wisland.Services.Media.Presentation;
 
 namespace wisland
@@ -21,6 +22,13 @@ namespace wisland
         {
             try
             {
+                // Construct the visual cache and wire it to the view BEFORE the
+                // media service initializes, so the first SessionsChanged burst
+                // triggers prewarm for all sessions and the view picks up assets
+                // via SetVisualCache before the first frame lands.
+                _visualCache = new MediaVisualCache(_mediaService);
+                ImmersiveContent.SetVisualCache(_visualCache);
+
                 _mediaService.SessionsChanged += OnMediaServiceChanged;
                 _mediaService.TrackChanged += OnTrackChanged;
                 if (_presentationMachine != null)
@@ -49,6 +57,18 @@ namespace wisland
             DispatcherQueue?.TryEnqueue(() =>
             {
                 _presentationMachine?.Dispatch(new GsmtcSessionsChangedEvent(GetPriorityOrderedSessions()));
+
+                // If the machine emitted no frame (only background-session metadata
+                // or thumbnail-hash changed), SyncMediaUI was never invoked and the
+                // open session picker would display stale rows. Re-project rows
+                // directly from the fresh session list in that case.
+                if (_isSessionPickerOpen)
+                {
+                    _sessionPickerWindow?.View.SetRows(SessionPickerRowProjector.Project(
+                        GetPriorityOrderedSessions(),
+                        _displayedSessionKey));
+                }
+
                 UpdateRenderLoopState();
             });
         }
