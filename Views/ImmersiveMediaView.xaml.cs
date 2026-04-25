@@ -63,11 +63,28 @@ namespace wisland.Views
         private Microsoft.UI.Xaml.Media.Animation.Storyboard? _sessionSwitchStoryboard;
         private bool _isSessionSwitching; // While true, suppress ticker so drain-then-grow plays out.
 
-        // Composition blur for album art background
+        // Composition blur for album art background.
+        // We host TWO blur sprite visuals (active + outgoing) inside a single
+        // container visual so a directional session-tab switch can render the
+        // old and new blur as parallax layers crossfading in opposite
+        // directions, instead of an instantaneous surface swap.
         private Compositor? _compositor;
-        private SpriteVisual? _blurVisual;
+        private ContainerVisual? _blurContainerVisual;
+        private SpriteVisual? _blurVisual;            // Active layer (current art).
         private CompositionSurfaceBrush? _blurSurfaceBrush;
         private CompositionEffectBrush? _blurEffectBrush;
+        private SpriteVisual? _outgoingBlurVisual;    // Outgoing layer (previous art) during directional swap.
+        private CompositionSurfaceBrush? _outgoingBlurSurfaceBrush;
+        private CompositionEffectBrush? _outgoingBlurEffectBrush;
+        private LoadedImageSurface? _previousBlurSurface; // The surface currently displayed on _blurVisual (cached for transfer to outgoing on swap).
+        // Tunable depth animation parameters. Drift is intentionally larger than
+        // the album art slide (96px) felt at the foreground because the blur
+        // panel covers the entire chrome — large drift on a heavily-blurred
+        // visual still reads as subtle ambient motion, not a window-shake.
+        private const int BlurSwapDurationMs = 520;
+        private const float BlurDriftDistance = 32f;
+        private const float BlurIncomingScaleStart = 1.06f;
+        private const float BlurOutgoingScaleEnd = 1.08f;
 
         public event EventHandler? BackClick;
         public event EventHandler? PlayPauseClick;
@@ -97,6 +114,7 @@ namespace wisland.Views
         private void OnLoaded(object sender, RoutedEventArgs e)
         {
             InitializeBlurVisual();
+            InitializeGradientParallax();
             ApplyTextColors();
             ApplyTransportColors();
             InitializeHeaderChipAtLoad();
@@ -139,6 +157,15 @@ namespace wisland.Views
             _blurEffectBrush = null;
             _blurSurfaceBrush?.Dispose();
             _blurSurfaceBrush = null;
+            _outgoingBlurVisual?.Dispose();
+            _outgoingBlurVisual = null;
+            _outgoingBlurEffectBrush?.Dispose();
+            _outgoingBlurEffectBrush = null;
+            _outgoingBlurSurfaceBrush?.Dispose();
+            _outgoingBlurSurfaceBrush = null;
+            _blurContainerVisual?.Dispose();
+            _blurContainerVisual = null;
+            _previousBlurSurface = null;
             _compositor = null;
         }
 
@@ -626,30 +653,46 @@ namespace wisland.Views
 
             // Synchronous swap — bitmap is already decoded, surface already on GPU.
             AlbumArtImage.Source = assets.Bitmap;
-            if (_blurSurfaceBrush != null)
-            {
-                _blurSurfaceBrush.Surface = assets.BlurSurface;
-            }
 
             _currentArtHash = assets.Hash;
             _hasAlbumArt = true;
             AlbumArtFallback.Visibility = Visibility.Collapsed;
 
-            // Visuals: slide the art horizontally in-sync with the metadata
-            // coordinator for directional switches; crossfade for non-directional
-            // changes (first load / same-position refresh). Gradient palette and
-            // blur crossfade in parallel regardless of direction — the sliding
-            // art reads as the "hero" of the swipe.
-            if (direction == ContentTransitionDirection.None)
+            // Wrap all three layers' StartAnimation calls in a single scoped
+            // batch so the compositor commits them as one unit. The UI thread
+            // is single-threaded so they would already commit on the same tick
+            // in practice, but the explicit batch (a) documents the atomic
+            // intent and (b) gives us one Completed event for the entire
+            // session-tab transition if we need it later (cleanup, "settled"
+            // notifications, etc.).
+            //
+            // Layer order in code matches paint order from front (album art) to
+            // back (gradient) so a debugger paused mid-call shows the visual
+            // stack top-down.
+            CompositionScopedBatch? batch = null;
+            if (_compositor != null && direction != ContentTransitionDirection.None)
             {
-                CrossfadeAlbumArtLayers();
+                batch = _compositor.CreateScopedBatch(CompositionBatchTypes.Animation);
             }
-            else
+
+            try
             {
-                SlideAlbumArtLayers(direction);
+                if (direction == ContentTransitionDirection.None)
+                {
+                    CrossfadeAlbumArtLayers();
+                }
+                else
+                {
+                    SlideAlbumArtLayers(direction);
+                }
+                SwapBlurSurface(assets.BlurSurface, direction);
+                CrossfadeBackgroundPalette(assets.Palette, direction);
+                EnsureBlurLayerVisible();
             }
-            CrossfadeBackgroundPalette(assets.Palette);
-            EnsureBlurLayerVisible();
+            finally
+            {
+                batch?.End();
+            }
         }
 
         private void SlideAlbumArtLayers(ContentTransitionDirection direction)
@@ -729,6 +772,120 @@ namespace wisland.Views
             // animation lands on (0,0,0) anyway; explicit reset is defensive.
         }
 
+        /// <summary>
+        /// Swaps the blurred-album-art background surface. For directional
+        /// (session-tab) switches, runs a dual-layer parallax crossfade where
+        /// the previous blur drifts off (opposite to slide direction) while
+        /// fading + slowly zooming, and the new blur drifts in from the slide
+        /// direction with a 1.06→1.0 settle. For non-directional updates
+        /// (first load / refresh), performs an instant surface swap on the
+        /// active visual.
+        /// </summary>
+        private void SwapBlurSurface(LoadedImageSurface? newSurface, ContentTransitionDirection direction)
+        {
+            if (_blurSurfaceBrush is null) return;
+
+            // Non-directional path: instant swap on the active layer. Caller
+            // will fade BlurHost in if it was hidden via EnsureBlurLayerVisible.
+            if (direction == ContentTransitionDirection.None
+                || _compositor is null
+                || _outgoingBlurVisual is null
+                || _outgoingBlurSurfaceBrush is null
+                || _blurVisual is null)
+            {
+                _blurSurfaceBrush.Surface = newSurface;
+                _previousBlurSurface = newSurface;
+                return;
+            }
+
+            // Directional path: hand the current surface to the outgoing visual
+            // and load the new one onto the active visual, then animate both.
+            // If we have no prior surface, the outgoing layer simply stays at 0
+            // opacity — no spurious cross-fade from black.
+            bool hasOutgoing = _previousBlurSurface != null;
+            if (hasOutgoing)
+            {
+                _outgoingBlurSurfaceBrush.Surface = _previousBlurSurface;
+            }
+            _blurSurfaceBrush.Surface = newSurface;
+            _previousBlurSurface = newSurface;
+
+            float sign = direction == ContentTransitionDirection.Forward ? 1f : -1f;
+            int duration = BlurSwapDurationMs;
+
+            // Easings: incoming uses a "settling" curve (fast then ease into rest);
+            // outgoing uses a "depart" curve (slow start, accelerating into nothing)
+            // so the rear layer feels like it falls behind into space.
+            var enterEasing = _compositor.CreateCubicBezierEasingFunction(
+                new Vector2(0.16f, 0.84f), new Vector2(0.30f, 1.0f));
+            var exitEasing = _compositor.CreateCubicBezierEasingFunction(
+                new Vector2(0.40f, 0.0f), new Vector2(0.72f, 0.40f));
+
+            // Center-anchor the scale so it breathes around the viewport mid-axis
+            // rather than collapsing toward a corner.
+            Vector3 anchor = new(
+                (float)(BlurHost.ActualWidth * 0.5),
+                (float)(BlurHost.ActualHeight * 0.5),
+                0f);
+            _outgoingBlurVisual.CenterPoint = anchor;
+            _blurVisual.CenterPoint = anchor;
+
+            // Outgoing: starts at rest, drifts AGAINST the slide direction (so it
+            // feels like falling backward), zooms slowly outward, fades to 0.
+            _outgoingBlurVisual.Offset = Vector3.Zero;
+            _outgoingBlurVisual.Scale = Vector3.One;
+            _outgoingBlurVisual.Opacity = hasOutgoing ? 1f : 0f;
+
+            if (hasOutgoing)
+            {
+                var outOffset = _compositor.CreateVector3KeyFrameAnimation();
+                outOffset.InsertKeyFrame(1f, new Vector3(-BlurDriftDistance * sign, 0f, 0f), exitEasing);
+                outOffset.Duration = TimeSpan.FromMilliseconds(duration);
+
+                var outScale = _compositor.CreateVector3KeyFrameAnimation();
+                outScale.InsertKeyFrame(1f, new Vector3(BlurOutgoingScaleEnd, BlurOutgoingScaleEnd, 1f), exitEasing);
+                outScale.Duration = TimeSpan.FromMilliseconds(duration);
+
+                var outOpacity = _compositor.CreateScalarKeyFrameAnimation();
+                outOpacity.InsertKeyFrame(0f, 1f);
+                outOpacity.InsertKeyFrame(1f, 0f, exitEasing);
+                outOpacity.Duration = TimeSpan.FromMilliseconds(duration);
+
+                _outgoingBlurVisual.StartAnimation("Offset", outOffset);
+                _outgoingBlurVisual.StartAnimation("Scale", outScale);
+                _outgoingBlurVisual.StartAnimation("Opacity", outOpacity);
+            }
+
+            // Incoming: starts offset in the slide direction with a 1.06 zoom
+            // and full opacity (it's already painted with the new surface, so it
+            // can be visible from frame 0 to mask the outgoing's fade if any).
+            // We still ramp opacity from 0→1 so the *combined* layer brightness
+            // stays balanced during the swap (avoids momentary 2× luminance).
+            _blurVisual.Offset = new Vector3(BlurDriftDistance * sign, 0f, 0f);
+            _blurVisual.Scale = new Vector3(BlurIncomingScaleStart, BlurIncomingScaleStart, 1f);
+            _blurVisual.Opacity = hasOutgoing ? 0f : 1f;
+
+            var inOffset = _compositor.CreateVector3KeyFrameAnimation();
+            inOffset.InsertKeyFrame(1f, Vector3.Zero, enterEasing);
+            inOffset.Duration = TimeSpan.FromMilliseconds(duration);
+
+            var inScale = _compositor.CreateVector3KeyFrameAnimation();
+            inScale.InsertKeyFrame(1f, Vector3.One, enterEasing);
+            inScale.Duration = TimeSpan.FromMilliseconds(duration);
+
+            _blurVisual.StartAnimation("Offset", inOffset);
+            _blurVisual.StartAnimation("Scale", inScale);
+
+            if (hasOutgoing)
+            {
+                var inOpacity = _compositor.CreateScalarKeyFrameAnimation();
+                inOpacity.InsertKeyFrame(0f, 0f);
+                inOpacity.InsertKeyFrame(1f, 1f, enterEasing);
+                inOpacity.Duration = TimeSpan.FromMilliseconds(duration);
+                _blurVisual.StartAnimation("Opacity", inOpacity);
+            }
+        }
+
         private void CrossfadeAlbumArtLayers()
         {
             if (_compositor != null)
@@ -782,7 +939,7 @@ namespace wisland.Views
         /// Crossfades the gradient background from current colors to new palette colors.
         /// Uses composition-level opacity to avoid single-frame flashes.
         /// </summary>
-        private void CrossfadeBackgroundPalette(AlbumArtPalette palette)
+        private void CrossfadeBackgroundPalette(AlbumArtPalette palette, ContentTransitionDirection direction = ContentTransitionDirection.None)
         {
             // Copy current active gradient to outgoing
             OutgoingGradientStop0.Color = GradientStop0.Color;
@@ -821,6 +978,40 @@ namespace wisland.Views
 
                 activeVisual.StartAnimation("Opacity", fadeIn);
                 outgoingVisual.StartAnimation("Opacity", fadeOut);
+
+                // Directional parallax on the gradient layer. We pre-inflate the
+                // visuals by a baseline scale (set on Loaded) so the small
+                // horizontal drift never exposes uncovered strips at the edges.
+                if (direction != ContentTransitionDirection.None)
+                {
+                    float sign = direction == ContentTransitionDirection.Forward ? 1f : -1f;
+                    const float gradientDrift = 24f; // Subtler than blur (32px) — gradient is a softer plane behind the blur layer.
+                    int duration = GradientCrossfadeDurationMs;
+
+                    var enterEasing = _compositor.CreateCubicBezierEasingFunction(
+                        new Vector2(0.16f, 0.84f), new Vector2(0.30f, 1.0f));
+                    var exitEasing = _compositor.CreateCubicBezierEasingFunction(
+                        new Vector2(0.40f, 0.0f), new Vector2(0.72f, 0.40f));
+
+                    Vector3 anchor = new(
+                        (float)(GradientBackground.ActualWidth * 0.5),
+                        (float)(GradientBackground.ActualHeight * 0.5),
+                        0f);
+                    activeVisual.CenterPoint = anchor;
+                    outgoingVisual.CenterPoint = anchor;
+
+                    activeVisual.Offset = new Vector3(gradientDrift * sign, 0f, 0f);
+                    var inOffset = _compositor.CreateVector3KeyFrameAnimation();
+                    inOffset.InsertKeyFrame(1f, Vector3.Zero, enterEasing);
+                    inOffset.Duration = TimeSpan.FromMilliseconds(duration);
+                    activeVisual.StartAnimation("Offset", inOffset);
+
+                    outgoingVisual.Offset = Vector3.Zero;
+                    var outOffset = _compositor.CreateVector3KeyFrameAnimation();
+                    outOffset.InsertKeyFrame(1f, new Vector3(-gradientDrift * sign, 0f, 0f), exitEasing);
+                    outOffset.Duration = TimeSpan.FromMilliseconds(duration);
+                    outgoingVisual.StartAnimation("Offset", outOffset);
+                }
             }
             else
             {
@@ -937,11 +1128,36 @@ namespace wisland.Views
             Visual hostVisual = ElementCompositionPreview.GetElementVisual(BlurHost);
             _compositor = hostVisual.Compositor;
 
-            // Surface brush: receives the album art image
+            // Container that owns both the active and outgoing blur sprite visuals.
+            // SetElementChildVisual only allows ONE child visual per host element,
+            // so the dual-layer crossfade lives inside this container.
+            _blurContainerVisual = _compositor.CreateContainerVisual();
+            _blurContainerVisual.RelativeSizeAdjustment = System.Numerics.Vector2.One;
+
+            // === Outgoing (rear) layer ===
+            // Sits BEHIND the active layer so the active fade-in masks any
+            // sub-pixel seam at the moment of swap.
+            _outgoingBlurSurfaceBrush = _compositor.CreateSurfaceBrush();
+            _outgoingBlurSurfaceBrush.Stretch = CompositionStretch.UniformToFill;
+            IGraphicsEffect outBlur = new GaussianBlurEffect
+            {
+                Name = "BlurOut",
+                BlurAmount = 40f,
+                BorderMode = EffectBorderMode.Hard,
+                Source = new CompositionEffectSourceParameter("source")
+            };
+            CompositionEffectFactory outFactory = _compositor.CreateEffectFactory(outBlur);
+            _outgoingBlurEffectBrush = outFactory.CreateBrush();
+            _outgoingBlurEffectBrush.SetSourceParameter("source", _outgoingBlurSurfaceBrush);
+
+            _outgoingBlurVisual = _compositor.CreateSpriteVisual();
+            _outgoingBlurVisual.Brush = _outgoingBlurEffectBrush;
+            _outgoingBlurVisual.RelativeSizeAdjustment = System.Numerics.Vector2.One;
+            _outgoingBlurVisual.Opacity = 0f; // Hidden until a directional swap arms it.
+
+            // === Active (front) layer ===
             _blurSurfaceBrush = _compositor.CreateSurfaceBrush();
             _blurSurfaceBrush.Stretch = CompositionStretch.UniformToFill;
-
-            // Effect graph: GaussianBlur wrapping the surface
             IGraphicsEffect blurEffect = new GaussianBlurEffect
             {
                 Name = "Blur",
@@ -949,26 +1165,65 @@ namespace wisland.Views
                 BorderMode = EffectBorderMode.Hard,
                 Source = new CompositionEffectSourceParameter("source")
             };
-
             CompositionEffectFactory factory = _compositor.CreateEffectFactory(blurEffect);
             _blurEffectBrush = factory.CreateBrush();
             _blurEffectBrush.SetSourceParameter("source", _blurSurfaceBrush);
 
-            // Sprite visual that paints the blurred result
             _blurVisual = _compositor.CreateSpriteVisual();
             _blurVisual.Brush = _blurEffectBrush;
             _blurVisual.RelativeSizeAdjustment = System.Numerics.Vector2.One;
 
-            ElementCompositionPreview.SetElementChildVisual(BlurHost, _blurVisual);
+            _blurContainerVisual.Children.InsertAtBottom(_outgoingBlurVisual);
+            _blurContainerVisual.Children.InsertAtTop(_blurVisual);
+
+            ElementCompositionPreview.SetElementChildVisual(BlurHost, _blurContainerVisual);
 
             // Start invisible — EnsureBlurLayerVisible fades it in on first art.
             ElementCompositionPreview.GetElementVisual(BlurHost).Opacity = 0f;
+        }
+
+        /// <summary>
+        /// Inflates the gradient background visuals slightly so the directional
+        /// parallax drift during a session-tab switch never exposes uncovered
+        /// strips at the edge. The borders fully cover the parent grid; we
+        /// scale them up at composition level (no XAML layout impact) so the
+        /// pre-blur color plane stays edge-to-edge even at peak ±24px drift.
+        /// </summary>
+        private void InitializeGradientParallax()
+        {
+            if (_compositor is null) return;
+
+            const float gradientBaselineScale = 1.10f;
+
+            void Apply(Visual v, FrameworkElement el)
+            {
+                v.CenterPoint = new Vector3(
+                    (float)(el.ActualWidth * 0.5),
+                    (float)(el.ActualHeight * 0.5),
+                    0f);
+                v.Scale = new Vector3(gradientBaselineScale, gradientBaselineScale, 1f);
+            }
+
+            Visual activeVisual = ElementCompositionPreview.GetElementVisual(GradientBackground);
+            Visual outgoingVisual = ElementCompositionPreview.GetElementVisual(GradientBackgroundOutgoing);
+            Apply(activeVisual, GradientBackground);
+            Apply(outgoingVisual, GradientBackgroundOutgoing);
+
+            GradientBackground.SizeChanged += (_, _) =>
+                Apply(ElementCompositionPreview.GetElementVisual(GradientBackground), GradientBackground);
+            GradientBackgroundOutgoing.SizeChanged += (_, _) =>
+                Apply(ElementCompositionPreview.GetElementVisual(GradientBackgroundOutgoing), GradientBackgroundOutgoing);
         }
 
         private void ClearBlurSurface()
         {
             if (_blurSurfaceBrush != null)
                 _blurSurfaceBrush.Surface = null;
+            if (_outgoingBlurSurfaceBrush != null)
+                _outgoingBlurSurfaceBrush.Surface = null;
+            if (_outgoingBlurVisual != null)
+                _outgoingBlurVisual.Opacity = 0f;
+            _previousBlurSurface = null;
             if (_compositor != null)
                 ElementCompositionPreview.GetElementVisual(BlurHost).Opacity = 0f;
         }
