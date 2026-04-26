@@ -52,5 +52,6 @@
     <Compile Include="..\Services\Media\Presentation\Policies\StabilizationPolicy.cs" Link="Services\Media\Presentation\Policies\StabilizationPolicy.cs" />
     <Compile Include="..\Services\Media\Presentation\Policies\AiOverridePolicy.cs" Link="Services\Media\Presentation\Policies\AiOverridePolicy.cs" />
     <Compile Include="..\Services\Media\Presentation\Policies\NotificationOverlayPolicy.cs" Link="Services\Media\Presentation\Policies\NotificationOverlayPolicy.cs" />
+    <Compile Include="..\Controls\MarqueeRetargetMath.cs" Link="Controls\MarqueeRetargetMath.cs" />
   </ItemGroup>
 </Project>

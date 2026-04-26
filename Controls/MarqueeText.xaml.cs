@@ -205,7 +205,96 @@ namespace wisland.Controls
                 return;
             }
 
+            // Already scrolling: if overflow changed materially (e.g. compact↔expanded
+            // transition is animating the viewport width per frame, or font weight just
+            // swapped), the in-flight storyboard targets a stale -oldOverflow and would
+            // overshoot/undershoot the correct end. Smoothly retarget the running
+            // animation from the current TextTranslate.X to -newOverflow over the time
+            // remaining for that leg, instead of aborting (which would snap X to 0 each
+            // tick of a continuous width animation).
+            if (Math.Abs(overflow - _overflowAmount) > 0.5)
+            {
+                _overflowAmount = overflow;
+                RetargetActiveLeg();
+                return;
+            }
+
             _overflowAmount = overflow;
+        }
+
+        private void RetargetActiveLeg()
+        {
+            if (_phase != MarqueePhase.ScrollingToEnd && _phase != MarqueePhase.ScrollingBack)
+            {
+                // In Idle / PauseAtEnd we are not animating, so the next leg will be
+                // built from the fresh _overflowAmount automatically.
+                return;
+            }
+
+            double currentX = TextTranslate.X;
+            bool forwardLeg = _phase == MarqueePhase.ScrollingToEnd;
+            int generation = _cycleGeneration;
+
+            // Forward-leg overshoot: the live X is already at or past the new end
+            // (-newOverflow). Animating from currentX to -newOverflow would visibly
+            // rewind the text — what the user perceives as "scrolls back a bit, then
+            // continues forward." Instead, freeze the leg in place, advance directly
+            // to PauseAtEnd, and let ScrollBack animate gracefully from the live X to
+            // 0 (it is now overflow-aware via TextTranslate.X, not -_overflowAmount).
+            if (forwardLeg && MarqueeRetargetMath.ShouldSkipToPauseOnForwardRetarget(currentX, _overflowAmount))
+            {
+                StopActiveStoryboard();
+                _phase = MarqueePhase.PauseAtEnd;
+                StartPauseTimer(EndPause, (_, _) =>
+                {
+                    if (generation != _cycleGeneration) return;
+                    StopPauseTimer();
+                    ScrollBack(generation);
+                });
+                return;
+            }
+
+            // Back-leg already-home: very rarely the overflow change makes |currentX|
+            // smaller than 0.5 px while the back leg is in flight. Just finish.
+            if (!forwardLeg && MarqueeRetargetMath.ShouldFinishBackLeg(currentX))
+            {
+                StopActiveStoryboard();
+                TextTranslate.X = 0;
+                if (_overflowAmount > 0.5) StartIdlePause();
+                else OnCycleAbort();
+                return;
+            }
+
+            var (targetX, durationSeconds) = MarqueeRetargetMath.ComputeRetarget(
+                currentX, _overflowAmount, ScrollSpeed, forwardLeg);
+
+            MarqueePhase legPhase = _phase;
+
+            StopActiveStoryboard();
+            var storyboard = CreateTranslateStoryboard(currentX, targetX, durationSeconds,
+                new CubicEase { EasingMode = EasingMode.EaseInOut });
+            _activeScrollStoryboard = storyboard;
+            storyboard.Completed += (_, _) =>
+            {
+                if (generation != _cycleGeneration) return;
+                if (_phase != legPhase) return;
+                if (legPhase == MarqueePhase.ScrollingToEnd)
+                {
+                    _phase = MarqueePhase.PauseAtEnd;
+                    StartPauseTimer(EndPause, (_, _) =>
+                    {
+                        if (generation != _cycleGeneration) return;
+                        StopPauseTimer();
+                        ScrollBack(generation);
+                    });
+                }
+                else
+                {
+                    if (_overflowAmount > 0.5) StartIdlePause();
+                    else OnCycleAbort();
+                }
+            };
+            storyboard.Begin();
         }
 
         private void StartIdlePause()
@@ -256,8 +345,22 @@ namespace wisland.Controls
         {
             if (generation != _cycleGeneration || !_isLoaded) return;
             _phase = MarqueePhase.ScrollingBack;
-            double durationSeconds = Math.Max(0.15, _overflowAmount / Math.Max(1.0, ScrollSpeed * 1.4));
-            double start = -_overflowAmount;
+
+            // Start from the LIVE position rather than -_overflowAmount. When an
+            // overflow change during the forward leg caused us to short-circuit
+            // PauseAtEnd in place (see Evaluate retarget), the live X may be past
+            // -newOverflow. Animating from -_overflowAmount would visibly snap
+            // forward by the difference; using the live X yields a clean glide home.
+            double start = TextTranslate.X;
+            if (MarqueeRetargetMath.ShouldFinishBackLeg(start))
+            {
+                TextTranslate.X = 0;
+                if (_overflowAmount > 0.5) StartIdlePause();
+                else OnCycleAbort();
+                return;
+            }
+
+            double durationSeconds = MarqueeRetargetMath.ComputeBackLegDurationFromLiveX(start, ScrollSpeed);
 
             var storyboard = CreateTranslateStoryboard(start, 0, durationSeconds,
                 new CubicEase { EasingMode = EasingMode.EaseInOut });
