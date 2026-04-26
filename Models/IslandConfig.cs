@@ -112,6 +112,20 @@ namespace wisland.Models
         // Filters out metadata-only flickers where Chrome briefly surfaces another
         // tab's title/artist while the timeline keeps advancing on the prior track.
         public const double SkipTransitionPositionRestartMarginSeconds = 0.5;
+        // Same-track restart release: when stabilization is armed and the new raw
+        // position drops strictly below the baseline AND lands within this window,
+        // we accept the release even when title/artist still match the baseline.
+        // Covers YouTube Music "previous" (which restarts the current track in
+        // place) and similar host behaviors. Kept tight (≤1s) so an in-track
+        // backward jitter (e.g. cached position arriving slightly behind the
+        // baseline) cannot prematurely release the gate.
+        public const double SameTrackRestartMaxPositionSeconds = 1.0;
+        // While paused, position deltas from GSMTC smaller than this (in seconds)
+        // are absorbed without re-anchoring the displayed elapsed time. Avoids the
+        // common ±~1s "wobble" caused by GSMTC's TimelineProperties.Position being
+        // a sample older than the locally-extrapolated CurrentPositionSeconds at
+        // the instant of pause. Larger drifts still apply (animated smoothly).
+        public const double PausedPositionDriftToleranceSeconds = 2.0;
         public const int MediaMetadataSettleMs = 250;
         public const int SelectionLockDurationMs = 10000;
         public const double SessionPickerOverlayWidth = 312.0;

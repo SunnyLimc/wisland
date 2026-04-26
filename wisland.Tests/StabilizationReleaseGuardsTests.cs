@@ -1,4 +1,5 @@
 using Windows.Media.Control;
+using wisland.Models;
 using wisland.Services;
 using Xunit;
 
@@ -152,6 +153,53 @@ namespace wisland.Tests
                 currentPositionSeconds: 0.5,
                 baselinePositionSeconds: 0.3,
                 baselineHasTimeline: true));
+        }
+
+        // --- Same-track restart guard ---------------------------------------
+
+        [Fact]
+        public void SameTrackRestart_PositionWellBelowThresholdIsGenuine()
+        {
+            // YouTube Music "previous" while playing Song A typically lands at
+            // pos≈0–0.5s with the same Title/Artist. Accept those positions.
+            Assert.True(StabilizationReleaseGuards.SameTrackRestartLooksGenuine(0.0));
+            Assert.True(StabilizationReleaseGuards.SameTrackRestartLooksGenuine(0.5));
+        }
+
+        [Fact]
+        public void SameTrackRestart_PositionAtThresholdIsGenuine()
+        {
+            // Boundary is inclusive: positions exactly at the configured
+            // SameTrackRestartMaxPositionSeconds are still treated as
+            // legitimate restarts (matches the LooksLikeFreshTrackShape
+            // boundary semantics for the metadata-different path).
+            Assert.True(StabilizationReleaseGuards.SameTrackRestartLooksGenuine(
+                IslandConfig.SameTrackRestartMaxPositionSeconds));
+        }
+
+        [Fact]
+        public void SameTrackRestart_PositionAboveThresholdRejected()
+        {
+            // Just above the threshold is rejected. With the metadata-matches-
+            // baseline gate at the caller, this prevents an in-track backward
+            // jitter (e.g. baseline=2.7, raw flickers to 1.5 before recovering
+            // to 2.8) from being mis-detected as a restart and prematurely
+            // releasing the gate.
+            Assert.False(StabilizationReleaseGuards.SameTrackRestartLooksGenuine(
+                IslandConfig.SameTrackRestartMaxPositionSeconds + 0.01));
+            Assert.False(StabilizationReleaseGuards.SameTrackRestartLooksGenuine(2.5));
+            Assert.False(StabilizationReleaseGuards.SameTrackRestartLooksGenuine(60.0));
+        }
+
+        [Fact]
+        public void SameTrackRestart_NegativePositionStillAcceptedShape()
+        {
+            // Defensive: position cannot be negative in practice (callers clamp),
+            // but the guard does not need to specifically reject it. A negative
+            // value is "below the threshold" and the caller's other guards
+            // (LooksLikeFreshTrackShape requires durationSeconds > 0 and a
+            // Playing status) are responsible for the broader sanity checks.
+            Assert.True(StabilizationReleaseGuards.SameTrackRestartLooksGenuine(-0.5));
         }
     }
 }

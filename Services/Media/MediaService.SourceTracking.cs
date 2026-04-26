@@ -414,6 +414,23 @@ namespace wisland.Services
                 return false;
             }
 
+            // Paused-state drift tolerance — see MediaPositionGuards.ShouldAbsorbPausedDrift
+            // for rationale. We absorb the small drift by keeping the existing
+            // CurrentPositionSeconds and refreshing only the wall-clock anchor.
+            if (MediaPositionGuards.ShouldAbsorbPausedDrift(
+                    tracked.PlaybackStatus,
+                    tracked.HasTimeline,
+                    hasTimeline,
+                    tracked.DurationSeconds,
+                    durationSeconds,
+                    tracked.CurrentPositionSeconds,
+                    positionSeconds))
+            {
+                tracked.PositionUpdatedUtc = nowUtc;
+                Logger.Trace($"Paused drift absorbed for '{tracked.SessionKey}': kept pos={tracked.CurrentPositionSeconds:F2}s, ignored incoming={positionSeconds:F2}s");
+                return false;
+            }
+
             tracked.HasTimeline = hasTimeline;
             tracked.CurrentPositionSeconds = positionSeconds;
             tracked.PositionUpdatedUtc = nowUtc;

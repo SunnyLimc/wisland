@@ -26,6 +26,9 @@ namespace wisland.Services
                 return;
             }
 
+            ServiceChangeResult changeResult = default;
+            bool shouldDispatch = false;
+
             lock (_gate)
             {
                 if (_isDisposed || !_trackedSourcesByKey.TryGetValue(sessionKey, out TrackedSource? tracked))
@@ -82,6 +85,28 @@ namespace wisland.Services
                     MediaSessionStabilizationReason.SkipTransition,
                     TimeSpan.FromMilliseconds(IslandConfig.SkipTransitionTimeoutMs),
                     nowUtc);
+
+                // Dispatch the just-installed FrozenSnapshot synchronously so
+                // every subscriber (Machine, MainWindow, both views) sees the
+                // optimistic Progress=0 reset within the same UI tick the user
+                // clicked in. Without this, the FrozenSnapshot only reaches
+                // subscribers when *some other* event triggers
+                // PrepareStateChange (a release-eligible burst poll, or the
+                // 10s timer expiry). For the common YouTube Music "previous"
+                // failure mode — GSMTC's TimelineProperties.Position cache
+                // stuck at ~0.0023 with a stale LastUpdatedTime, so no burst
+                // poll satisfies the release guards — that means no event
+                // fires at all until the timer expires, and the views keep
+                // showing the pre-click position with the local ticker
+                // extrapolating forward. Forcing a dispatch here makes the
+                // skip click feel immediate regardless of host behavior.
+                changeResult = PrepareStateChange_NoLock();
+                shouldDispatch = true;
+            }
+
+            if (shouldDispatch)
+            {
+                DispatchChange(changeResult);
             }
         }
 
@@ -112,10 +137,20 @@ namespace wisland.Services
             tracked.StabilizationBaselineArtist = tracked.Artist;
             tracked.StabilizationBaselinePositionSeconds = tracked.CurrentPositionSeconds;
             tracked.StabilizationBaselineHasTimeline = tracked.HasTimeline;
-            tracked.FrozenSnapshot = CreateRawSnapshot(tracked) with
+            MediaSessionSnapshot frozen = CreateRawSnapshot(tracked) with
             {
                 StabilizationReason = reason
             };
+            // Optimistic UI reset for explicit skips — see
+            // MediaPositionGuards.ShouldOverrideFrozenProgressForSkip for the
+            // full rationale. Title/artist/duration/thumbnail are preserved so
+            // the rest of the UI (track text, blur background, total time)
+            // does not flicker.
+            if (MediaPositionGuards.ShouldOverrideFrozenProgressForSkip(reason))
+            {
+                frozen = frozen with { Progress = 0 };
+            }
+            tracked.FrozenSnapshot = frozen;
 
             RescheduleStabilizationTimer_NoLock(nowUtc);
             Logger.Debug($"Stabilization armed for '{tracked.SessionKey}' (reason={reason}, timeout={timeout.TotalMilliseconds}ms, baseline='{tracked.Title}')");
@@ -163,9 +198,25 @@ namespace wisland.Services
             bool metadataDifferentFromBaseline =
                 !string.Equals(tracked.Title, tracked.StabilizationBaselineTitle, StringComparison.Ordinal)
                 || !string.Equals(tracked.Artist, tracked.StabilizationBaselineArtist, StringComparison.Ordinal);
-            if (!metadataDifferentFromBaseline)
+            // Same-track restart path: hosts such as YouTube Music answer
+            // "previous" by replaying the current track from the beginning
+            // rather than switching tracks. Title/artist remain identical to
+            // the baseline, but the timeline genuinely resets. We accept the
+            // release in this case provided:
+            //   * the new position lands within SameTrackRestartMaxPositionSeconds
+            //     (≤1s), so an in-track backward jitter cannot fire this branch,
+            //     and
+            //   * the remaining guards below (concrete metadata, fresh-track
+            //     shape, PositionLooksRestarted) still hold.
+            // Without this branch, the gate stays closed for the full
+            // SkipTransitionTimeoutMs (~10s) on every same-track previous,
+            // and the locally-extrapolated progress visibly continues to
+            // advance from the pre-skip position until the timer expires.
+            bool sameTrackRestart = !metadataDifferentFromBaseline
+                && StabilizationReleaseGuards.SameTrackRestartLooksGenuine(tracked.CurrentPositionSeconds);
+            if (!metadataDifferentFromBaseline && !sameTrackRestart)
             {
-                Logger.Trace($"Stabilization release denied for '{tracked.SessionKey}': metadata matches baseline (title='{tracked.Title}', baseline='{tracked.StabilizationBaselineTitle}')");
+                Logger.Trace($"Stabilization release denied for '{tracked.SessionKey}': metadata matches baseline (title='{tracked.Title}', baseline='{tracked.StabilizationBaselineTitle}', pos={tracked.CurrentPositionSeconds:F2}s)");
                 return false;
             }
 

@@ -143,10 +143,17 @@ namespace wisland.Services
             {
                 foreach (TrackedSource tracked in _trackedSourcesByKey.Values)
                 {
-                    if (tracked.Presence != MediaSessionPresence.Active
-                        || tracked.HasPendingReconnect
-                        || tracked.PlaybackStatus != GlobalSystemMediaTransportControlsSessionPlaybackStatus.Playing
-                        || tracked.DurationSeconds <= 0)
+                    // Centralised gate: see MediaPositionGuards.ShouldTickSession
+                    // for the full rationale (Playing+Active+!Reconnect+Duration>0,
+                    // plus suppression while a SkipTransition stabilization is
+                    // armed so the view's optimistic pos=0 does not get
+                    // overwritten on gate-by-timeout expiry).
+                    if (!MediaPositionGuards.ShouldTickSession(
+                            tracked.PlaybackStatus,
+                            tracked.Presence,
+                            tracked.HasPendingReconnect,
+                            tracked.DurationSeconds,
+                            tracked.StabilizationReason))
                     {
                         continue;
                     }

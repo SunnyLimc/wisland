@@ -58,6 +58,17 @@ namespace wisland.Views
         private bool _progressIsPlaying;
         private bool _progressHasTimeline;
         private string? _progressSessionKey; // Track session identity for reset-on-switch.
+        // Track-identity (SessionKey + Title) for the same purpose as
+        // _progressSessionKey, but extended so that an in-place track change
+        // within the same media session (e.g. Spotify auto-advancing to the
+        // next song without changing SessionKey) also triggers the drain-then-
+        // grow session-switch animation. Without this, the immersive bar would
+        // smoothly animate from the previous track's final position to the new
+        // track's initial position over 260ms (looking like a continuous walk),
+        // while the compact IslandProgressBar — which keys off SessionKey+Title
+        // for its SnapToZero — would visibly snap to 0 first. Aligning the two
+        // identities keeps both bars consistent on every kind of track change.
+        private string? _progressTrackIdentity;
         private Microsoft.UI.Xaml.DispatcherTimer? _progressTimer;
         private Microsoft.UI.Xaml.Media.Animation.Storyboard? _progressScaleStoryboard;
         private Microsoft.UI.Xaml.Media.Animation.Storyboard? _sessionSwitchStoryboard;
@@ -303,11 +314,24 @@ namespace wisland.Views
         private void UpdateProgress(MediaSessionSnapshot? session)
         {
             string? newKey = session?.SessionKey;
-            bool sessionChanged = !string.Equals(_progressSessionKey, newKey, StringComparison.Ordinal);
+            // Build a track-identity (SessionKey + Title) so an in-place track
+            // change within the same session is recognised as a real switch and
+            // gets the same drain-then-grow treatment the compact bar already
+            // gets via RequestMediaProgressReset (see MainWindow.Media.cs:
+            // CreateProgressIdentity). During SkipTransition stabilization the
+            // FrozenSnapshot keeps the baseline Title, so identity is unchanged
+            // there too — the bar drains to 0 via the optimistic Frozen.Progress
+            // override, and the real grow happens at release with a sessionChanged
+            // path triggering StartSessionSwitchAnimation.
+            string? newTrackIdentity = session.HasValue
+                ? string.Concat(session.Value.SessionKey, "\u001f", session.Value.Title)
+                : null;
+            bool sessionChanged = !string.Equals(_progressTrackIdentity, newTrackIdentity, StringComparison.Ordinal);
 
             if (!session.HasValue || !session.Value.HasTimeline || session.Value.DurationSeconds <= 0)
             {
                 _progressSessionKey = newKey;
+                _progressTrackIdentity = newTrackIdentity;
                 _progressHasTimeline = false;
                 _progressIsPlaying = false;
                 _progressDurationSeconds = 0;
@@ -338,16 +362,27 @@ namespace wisland.Views
             _progressAnchorPositionSeconds = positionSeconds;
             _progressAnchorTime = DateTimeOffset.UtcNow;
             _progressDurationSeconds = duration;
+            // Freeze the local ticker while the upstream stabilization gate is
+            // closed: the snapshot's Progress is the FrozenSnapshot baseline (a
+            // single fixed value) and won't move until the gate releases. If we
+            // let the 250ms ticker advance from that baseline, every refresh
+            // burst snapshot delivery snaps the displayed time back to the
+            // baseline, producing the visible ±1s "jitter around current
+            // position" the user reports during a manual skip. Treating the
+            // session as not-playing for ticker purposes makes the displayed
+            // elapsed time stay rock-steady through the stabilization window.
             _progressIsPlaying = session.Value.IsPlaying
-                && !session.Value.IsWaitingForReconnect;
+                && !session.Value.IsWaitingForReconnect
+                && !session.Value.IsStabilizing;
             _progressHasTimeline = true;
 
             TotalTimeText.Text = FormatTime(duration);
 
-            if (sessionChanged && _progressSessionKey != null)
+            if (sessionChanged && _progressTrackIdentity != null)
             {
                 // Drain the old bar to zero, then grow to the new position.
                 _progressSessionKey = newKey;
+                _progressTrackIdentity = newTrackIdentity;
                 if (!_isSeeking)
                 {
                     StartSessionSwitchAnimation(progress);
@@ -356,6 +391,7 @@ namespace wisland.Views
             else
             {
                 _progressSessionKey = newKey;
+                _progressTrackIdentity = newTrackIdentity;
                 if (!_isSeeking && !_isSessionSwitching)
                 {
                     ElapsedTimeText.Text = FormatTime(positionSeconds);

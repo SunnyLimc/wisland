@@ -77,5 +77,28 @@ namespace wisland.Services
             }
             return false;
         }
+
+        /// <summary>
+        /// Returns true when the raw playback position is small enough to be
+        /// consistent with a same-track restart (e.g. YouTube Music's "previous"
+        /// command replaying the current track from the beginning rather than
+        /// switching to a different track). Callers gate this against a
+        /// metadata-matches-baseline check before consulting; the threshold is
+        /// kept tight (≤ <see cref="IslandConfig.SameTrackRestartMaxPositionSeconds"/>,
+        /// 1s) so an in-track backward jitter cannot fire this branch.
+        ///
+        /// Note this guard intentionally narrower than
+        /// <see cref="LooksLikeFreshTrackShape"/> (≤3s): when metadata differs
+        /// from the baseline, a 0–3s position is sufficient evidence of a real
+        /// new track; when metadata matches, the position must be near-zero
+        /// because the only thing distinguishing a real restart from
+        /// "host transiently re-reported an older cached position while still
+        /// playing the same track at the same place" is that a restart resets
+        /// the timeline to the very start.
+        /// </summary>
+        public static bool SameTrackRestartLooksGenuine(double currentPositionSeconds)
+        {
+            return currentPositionSeconds <= IslandConfig.SameTrackRestartMaxPositionSeconds;
+        }
     }
 }
