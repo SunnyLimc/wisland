@@ -220,6 +220,16 @@ All motion uses the **Composition API** — not XAML Storyboards:
 - `ExpandedMediaView` — header avatar strip with composition-level scale/offset animations for reordering, separate easing for hover/press/focus states.
 - `SessionPickerOverlayView` — panel/list reveal via composition visuals, scroll fade via composition clips.
 - `LiquidProgressBar` — layered frosted base, shimmer flow, dynamic tail, bright leading edge. Velocity-aware with dirty checks. Palette-driven colors.
+- `ImmersiveMediaView` owns a separate palette-aware media progress row. It
+  animates the fill by `Width`, not a `ScaleTransform`, so skip/re-anchor
+  animations cannot leave a faint retained-animation head ahead of the real
+  fill.
+
+When immersive media is the expanded surface, `MainWindow.Animation` hides the
+shell-level `LiquidProgressBar` for the full expansion lifetime (including
+hover/requested expansion, not only after opacity is high). The shell bar is
+still used for compact/docked/non-immersive surfaces; it must not be visible
+behind immersive content.
 
 ### Theming
 
@@ -337,6 +347,9 @@ Rules that contributors must preserve:
 8. Use standard `bin/`/`obj/` output trees. No ad-hoc build-output directories.
 9. Multi-session visual ordering remains stable for the user.
 10. All file paths go through `SafePaths`. No raw `Path.Combine` with user-influenced segments.
+11. `PresentationKind.Switching` frames must never leak raw transient metadata,
+    but they may carry display-safe stabilization fields such as `Progress=0`
+    for `SkipTransition` so expanded views reset progress immediately.
 
 ## 16. Change Guide
 

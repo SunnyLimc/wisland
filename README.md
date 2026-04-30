@@ -6,7 +6,7 @@ A WinUI 3 desktop widget that recreates the Dynamic Island interaction pattern o
 
 - **Compact floating shell** — always-on-top, rounded island widget with frame-driven motion
 - **Hover expansion** — expands into a rich media panel on hover with exponential-decay animation
-- **Immersive media panel** — full-bleed album-art view with extracted palette and liquid progress bar
+- **Immersive media panel** — full-bleed album-art view with extracted palette and its own smooth media progress row
 - **Multi-session media** — integrates with Windows GSMTC for track metadata, playback controls, and progress across multiple apps simultaneously
 - **Session management** — focused-session model with manual lock, stable visual tab ordering, wheel cycling, and an independent session picker overlay
 - **Unified presentation machine** — a single event-driven state machine (`MediaPresentationMachine`) owns focus arbitration, manual-lock, skip/natural-ending stabilization, AI override, and notification overlay — emits `MediaPresentationFrame` as the single source of truth for media UI

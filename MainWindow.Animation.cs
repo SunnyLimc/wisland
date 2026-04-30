@@ -108,9 +108,19 @@ namespace wisland
             bool immersive = IsImmersiveActive;
 
             bool shouldShowProgressEffect = ShouldShowProgressEffect(_frameDisplayedSession);
-            // Hide liquid progress bar when immersive view is the active expanded view
-            if (immersive && state.ExpandedOpacity > 0.5)
+            bool immersiveExpandedSurfaceActive = immersive
+                && (state.ExpandedOpacity > 0.001
+                    || ((_controller.IsHovered
+                            || _controller.IsForcedExpanded
+                            || _controller.IsTransientSurfaceOpen)
+                        && !_controller.IsDragging));
+            // The liquid island-level bar is behind the expanded content. Hide it
+            // for the whole immersive expansion lifetime so it cannot bleed through
+            // as a faint, slightly-ahead second progress line.
+            if (immersiveExpandedSurfaceActive)
+            {
                 shouldShowProgressEffect = false;
+            }
             IslandProgressBar.SetEffectVisible(shouldShowProgressEffect);
             IslandProgressBar.SetShimmerActive(ShouldAnimateProgressShimmer(_frameDisplayedSession));
 

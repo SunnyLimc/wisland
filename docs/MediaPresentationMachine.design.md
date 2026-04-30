@@ -283,6 +283,10 @@ public sealed record MediaPresentationFrame(
    `NotifyingOverlay` as inner pass-through, which is collapsed on Resume).
 6. Thumbnail in `Pending/Confirming` only lives in `pendingThumbnail`; it
    never leaks into `Frame.Session`.
+7. `Switching` frames keep the displayed fingerprint/metadata, but carry a
+   display-safe stabilization snapshot for progress/presence. In particular,
+   `SkipTransition` overlays `Progress=0` so immersive and classic progress UI
+   reset immediately without showing transient raw metadata from another tab.
 
 ### 4.8 MainWindow.Media after the refactor
 
@@ -691,10 +695,10 @@ public enum PresentationKind
 {
     Empty,
     Steady,
-    Switching,       // UI hint during Pending*. The machine itself emits no
-                     // frame from Pending; this value is carried out via
-                     // NotifyingOverlay pass-through or on fallback so the
-                     // UI can show the "Switching" chip text.
+    Switching,       // UI hint while a stabilized switch is in flight. The
+                     // frame preserves the displayed fingerprint/metadata but
+                     // may overlay safe live fields such as Progress=0 for a
+                     // SkipTransition.
     Confirming,
     Missing,
     Notifying

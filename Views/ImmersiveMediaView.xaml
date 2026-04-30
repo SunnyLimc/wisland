@@ -360,17 +360,18 @@
                       PointerReleased="ProgressInteractionGrid_PointerReleased"
                       PointerCanceled="ProgressInteractionGrid_PointerCanceled"
                       PointerCaptureLost="ProgressInteractionGrid_PointerCaptureLost">
-                    <Grid Height="4" VerticalAlignment="Center" CornerRadius="2">
+                    <Grid x:Name="ProgressBarHost"
+                          Height="4"
+                          VerticalAlignment="Center"
+                          CornerRadius="2"
+                          SizeChanged="ProgressBarHost_SizeChanged">
                         <Border x:Name="ProgressTrack"
                                 CornerRadius="2"
                                 Background="#55FFFFFF" />
                         <Border x:Name="ProgressFill"
                                 CornerRadius="2"
-                                HorizontalAlignment="Stretch"
-                                RenderTransformOrigin="0,0.5">
-                            <Border.RenderTransform>
-                                <ScaleTransform x:Name="ProgressFillScale" ScaleX="0" ScaleY="1" />
-                            </Border.RenderTransform>
+                                Width="0"
+                                HorizontalAlignment="Left">
                             <Border.Background>
                                 <SolidColorBrush x:Name="ProgressFillBrush" Color="#FFFFFFFF" />
                             </Border.Background>

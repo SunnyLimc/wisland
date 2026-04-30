@@ -50,7 +50,8 @@ namespace wisland.Tests
             GlobalSystemMediaTransportControlsSessionPlaybackStatus status =
                 GlobalSystemMediaTransportControlsSessionPlaybackStatus.Playing,
             MediaSessionStabilizationReason stabilization = MediaSessionStabilizationReason.None,
-            MediaSessionPresence presence = MediaSessionPresence.Active)
+            MediaSessionPresence presence = MediaSessionPresence.Active,
+            double progress = 0.1)
         {
             return new MediaSessionSnapshot(
                 SessionKey: key,
@@ -59,7 +60,7 @@ namespace wisland.Tests
                 Title: title,
                 Artist: artist,
                 PlaybackStatus: status,
-                Progress: 0.1,
+                Progress: progress,
                 HasTimeline: true,
                 DurationSeconds: 200,
                 IsSystemCurrent: true,
@@ -273,6 +274,36 @@ namespace wisland.Tests
             Assert.Equal(PresentationKind.Steady, h.Frames[0].Kind);
             Assert.Equal(FrameTransitionKind.SlideForward, h.Frames[0].Transition);
             Assert.Equal("Song B", h.Frames[0].Fingerprint.Title);
+        }
+
+        [Fact]
+        public void SkipStabilizingFrameCarriesProgressResetWithoutLeakingMetadata()
+        {
+            using var h = NewHarness();
+            h.Machine.ProcessForTests(new GsmtcSessionsChangedEvent(new[]
+            {
+                Session("s1", "Song A", progress: 0.42)
+            }));
+            h.Frames.Clear();
+
+            h.Machine.ProcessForTests(new UserSkipRequestedEvent(ContentTransitionDirection.Forward));
+            h.Frames.Clear();
+
+            h.Machine.ProcessForTests(new GsmtcSessionsChangedEvent(new[]
+            {
+                Session(
+                    "s1",
+                    "Paused Tab Title",
+                    stabilization: MediaSessionStabilizationReason.SkipTransition,
+                    progress: 0.73)
+            }));
+
+            MediaPresentationFrame frame = Assert.Single(h.Frames);
+            Assert.Equal(PresentationKind.Switching, frame.Kind);
+            Assert.Equal("Song A", frame.Fingerprint.Title);
+            Assert.Equal("Song A", frame.Session?.Title);
+            Assert.Equal(MediaSessionStabilizationReason.SkipTransition, frame.Session?.StabilizationReason);
+            Assert.Equal(0.0, frame.Session?.Progress);
         }
 
         [Fact]
@@ -743,4 +774,3 @@ namespace wisland.Tests
         }
     }
 }
-

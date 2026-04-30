@@ -362,11 +362,16 @@ namespace wisland.Services.Media.Presentation
             else if (winner.Value.IsStabilizing)
             {
                 // MediaService is suppressing raw metadata. Keep the previous
-                // fingerprint/snapshot and mark kind=Switching so the UI chip
-                // can show hint text without mutating the main visual.
+                // fingerprint and mark kind=Switching so the UI chip can show
+                // hint text without mutating the main visual. Still carry a
+                // display-safe stabilization snapshot forward so progress UI
+                // sees the intentional skip reset instead of continuing from
+                // the pre-click anchor while the gate is closed.
                 kind = PresentationKind.Switching;
                 fingerprint = _state.DisplayedFingerprint;
-                snapshotForFrame = _state.DisplayedSnapshot ?? winner;
+                snapshotForFrame = CreateStabilizingDisplaySnapshot(
+                    _state.DisplayedSnapshot,
+                    winner.Value);
             }
             else if (winner.Value.IsWaitingForReconnect)
             {
@@ -524,6 +529,27 @@ namespace wisland.Services.Media.Presentation
                 && x.DurationSeconds.Equals(y.DurationSeconds)
                 && x.IsSystemCurrent == y.IsSystemCurrent
                 && x.StabilizationReason == y.StabilizationReason;
+        }
+
+        private static MediaSessionSnapshot CreateStabilizingDisplaySnapshot(
+            MediaSessionSnapshot? displayedSnapshot,
+            MediaSessionSnapshot stabilizingWinner)
+        {
+            MediaSessionSnapshot snapshot = displayedSnapshot ?? stabilizingWinner;
+            double progress = stabilizingWinner.StabilizationReason == MediaSessionStabilizationReason.SkipTransition
+                ? 0.0
+                : snapshot.Progress;
+
+            return snapshot with
+            {
+                Progress = progress,
+                IsSystemCurrent = stabilizingWinner.IsSystemCurrent,
+                LastActivityUtc = stabilizingWinner.LastActivityUtc,
+                LastSeenUtc = stabilizingWinner.LastSeenUtc,
+                Presence = stabilizingWinner.Presence,
+                MissingSinceUtc = stabilizingWinner.MissingSinceUtc,
+                StabilizationReason = stabilizingWinner.StabilizationReason
+            };
         }
 
         // P3b-2 helpers ------------------------------------------------------
@@ -958,4 +984,3 @@ namespace wisland.Services.Media.Presentation
         void Post(Action action);
     }
 }
-

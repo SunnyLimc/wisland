@@ -135,7 +135,7 @@ namespace wisland.Views
         {
             StopProgressTicker();
             StopSessionSwitchAnimation();
-            StopScaleAnimation();
+            StopProgressAnimation();
 
             // Cancel any in-flight async work so it doesn't touch disposed UI state.
             _sourceIconCts?.Cancel();
@@ -340,7 +340,7 @@ namespace wisland.Views
 
                 ElapsedTimeText.Text = "";
                 TotalTimeText.Text = "";
-                AnimateScaleTo(0.0, 260);
+                AnimateProgressTo(0.0, 260);
                 ElapsedTimeText.Visibility = Visibility.Collapsed;
                 TotalTimeText.Visibility = Visibility.Collapsed;
                 ProgressTrack.Visibility = Visibility.Collapsed;
@@ -362,18 +362,15 @@ namespace wisland.Views
             _progressAnchorPositionSeconds = positionSeconds;
             _progressAnchorTime = DateTimeOffset.UtcNow;
             _progressDurationSeconds = duration;
-            // Freeze the local ticker while the upstream stabilization gate is
-            // closed: the snapshot's Progress is the FrozenSnapshot baseline (a
-            // single fixed value) and won't move until the gate releases. If we
-            // let the 250ms ticker advance from that baseline, every refresh
-            // burst snapshot delivery snaps the displayed time back to the
-            // baseline, producing the visible ±1s "jitter around current
-            // position" the user reports during a manual skip. Treating the
-            // session as not-playing for ticker purposes makes the displayed
-            // elapsed time stay rock-steady through the stabilization window.
+            // Freeze the local ticker while a user-initiated skip gate is
+            // closed. SkipTransition snapshots intentionally carry Progress=0;
+            // advancing locally from that optimistic reset would fabricate a
+            // separate bar that can outrun the real track before the gate
+            // releases. NaturalEnding is allowed to keep ticking so the current
+            // track can still visibly play out.
             _progressIsPlaying = session.Value.IsPlaying
                 && !session.Value.IsWaitingForReconnect
-                && !session.Value.IsStabilizing;
+                && session.Value.StabilizationReason != MediaSessionStabilizationReason.SkipTransition;
             _progressHasTimeline = true;
 
             TotalTimeText.Text = FormatTime(duration);
@@ -385,7 +382,7 @@ namespace wisland.Views
                 _progressTrackIdentity = newTrackIdentity;
                 if (!_isSeeking)
                 {
-                    StartSessionSwitchAnimation(progress);
+                    StartSessionSwitchAnimation();
                 }
             }
             else
@@ -395,7 +392,7 @@ namespace wisland.Views
                 if (!_isSeeking && !_isSessionSwitching)
                 {
                     ElapsedTimeText.Text = FormatTime(positionSeconds);
-                    AnimateScaleTo(progress, 260);
+                    AnimateProgressTo(progress, 260);
                 }
             }
 
@@ -409,28 +406,29 @@ namespace wisland.Views
             }
         }
 
-        private void StartSessionSwitchAnimation(double targetRatio)
+        private void StartSessionSwitchAnimation()
         {
+            double current = GetCurrentProgressRatio();
             StopSessionSwitchAnimation();
             StopProgressTicker();
             _isSessionSwitching = true;
 
-            // Phase A: animate scale to 0 and elapsed text to "0:00" over 260ms.
-            StopScaleAnimation();
-            double current = _lastAnimatedProgress;
+            // Phase A: animate fill width to 0 and elapsed text to "0:00" over 260ms.
+            StopProgressAnimation();
             var drain = new Microsoft.UI.Xaml.Media.Animation.Storyboard();
             var drainAnim = new Microsoft.UI.Xaml.Media.Animation.DoubleAnimation
             {
-                From = current,
+                From = RatioToProgressWidth(current),
                 To = 0.0,
                 Duration = TimeSpan.FromMilliseconds(260),
+                EnableDependentAnimation = true,
                 EasingFunction = new Microsoft.UI.Xaml.Media.Animation.CubicEase
                 {
                     EasingMode = Microsoft.UI.Xaml.Media.Animation.EasingMode.EaseOut
                 }
             };
-            Microsoft.UI.Xaml.Media.Animation.Storyboard.SetTarget(drainAnim, ProgressFillScale);
-            Microsoft.UI.Xaml.Media.Animation.Storyboard.SetTargetProperty(drainAnim, "ScaleX");
+            Microsoft.UI.Xaml.Media.Animation.Storyboard.SetTarget(drainAnim, ProgressFill);
+            Microsoft.UI.Xaml.Media.Animation.Storyboard.SetTargetProperty(drainAnim, "Width");
             drain.Children.Add(drainAnim);
 
             ElapsedTimeText.Text = FormatTime(0);
@@ -442,8 +440,12 @@ namespace wisland.Views
                     return;
                 }
 
-                _lastAnimatedProgress = 0.0;
-                // Phase B: re-anchor to wall-clock now and animate up to the current position.
+                SetProgressVisualRatio(0.0);
+                // Phase B: compute the grow target from the latest anchor. New
+                // media/status frames may have arrived while the drain was
+                // running, so using the originally captured ratio can replay a
+                // stale progress value.
+                double targetRatio = GetAnchoredProgressRatio();
                 _progressAnchorPositionSeconds = targetRatio * _progressDurationSeconds;
                 _progressAnchorTime = DateTimeOffset.UtcNow;
 
@@ -451,15 +453,16 @@ namespace wisland.Views
                 var growAnim = new Microsoft.UI.Xaml.Media.Animation.DoubleAnimation
                 {
                     From = 0.0,
-                    To = targetRatio,
+                    To = RatioToProgressWidth(targetRatio),
                     Duration = TimeSpan.FromMilliseconds(320),
+                    EnableDependentAnimation = true,
                     EasingFunction = new Microsoft.UI.Xaml.Media.Animation.CubicEase
                     {
                         EasingMode = Microsoft.UI.Xaml.Media.Animation.EasingMode.EaseOut
                     }
                 };
-                Microsoft.UI.Xaml.Media.Animation.Storyboard.SetTarget(growAnim, ProgressFillScale);
-                Microsoft.UI.Xaml.Media.Animation.Storyboard.SetTargetProperty(growAnim, "ScaleX");
+                Microsoft.UI.Xaml.Media.Animation.Storyboard.SetTarget(growAnim, ProgressFill);
+                Microsoft.UI.Xaml.Media.Animation.Storyboard.SetTargetProperty(growAnim, "Width");
                 grow.Children.Add(growAnim);
 
                 ElapsedTimeText.Text = FormatTime(_progressAnchorPositionSeconds);
@@ -471,7 +474,7 @@ namespace wisland.Views
                         return;
                     }
 
-                    _lastAnimatedProgress = targetRatio;
+                    SetProgressVisualRatio(targetRatio);
                     _isSessionSwitching = false;
                     _sessionSwitchStoryboard = null;
                     if (_progressIsPlaying)
@@ -490,8 +493,9 @@ namespace wisland.Views
 
         private void StopSessionSwitchAnimation()
         {
-            _sessionSwitchStoryboard?.Stop();
+            var storyboard = _sessionSwitchStoryboard;
             _sessionSwitchStoryboard = null;
+            storyboard?.Stop();
             _isSessionSwitching = false;
         }
 
@@ -538,44 +542,123 @@ namespace wisland.Views
                 : 0.0;
 
             ElapsedTimeText.Text = FormatTime(position);
-            AnimateScaleTo(ratio, 260);
+            AnimateProgressTo(ratio, 260);
+        }
+
+        private double GetAnchoredProgressRatio()
+        {
+            if (!_progressHasTimeline || _progressDurationSeconds <= 0)
+            {
+                return 0.0;
+            }
+
+            double position = _progressAnchorPositionSeconds;
+            if (_progressIsPlaying)
+            {
+                double elapsedSinceAnchor = (DateTimeOffset.UtcNow - _progressAnchorTime).TotalSeconds;
+                if (elapsedSinceAnchor > 0)
+                {
+                    position += elapsedSinceAnchor;
+                }
+            }
+
+            return Math.Clamp(position / _progressDurationSeconds, 0.0, 1.0);
+        }
+
+        private double GetCurrentProgressRatio()
+        {
+            double trackWidth = GetProgressTrackWidth();
+            double width = ProgressFill.Width;
+            if (trackWidth <= 0 || double.IsNaN(width) || double.IsInfinity(width))
+            {
+                return Math.Clamp(_lastAnimatedProgress, 0.0, 1.0);
+            }
+
+            return Math.Clamp(width / trackWidth, 0.0, 1.0);
+        }
+
+        private double GetProgressTrackWidth()
+        {
+            double width = ProgressBarHost.ActualWidth;
+            if (double.IsNaN(width) || double.IsInfinity(width) || width <= 0)
+            {
+                width = ProgressInteractionGrid.ActualWidth;
+            }
+
+            return double.IsNaN(width) || double.IsInfinity(width)
+                ? 0.0
+                : Math.Max(0.0, width);
+        }
+
+        private double RatioToProgressWidth(double ratio)
+        {
+            return GetProgressTrackWidth() * Math.Clamp(ratio, 0.0, 1.0);
+        }
+
+        private void SetProgressVisualRatio(double ratio)
+        {
+            ratio = Math.Clamp(ratio, 0.0, 1.0);
+            ProgressFill.Width = RatioToProgressWidth(ratio);
+            _lastAnimatedProgress = ratio;
+        }
+
+        private void ProgressBarHost_SizeChanged(object sender, SizeChangedEventArgs e)
+        {
+            if (_progressScaleStoryboard == null && _sessionSwitchStoryboard == null)
+            {
+                SetProgressVisualRatio(_lastAnimatedProgress);
+            }
         }
 
         /// <summary>
-        /// Smoothly animates the progress fill scale to the target ratio. Never snaps —
+        /// Smoothly animates the progress fill width to the target ratio. Never snaps —
         /// session switches are handled separately by StartSessionSwitchAnimation and
         /// seeks by the pointer-capture flow.
         /// </summary>
-        private void AnimateScaleTo(double target, int durationMs)
+        private void AnimateProgressTo(double target, int durationMs)
         {
-            double current = _lastAnimatedProgress;
+            target = Math.Clamp(target, 0.0, 1.0);
+            double current = GetCurrentProgressRatio();
             if (Math.Abs(current - target) < 0.0005)
             {
+                SetProgressVisualRatio(target);
                 return;
             }
 
-            StopScaleAnimation();
+            StopProgressAnimation();
 
             var storyboard = new Microsoft.UI.Xaml.Media.Animation.Storyboard();
             var anim = new Microsoft.UI.Xaml.Media.Animation.DoubleAnimation
             {
-                From = current,
-                To = target,
+                From = RatioToProgressWidth(current),
+                To = RatioToProgressWidth(target),
                 Duration = TimeSpan.FromMilliseconds(durationMs),
+                EnableDependentAnimation = true,
                 EasingFunction = null // linear
             };
-            Microsoft.UI.Xaml.Media.Animation.Storyboard.SetTarget(anim, ProgressFillScale);
-            Microsoft.UI.Xaml.Media.Animation.Storyboard.SetTargetProperty(anim, "ScaleX");
+            Microsoft.UI.Xaml.Media.Animation.Storyboard.SetTarget(anim, ProgressFill);
+            Microsoft.UI.Xaml.Media.Animation.Storyboard.SetTargetProperty(anim, "Width");
             storyboard.Children.Add(anim);
             _progressScaleStoryboard = storyboard;
+            storyboard.Completed += (_, _) =>
+            {
+                if (!ReferenceEquals(_progressScaleStoryboard, storyboard))
+                {
+                    return;
+                }
+
+                SetProgressVisualRatio(target);
+                _progressScaleStoryboard = null;
+            };
             storyboard.Begin();
             _lastAnimatedProgress = target;
         }
 
-        private void StopScaleAnimation()
+        private void StopProgressAnimation()
         {
-            _progressScaleStoryboard?.Stop();
+            var storyboard = _progressScaleStoryboard;
             _progressScaleStoryboard = null;
+            storyboard?.Stop();
         }
 
         private static string FormatTime(double totalSeconds)
@@ -1467,7 +1550,7 @@ namespace wisland.Views
                     _progressAnchorPositionSeconds = ratio * _progressDurationSeconds;
                     _progressAnchorTime = DateTimeOffset.UtcNow;
                     ElapsedTimeText.Text = FormatTime(_progressAnchorPositionSeconds);
-                    AnimateScaleTo(ratio, 160);
+                    AnimateProgressTo(ratio, 160);
                 }
 
                 SeekRequested?.Invoke(this, ratio);
@@ -1494,7 +1577,7 @@ namespace wisland.Views
             double ratio = ComputeSeekRatio(grid, e);
             // During active drag, animate quickly so the bar tracks the finger/cursor
             // without jumping jerkily when the pointer moves between polling events.
-            AnimateScaleTo(ratio, 80);
+            AnimateProgressTo(ratio, 80);
         }
 
         private static double ComputeSeekRatio(Grid grid, Microsoft.UI.Xaml.Input.PointerRoutedEventArgs e)
