@@ -47,6 +47,7 @@ namespace wisland
             Logger.Debug($"Appearance refreshed: theme={GetThemeKind()}, accent=#{_uiSettings.GetColorValue(UIColorType.Accent):X8}, backdrop={_currentBackdropType}");
 
             _currentVisualTokens = tokens;
+            UpdateResizeBackfillSurfaceColor(tokens.SurfaceColor);
             ApplySessionPickerAppearance(tokens);
             _shellVisibilityService.ApplyAppearance(tokens.LinePalette, IslandConfig.NativeLinePhysicalHeight);
         }

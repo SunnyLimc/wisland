@@ -66,6 +66,8 @@ namespace wisland
             _mediaService.Dispose();
             _visualCache?.Dispose();
             _visualCache = null;
+            DisposeNativeResizeBackfill();
+            DisposeResizeBackfill();
 
             DisposeSessionPickerOverlay();
             _shellVisibilityService.Dispose();
@@ -95,6 +97,8 @@ namespace wisland
 
         private void RootGrid_Loaded(object sender, RoutedEventArgs e)
         {
+            InstallResizeBackfill();
+            InstallNativeResizeBackfill();
             ReconcileStartupWindowBounds();
         }
 

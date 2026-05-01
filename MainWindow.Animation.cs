@@ -324,13 +324,30 @@ namespace wisland
 
         private void ApplyWindowBounds(RectInt32 bounds, bool force = false)
         {
+            bool sizeChanged = force
+                || bounds.Width != _lastPhysW
+                || bounds.Height != _lastPhysH;
+            bool shouldBackfillResize = sizeChanged && _hasInitializedWindowBounds;
+
             if (force
                 || bounds.X != _lastPhysX
                 || bounds.Y != _lastPhysY
                 || bounds.Width != _lastPhysW
                 || bounds.Height != _lastPhysH)
             {
+                if (shouldBackfillResize)
+                {
+                    ShowResizeBackfillForResize();
+                    InstallNativeResizeBackfill();
+                }
+
                 AppWindow.MoveAndResize(bounds);
+
+                if (shouldBackfillResize)
+                {
+                    PaintNativeResizeBackfillNow();
+                }
+
                 _lastPhysX = bounds.X;
                 _lastPhysY = bounds.Y;
                 _lastPhysW = bounds.Width;
@@ -430,6 +447,11 @@ namespace wisland
             }
 
             if (_isMediaProgressResetPending)
+            {
+                return true;
+            }
+
+            if (IsResizeBackfillHidePending)
             {
                 return true;
             }

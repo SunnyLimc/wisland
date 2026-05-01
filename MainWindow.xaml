@@ -16,6 +16,11 @@
           PointerEntered="RootGrid_PointerEntered"
           PointerExited="RootGrid_PointerExited">
 
+        <Grid x:Name="ResizeBackfillHost"
+              HorizontalAlignment="Stretch"
+              VerticalAlignment="Stretch"
+              IsHitTestVisible="False"/>
+
         <Border x:Name="HostSurface"
                 Background="Black"
                 CornerRadius="15"
