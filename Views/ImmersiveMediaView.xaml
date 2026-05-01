@@ -345,9 +345,14 @@
 
                 <TextBlock x:Name="ElapsedTimeText"
                            Grid.Column="0"
+                           MinWidth="24"
                            FontSize="10"
                            Foreground="#C8C8C8D2"
+                           HorizontalAlignment="Stretch"
+                           Typography.NumeralAlignment="Tabular"
+                           Typography.NumeralStyle="Lining"
                            VerticalAlignment="Center"
+                           TextAlignment="Right"
                            Text="0:00" />
 
                 <Grid x:Name="ProgressInteractionGrid"
@@ -381,9 +386,14 @@
 
                 <TextBlock x:Name="TotalTimeText"
                            Grid.Column="2"
+                           MinWidth="24"
                            FontSize="10"
                            Foreground="#C8C8C8D2"
+                           HorizontalAlignment="Stretch"
+                           Typography.NumeralAlignment="Tabular"
+                           Typography.NumeralStyle="Lining"
                            VerticalAlignment="Center"
+                           TextAlignment="Left"
                            Text="0:00" />
             </Grid>
 

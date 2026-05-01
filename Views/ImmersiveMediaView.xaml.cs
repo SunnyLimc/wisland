@@ -49,6 +49,7 @@ namespace wisland.Views
         private bool _hasAlbumArt;     // True when album art is currently displayed
         private double _lastAnimatedProgress;
         private bool _isSeeking;
+        private string _timeLabelWidthSample = string.Empty;
 
         // Auto-advancing progress state: anchor the last known position/duration to
         // wall-clock time so the progress bar can tick forward between GSMTC updates.
@@ -404,6 +405,7 @@ namespace wisland.Views
                 && session.Value.StabilizationReason != MediaSessionStabilizationReason.SkipTransition;
             _progressHasTimeline = true;
 
+            UpdateTimeLabelReservedWidth(duration);
             TotalTimeText.Text = FormatTime(duration);
 
             if (sessionChanged && _progressTrackIdentity != null)
@@ -765,6 +767,39 @@ namespace wisland.Views
             int minutes = (int)(totalSeconds / 60);
             int seconds = (int)(totalSeconds % 60);
             return $"{minutes}:{seconds:D2}";
+        }
+
+        private void UpdateTimeLabelReservedWidth(double durationSeconds)
+        {
+            string sample = FormatTime(durationSeconds);
+            if (string.Equals(_timeLabelWidthSample, sample, StringComparison.Ordinal))
+            {
+                return;
+            }
+
+            _timeLabelWidthSample = sample;
+            double reservedWidth = Math.Max(
+                MeasureTimeLabelWidth("0:00"),
+                MeasureTimeLabelWidth(sample));
+            reservedWidth = Math.Ceiling(reservedWidth + 1.0);
+
+            ElapsedTimeText.MinWidth = reservedWidth;
+            TotalTimeText.MinWidth = reservedWidth;
+        }
+
+        private double MeasureTimeLabelWidth(string text)
+        {
+            var probe = new TextBlock
+            {
+                Text = text,
+                FontFamily = ElapsedTimeText.FontFamily,
+                FontSize = ElapsedTimeText.FontSize,
+                FontStretch = ElapsedTimeText.FontStretch,
+                FontStyle = ElapsedTimeText.FontStyle,
+                FontWeight = ElapsedTimeText.FontWeight
+            };
+            probe.Measure(new Size(double.PositiveInfinity, double.PositiveInfinity));
+            return probe.DesiredSize.Width;
         }
 
         private static MediaTrackFingerprint BuildAlbumArtFingerprint(MediaSessionSnapshot session)
