@@ -182,6 +182,9 @@ namespace wisland.Services.Media.Presentation
                 case MetadataSettleTimerFiredEvent:
                     ReconcileDisplay(evt);
                     break;
+                case SettingsChangedEvent settings:
+                    HandleSettingsChanged(settings);
+                    break;
                 case AiResolveCompletedEvent ai:
                     HandleAiResolveCompleted(ai);
                     break;
@@ -310,6 +313,29 @@ namespace wisland.Services.Media.Presentation
             // Transition=None / same fingerprint keeps views from sliding —
             // they just refresh the override label/artist in place.
             if (_state.IsNotifying || !_state.Initialized) return;
+            EmitFrame(
+                session: _state.DisplayedSnapshot,
+                orderedSessions: _context.Sessions,
+                kind: _state.DisplayedKind,
+                transition: FrameTransitionKind.None,
+                fingerprint: _state.DisplayedFingerprint,
+                isFallback: false,
+                notification: null);
+        }
+
+        private void HandleSettingsChanged(SettingsChangedEvent evt)
+        {
+            if (evt.Scope != SettingsChangeScope.AiOverride
+                || _state.IsNotifying
+                || !_state.Initialized)
+            {
+                return;
+            }
+
+            // AiOverridePolicy has already rebuilt the lookup for the new
+            // setting state. Re-emit the current content without a transition so
+            // consumers replace or remove the override immediately instead of
+            // waiting for the next unrelated media frame.
             EmitFrame(
                 session: _state.DisplayedSnapshot,
                 orderedSessions: _context.Sessions,
@@ -527,8 +553,26 @@ namespace wisland.Services.Media.Presentation
                 && x.Presence == y.Presence
                 && x.HasTimeline == y.HasTimeline
                 && x.DurationSeconds.Equals(y.DurationSeconds)
+                && TimelinePositionEquals(x, y)
                 && x.IsSystemCurrent == y.IsSystemCurrent
                 && x.StabilizationReason == y.StabilizationReason;
+        }
+
+        private static bool TimelinePositionEquals(MediaSessionSnapshot x, MediaSessionSnapshot y)
+        {
+            if (!x.HasTimeline && !y.HasTimeline)
+            {
+                return true;
+            }
+
+            double xPosition = x.DurationSeconds > 0
+                ? x.Progress * x.DurationSeconds
+                : x.Progress;
+            double yPosition = y.DurationSeconds > 0
+                ? y.Progress * y.DurationSeconds
+                : y.Progress;
+
+            return Math.Abs(xPosition - yPosition) < 0.25;
         }
 
         private static MediaSessionSnapshot CreateStabilizingDisplaySnapshot(
@@ -729,7 +773,7 @@ namespace wisland.Services.Media.Presentation
                 Kind: kind,
                 Transition: transition,
                 Fingerprint: fingerprint,
-                ProgressFingerprint: fingerprint,
+                ProgressFingerprint: BuildProgressFingerprint(session),
                 IsFallback: isFallback,
                 ThumbnailHashIsFallback: string.IsNullOrEmpty(fingerprint.ThumbnailHash),
                 AiOverride: frameAiOverride,
@@ -904,6 +948,21 @@ namespace wisland.Services.Media.Presentation
                 session.Title ?? string.Empty,
                 session.Artist ?? string.Empty,
                 hash);
+        }
+
+        private static MediaTrackFingerprint? BuildProgressFingerprint(MediaSessionSnapshot? session)
+        {
+            if (!session.HasValue)
+            {
+                return null;
+            }
+
+            var value = session.Value;
+            return new MediaTrackFingerprint(
+                value.SessionKey ?? string.Empty,
+                value.Title ?? string.Empty,
+                value.Artist ?? string.Empty,
+                string.Empty);
         }
 
         private static bool FingerprintEquals(MediaTrackFingerprint a, MediaTrackFingerprint b)

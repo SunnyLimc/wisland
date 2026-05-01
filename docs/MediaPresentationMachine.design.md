@@ -138,7 +138,7 @@ Services/Media/
     Policies/
       FocusArbitrationPolicy       // wraps MediaFocusArbiter
       ManualSelectionLockPolicy    // the old selection-lock fields
-      StabilizationPolicy          // port of Stabilization.cs — split across Skip / NaturalEnding / Confirming
+      StabilizationPolicy          // placeholder; shipped stabilization is still projected from MediaService snapshots
       AiOverridePolicy             // was AiSongResolver injection code
       NotificationOverlayPolicy    // was the notification overlay logic
 ```
@@ -271,6 +271,11 @@ public sealed record MediaPresentationFrame(
     AiOverrideSnapshot? AiOverride);
 ```
 
+`ProgressFingerprint` is the progress-track identity, not the full visual
+content identity. It is built from the raw `SessionKey + Title + Artist` of the
+frame's own session and deliberately leaves `ThumbnailHash` empty. AI title
+rewrites and async album-art hash arrivals must not reset progress.
+
 **Invariants**:
 1. `Sequence` strictly increases; the UI ignores stale frames.
 2. `Transition != None ⇒ fingerprint changed OR Transition == ResumeAfterNotification`.
@@ -287,6 +292,9 @@ public sealed record MediaPresentationFrame(
    display-safe stabilization snapshot for progress/presence. In particular,
    `SkipTransition` overlays `Progress=0` so immersive and classic progress UI
    reset immediately without showing transient raw metadata from another tab.
+8. A progress-only timeline correction emits a refresh frame with
+   `Transition=None` once the position delta is meaningful; views use that to
+   re-anchor local progress tickers without treating it as a track change.
 
 ### 4.8 MainWindow.Media after the refactor
 
@@ -297,13 +305,15 @@ public sealed record MediaPresentationFrame(
 - Driving from the frame:
   - `IslandController.UseImmersiveDimensions`
   - `UpdateRenderLoopState`
-  - Progress reset (gated on `frame.ProgressFingerprint`)
+  - Progress reset (gated on raw `frame.ProgressFingerprint`, not rendered /
+    AI-overridden title text)
 - Forwarding user input events to the machine (`UserSkipRequested` /
   `UserSelectSession` / `UserManualUnlock`).
 
 All removed: `_pendingMediaTransitionDirection`, `_selectedSessionKey`,
-`_selectionLockUntilUtc`, `_sessionVisualOrderKeys`, `_lastDisplayed*`, the
-`_ai*` fields.
+`_selectionLockUntilUtc`, `_sessionVisualOrderKeys`, and the `_ai*` fields.
+`MainWindow` keeps only last-consumed frame/progress fingerprints so it can
+detect whether the next frame should reset progress.
 
 ### 4.9 Tightening `IslandController`
 
@@ -548,11 +558,11 @@ The UI still gets an animation opportunity as long as the intent is intact.
 
 | Legacy | Target | Disposition |
 |---|---|---|
-| `MediaService.Stabilization.cs` | `StabilizationPolicy` + `Pending*/Confirming` states | Reason enum kept |
+| `MediaService.Stabilization.cs` | `MediaService` frozen snapshots + machine `Switching/Confirming` projection | `StabilizationPolicy` remains a placeholder |
 | `MediaFocusArbiter` | `FocusArbitrationPolicy` | kept, signature unchanged |
 | `_selectedSessionKey / _selectionLockUntilUtc / _selectionLockTimer` | `ManualSelectionLockPolicy` | removed from MainWindow |
 | `_pendingMediaTransitionDirection / _pendingMediaTransitionTimestamp` | `SwitchIntent` | removed from MainWindow |
-| `_lastDisplayedContentIdentity / _lastDisplayedProgressIdentity` | `Frame.Fingerprint / ProgressFingerprint` | removed |
+| `_lastDisplayedContentIdentity / _lastDisplayedProgressIdentity` | `Frame.Fingerprint / ProgressFingerprint` | replaced by last-consumed frame fingerprint caches |
 | `_lastAiResolveContentIdentity / _lastAiOverrideLookupIdentity / _lastAiOverrideLookupResult` | internal cache in `AiOverridePolicy` | removed |
 | `ShouldShowTransportSwitchingHint` / `CreateContentIdentity(...,switching)` | `PresentationKind.Switching` as its own field | functions removed |
 | `_controller.IsNotifying` | `IslandController.IsForcedExpanded` + `NotificationOverlayPolicy` | narrowed |
@@ -750,6 +760,10 @@ public sealed record MediaPresentationFrame(
     NotificationPayload? Notification);
 ```
 
+`ProgressFingerprint` is nullable when no media session is displayed. When it
+is present, `ThumbnailHash` is intentionally empty because progress identity is
+raw session/title/artist only.
+
 ### 11.2 SwitchIntent
 
 ```csharp
@@ -801,10 +815,10 @@ namespace wisland.Services.Media.Presentation;
 public sealed class MediaPresentationMachine : IDisposable
 {
     // Actual shipped constructor (as of album-view). Policies own their
-    // service dependencies: FocusArbitrationPolicy wraps the arbiter,
-    // AiOverridePolicy takes an IAiOverrideResolver injected from the host,
-    // StabilizationPolicy subscribes to MediaService events — so the
-    // machine itself only needs the policy list + dispatcher.
+    // service dependencies: FocusArbitrationPolicy wraps the arbiter and
+    // AiOverridePolicy takes an IAiOverrideResolver injected from the host.
+    // Stabilization is still supplied by MediaService snapshots; the machine
+    // itself only needs the policy list + dispatcher.
     public MediaPresentationMachine(
         IReadOnlyList<IPresentationPolicy> policies,   // injection order = resolve order
         IDispatcherPoster dispatcherPoster);           // posts frames back to the UI thread
@@ -893,11 +907,10 @@ public sealed class ManualSelectionLockPolicy : IPresentationPolicy
 
 public sealed class StabilizationPolicy : IPresentationPolicy
 {
-    public StabilizationPolicy(IStabilizationConfig config);
-    // Owns SkipTransition / NaturalEnding / fresh-track. Re-arm only
-    // extends expiry; baseline is never advanced (see §5.3b for why
-    // promoting baseline on re-arm caused a 10 s gate hang under rapid
-    // consecutive skips).
+    public StabilizationPolicy();
+    // Placeholder in the shipped path. MediaService.Stabilization owns
+    // SkipTransition / NaturalEnding / fresh-track gates; the machine reads
+    // MediaSessionSnapshot.IsStabilizing and projects Switching/Confirming.
 }
 
 public sealed class AiOverridePolicy : IPresentationPolicy
@@ -949,8 +962,8 @@ New files:
 6. `Services/Media/Presentation/Policies/FocusArbitrationPolicy.cs` (wraps
    `MediaFocusArbiter`)
 7. `Services/Media/Presentation/Policies/ManualSelectionLockPolicy.cs`
-8. `Services/Media/Presentation/Policies/StabilizationPolicy.cs` (just the
-   port of Stabilization.cs; rules unchanged)
+8. `Services/Media/Presentation/Policies/StabilizationPolicy.cs` (placeholder
+   in the shipped path; `MediaService.Stabilization` still owns the gate)
 9. `Services/Media/Presentation/Policies/AiOverridePolicy.cs`
 10. `Services/Media/Presentation/Policies/NotificationOverlayPolicy.cs`
 11. `Models/MediaPresentationFrame.cs` (contains `PresentationKind`,

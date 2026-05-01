@@ -51,7 +51,8 @@ namespace wisland.Tests
                 GlobalSystemMediaTransportControlsSessionPlaybackStatus.Playing,
             MediaSessionStabilizationReason stabilization = MediaSessionStabilizationReason.None,
             MediaSessionPresence presence = MediaSessionPresence.Active,
-            double progress = 0.1)
+            double progress = 0.1,
+            string thumbnailHash = "")
         {
             return new MediaSessionSnapshot(
                 SessionKey: key,
@@ -69,7 +70,8 @@ namespace wisland.Tests
                 LastSeenUtc: DateTimeOffset.UtcNow,
                 MissingSinceUtc: null,
                 StabilizationReason: stabilization,
-                Thumbnail: null);
+                Thumbnail: null,
+                ThumbnailHash: thumbnailHash);
         }
 
         // ---------------------------------------------------------------
@@ -135,6 +137,36 @@ namespace wisland.Tests
             Assert.Equal(2, h.Frames.Count);
             Assert.Equal(FrameTransitionKind.None, h.Frames[1].Transition);
             Assert.Equal(h.Frames[0].Fingerprint, h.Frames[1].Fingerprint);
+        }
+
+        [Fact]
+        public void ProgressOnlyChangeEmitsNonSlidingRefreshFrame()
+        {
+            using var h = NewHarness();
+            h.Machine.ProcessForTests(new GsmtcSessionsChangedEvent(new[] { Session("s1", "Song A", progress: 0.10) }));
+            h.Frames.Clear();
+
+            h.Machine.ProcessForTests(new GsmtcSessionsChangedEvent(new[] { Session("s1", "Song A", progress: 0.50) }));
+
+            MediaPresentationFrame frame = Assert.Single(h.Frames);
+            Assert.Equal(FrameTransitionKind.None, frame.Transition);
+            Assert.Equal("Song A", frame.Fingerprint.Title);
+            Assert.Equal(0.50, frame.Session?.Progress);
+        }
+
+        [Fact]
+        public void TinyProgressOnlyChangeDoesNotEmitFrame()
+        {
+            using var h = NewHarness();
+            h.Machine.ProcessForTests(new GsmtcSessionsChangedEvent(new[] { Session("s1", "Song A", progress: 0.100) }));
+            h.Frames.Clear();
+
+            // 0.001 * 200s = 0.2s, below the machine's progress refresh
+            // threshold. This keeps inconsequential timeline noise quiet while
+            // still allowing seeks and real corrections to re-anchor the view.
+            h.Machine.ProcessForTests(new GsmtcSessionsChangedEvent(new[] { Session("s1", "Song A", progress: 0.101) }));
+
+            Assert.Empty(h.Frames);
         }
 
         // ---------------------------------------------------------------
@@ -539,6 +571,7 @@ namespace wisland.Tests
             using var h = NewHarness();
             var baseSession = Session("s1", "Song A");
             h.Machine.ProcessForTests(new GsmtcSessionsChangedEvent(new[] { baseSession }));
+            MediaTrackFingerprint? progressFingerprint = h.Frames[^1].ProgressFingerprint;
             h.Frames.Clear();
 
             // Identical fp → no frame.
@@ -554,6 +587,8 @@ namespace wisland.Tests
             Assert.Single(h.Frames);
             Assert.Equal(FrameTransitionKind.None, h.Frames[0].Transition);
             Assert.Equal("deadbeef12345678", h.Frames[0].Fingerprint.ThumbnailHash);
+            Assert.Equal(progressFingerprint, h.Frames[0].ProgressFingerprint);
+            Assert.Equal(string.Empty, h.Frames[0].ProgressFingerprint?.ThumbnailHash);
         }
 
         // P4 safety net: once the machine has displayed a track with a real
@@ -649,6 +684,39 @@ namespace wisland.Tests
             Assert.Single(h.Frames);
             Assert.Equal(FrameTransitionKind.None, h.Frames[0].Transition);
             Assert.Equal("Song A", h.Frames[0].Fingerprint.Title);
+        }
+
+        [Fact]
+        public void AiSettingsChangedEmitsFrameWithUpdatedOverrideState()
+        {
+            var resolver = new StubAiOverrideResolver();
+            resolver.Add("app", "Song A", "ArtistA", new AiSongResult { Title = "Pretty A", Artist = "Ai Artist" });
+
+            using var h = new Harness(
+                new ManualSelectionLockPolicy(),
+                new FocusArbitrationPolicy(TimeSpan.Zero, TimeSpan.Zero),
+                new StabilizationPolicy(),
+                new AiOverridePolicy(resolver),
+                new NotificationOverlayPolicy());
+
+            h.Machine.ProcessForTests(new GsmtcSessionsChangedEvent(new[] { Session("s1", "Song A") }));
+            Assert.NotNull(h.Frames[^1].AiOverride);
+            h.Frames.Clear();
+
+            resolver.Enabled = false;
+            h.Machine.ProcessForTests(new SettingsChangedEvent(SettingsChangeScope.AiOverride));
+            MediaPresentationFrame disabledFrame = Assert.Single(h.Frames);
+            Assert.Equal(FrameTransitionKind.None, disabledFrame.Transition);
+            Assert.Equal("Song A", disabledFrame.Fingerprint.Title);
+            Assert.Null(disabledFrame.AiOverride);
+            h.Frames.Clear();
+
+            resolver.Enabled = true;
+            h.Machine.ProcessForTests(new SettingsChangedEvent(SettingsChangeScope.AiOverride));
+            MediaPresentationFrame enabledFrame = Assert.Single(h.Frames);
+            Assert.Equal(FrameTransitionKind.None, enabledFrame.Transition);
+            Assert.NotNull(enabledFrame.AiOverride);
+            Assert.Equal("Pretty A", enabledFrame.AiOverride!.Title);
         }
 
         // Scenario: sequence numbers strictly increase across the session.
@@ -765,7 +833,8 @@ namespace wisland.Tests
         private sealed class StubAiOverrideResolver : IAiOverrideResolver
         {
             private readonly Dictionary<string, AiSongResult> _cache = new(StringComparer.Ordinal);
-            public bool IsEnabled => true;
+            public bool Enabled { get; set; } = true;
+            public bool IsEnabled => Enabled;
             public void Add(string sourceAppId, string title, string artist, AiSongResult result)
                 => _cache[$"{sourceAppId}|{title}|{artist}"] = result;
             public AiSongResult? TryGetCached(string sourceAppId, string title, string artist)

@@ -14,7 +14,7 @@ namespace wisland
     public sealed partial class MainWindow
     {
         private string? _displayedSessionKey;
-        private string? _lastDisplayedProgressIdentity;
+        private MediaTrackFingerprint? _lastDisplayedProgressFingerprint;
         private MediaTrackFingerprint _lastDisplayedFingerprint = MediaTrackFingerprint.Empty;
         private MediaPresentationFrame? _latestFrame;
 
@@ -108,8 +108,12 @@ namespace wisland
             MediaTrackFingerprint nextFingerprint = frame?.Fingerprint ?? ComputeFallbackFingerprint(context.DisplayedSession);
             bool contentChanged = !FingerprintEquals(_lastDisplayedFingerprint, nextFingerprint);
 
-            string? nextProgressIdentity = CreateProgressIdentity(context.DisplayedSession);
-            bool progressSourceChanged = !string.Equals(_lastDisplayedProgressIdentity, nextProgressIdentity, StringComparison.Ordinal);
+            MediaTrackFingerprint? nextProgressFingerprint =
+                frame?.ProgressFingerprint
+                ?? ComputeFallbackProgressFingerprint(rawContext.DisplayedSession);
+            bool progressSourceChanged = !ProgressFingerprintEquals(
+                _lastDisplayedProgressFingerprint,
+                nextProgressFingerprint);
 
             _displayedSessionKey = context.DisplayedSession?.SessionKey;
             _mediaService.SetDisplayedSessionKey(_displayedSessionKey);
@@ -117,7 +121,7 @@ namespace wisland
             if (progressSourceChanged)
             {
                 RequestMediaProgressReset(!context.DisplayedSession.HasValue || !context.DisplayedSession.Value.HasTimeline);
-                _lastDisplayedProgressIdentity = nextProgressIdentity;
+                _lastDisplayedProgressFingerprint = nextProgressFingerprint;
             }
 
             CompactContent.Update(context.CompactText, directionHint);
@@ -141,7 +145,8 @@ namespace wisland
                     context.OrderedSessions.Count,
                     context.OrderedSessions,
                     directionHint,
-                    showTransportSwitchingHint);
+                    showTransportSwitchingHint,
+                    nextProgressFingerprint);
             }
             else
             {
@@ -174,6 +179,15 @@ namespace wisland
                 ? new MediaTrackFingerprint(session.Value.SessionKey, session.Value.Title, session.Value.Artist, string.Empty)
                 : MediaTrackFingerprint.Empty;
 
+        private static MediaTrackFingerprint? ComputeFallbackProgressFingerprint(MediaSessionSnapshot? session)
+            => session.HasValue
+                ? new MediaTrackFingerprint(
+                    session.Value.SessionKey,
+                    session.Value.Title,
+                    session.Value.Artist,
+                    string.Empty)
+                : null;
+
         private static DisplayedMediaContext ApplyFrameAiOverride(
             DisplayedMediaContext context, AiOverrideSnapshot? aiOverride)
         {
@@ -194,8 +208,11 @@ namespace wisland
             DispatcherQueue?.TryEnqueue(() =>
             {
                 _presentationMachine?.Dispatch(new SettingsChangedEvent(SettingsChangeScope.AiOverride));
-                _lastDisplayedFingerprint = MediaTrackFingerprint.Empty;
-                SyncMediaUI();
+                if (_presentationMachine == null)
+                {
+                    _lastDisplayedFingerprint = MediaTrackFingerprint.Empty;
+                    SyncMediaUI();
+                }
             });
         }
 
@@ -510,13 +527,14 @@ namespace wisland
             };
         }
 
-        private static string? CreateProgressIdentity(MediaSessionSnapshot? session)
-            => session.HasValue
-                ? string.Concat(
-                    session.Value.SessionKey,
-                    "\u001f",
-                    session.Value.Title)
-                : null;
+        private static bool ProgressFingerprintEquals(
+            MediaTrackFingerprint? a,
+            MediaTrackFingerprint? b)
+        {
+            if (!a.HasValue && !b.HasValue) return true;
+            if (!a.HasValue || !b.HasValue) return false;
+            return FingerprintEquals(a.Value, b.Value);
+        }
 
         private readonly record struct DisplayedMediaContext(
             MediaSessionSnapshot? DisplayedSession,

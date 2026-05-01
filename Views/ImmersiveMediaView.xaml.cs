@@ -58,16 +58,13 @@ namespace wisland.Views
         private bool _progressIsPlaying;
         private bool _progressHasTimeline;
         private string? _progressSessionKey; // Track session identity for reset-on-switch.
-        // Track-identity (SessionKey + Title) for the same purpose as
-        // _progressSessionKey, but extended so that an in-place track change
-        // within the same media session (e.g. Spotify auto-advancing to the
-        // next song without changing SessionKey) also triggers the drain-then-
-        // grow session-switch animation. Without this, the immersive bar would
-        // smoothly animate from the previous track's final position to the new
-        // track's initial position over 260ms (looking like a continuous walk),
-        // while the compact IslandProgressBar — which keys off SessionKey+Title
-        // for its SnapToZero — would visibly snap to 0 first. Aligning the two
-        // identities keeps both bars consistent on every kind of track change.
+        // Track identity for the same purpose as _progressSessionKey, but
+        // extended so that an in-place track change within the same media
+        // session (e.g. Spotify auto-advancing to the next song without
+        // changing SessionKey) also triggers the drain-then-grow session-switch
+        // animation. The identity is supplied by MediaPresentationFrame's raw
+        // ProgressFingerprint when available, so album-art hash churn and AI
+        // title rewrites do not look like track switches.
         private string? _progressTrackIdentity;
         private Microsoft.UI.Xaml.DispatcherTimer? _progressTimer;
         private Microsoft.UI.Xaml.Media.Animation.Storyboard? _progressScaleStoryboard;
@@ -200,7 +197,8 @@ namespace wisland.Views
                 frame.OrderedSessions.Count,
                 frame.OrderedSessions,
                 direction,
-                switchingHint);
+                switchingHint,
+                frame.ProgressFingerprint);
         }
 
         public bool UpdateMedia(
@@ -209,7 +207,8 @@ namespace wisland.Views
             int sessionCount,
             IReadOnlyList<MediaSessionSnapshot> availableSessions,
             ContentTransitionDirection direction = ContentTransitionDirection.None,
-            bool showTransportSwitchingHint = false)
+            bool showTransportSwitchingHint = false,
+            MediaTrackFingerprint? progressFingerprint = null)
         {
             bool showBusyTransportState = showTransportSwitchingHint
                 && session.HasValue
@@ -266,7 +265,7 @@ namespace wisland.Views
             // When showBusyTransportState is true: don't touch album art at all — keep old visuals
 
             // Progress
-            UpdateProgress(session);
+            UpdateProgress(session, progressFingerprint);
 
             return metadataChanged;
         }
@@ -311,21 +310,14 @@ namespace wisland.Views
             PlayPauseIcon.Glyph = isPlaying ? "\uE769" : "\uE768"; // Pause : Play
         }
 
-        private void UpdateProgress(MediaSessionSnapshot? session)
+        private void UpdateProgress(MediaSessionSnapshot? session, MediaTrackFingerprint? progressFingerprint)
         {
             string? newKey = session?.SessionKey;
-            // Build a track-identity (SessionKey + Title) so an in-place track
-            // change within the same session is recognised as a real switch and
-            // gets the same drain-then-grow treatment the compact bar already
-            // gets via RequestMediaProgressReset (see MainWindow.Media.cs:
-            // CreateProgressIdentity). During SkipTransition stabilization the
-            // FrozenSnapshot keeps the baseline Title, so identity is unchanged
-            // there too — the bar drains to 0 via the optimistic Frozen.Progress
-            // override, and the real grow happens at release with a sessionChanged
-            // path triggering StartSessionSwitchAnimation.
-            string? newTrackIdentity = session.HasValue
-                ? string.Concat(session.Value.SessionKey, "\u001f", session.Value.Title)
-                : null;
+            // Track identity comes from the machine's ProgressFingerprint when
+            // available. That fingerprint is raw session/title/artist only: it
+            // ignores album-art hash churn and AI title rewrites, so visual
+            // label refreshes cannot fabricate a drain/grow progress switch.
+            string? newTrackIdentity = BuildProgressTrackIdentity(session, progressFingerprint);
             bool sessionChanged = !string.Equals(_progressTrackIdentity, newTrackIdentity, StringComparison.Ordinal);
 
             if (!session.HasValue || !session.Value.HasTimeline || session.Value.DurationSeconds <= 0)
@@ -404,6 +396,26 @@ namespace wisland.Views
             {
                 StopProgressTicker();
             }
+        }
+
+        private static string? BuildProgressTrackIdentity(
+            MediaSessionSnapshot? session,
+            MediaTrackFingerprint? progressFingerprint)
+        {
+            if (progressFingerprint.HasValue && !progressFingerprint.Value.IsEmpty)
+            {
+                var fp = progressFingerprint.Value;
+                return string.Concat(fp.SessionKey, "\u001f", fp.Title, "\u001f", fp.Artist);
+            }
+
+            return session.HasValue
+                ? string.Concat(
+                    session.Value.SessionKey,
+                    "\u001f",
+                    session.Value.Title,
+                    "\u001f",
+                    session.Value.Artist)
+                : null;
         }
 
         private void StartSessionSwitchAnimation()
