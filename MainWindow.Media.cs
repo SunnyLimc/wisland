@@ -129,24 +129,31 @@ namespace wisland
             if (!_controller.IsForcedExpanded)
             {
                 // Sync immersive dimensions on the controller
-                _controller.UseImmersiveDimensions = IsImmersiveActive;
+                bool immersiveActive = IsImmersiveActive;
+                _controller.UseImmersiveDimensions = immersiveActive;
 
-                ExpandedContent.UpdateMedia(
-                    context.DisplayedSession,
-                    context.DisplayIndex,
-                    context.OrderedSessions.Count,
-                    context.OrderedSessions,
-                    directionHint,
-                    showTransportSwitchingHint);
-
-                ImmersiveContent.UpdateMedia(
-                    context.DisplayedSession,
-                    context.DisplayIndex,
-                    context.OrderedSessions.Count,
-                    context.OrderedSessions,
-                    directionHint,
-                    showTransportSwitchingHint,
-                    nextProgressFingerprint);
+                if (immersiveActive)
+                {
+                    ImmersiveContent.UpdateMedia(
+                        context.DisplayedSession,
+                        context.DisplayIndex,
+                        context.OrderedSessions.Count,
+                        context.OrderedSessions,
+                        directionHint,
+                        showTransportSwitchingHint,
+                        nextProgressFingerprint);
+                }
+                else
+                {
+                    ImmersiveContent.DeactivateMediaRuntime();
+                    ExpandedContent.UpdateMedia(
+                        context.DisplayedSession,
+                        context.DisplayIndex,
+                        context.OrderedSessions.Count,
+                        context.OrderedSessions,
+                        directionHint,
+                        showTransportSwitchingHint);
+                }
             }
             else
             {

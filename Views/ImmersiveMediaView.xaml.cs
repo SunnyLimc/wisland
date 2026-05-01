@@ -286,6 +286,13 @@ namespace wisland.Views
             // Colors are driven by album art palette via ApplyBackgroundPalette instead.
         }
 
+        public void DeactivateMediaRuntime()
+        {
+            StopProgressTicker();
+            StopSessionSwitchAnimation();
+            StopProgressAnimation();
+        }
+
         public void SetSessionPickerExpanded(
             bool isExpanded,
             bool useTransitions = true,

@@ -377,7 +377,11 @@ namespace wisland
                 onAiSettingsChanged: () => OnAiSettingsChanged(),
                 onSetTaskProgress: p => SetTaskProgress(p),
                 onClearTaskProgress: () => ClearTaskProgress(),
-                onImmersiveMediaChanged: () => DispatcherQueue.TryEnqueue(SyncMediaUI));
+                onImmersiveMediaChanged: () => DispatcherQueue.TryEnqueue(() =>
+                {
+                    SyncMediaUI();
+                    UpdateState();
+                }));
             _settingsWindow.Closed += (_, _) => _settingsWindow = null;
             _settingsWindow.Activate();
         }

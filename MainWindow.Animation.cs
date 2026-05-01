@@ -107,22 +107,14 @@ namespace wisland
 
             bool immersive = IsImmersiveActive;
 
-            bool shouldShowProgressEffect = ShouldShowProgressEffect(_frameDisplayedSession);
-            bool immersiveExpandedSurfaceActive = immersive
-                && (state.ExpandedOpacity > 0.001
-                    || ((_controller.IsHovered
-                            || _controller.IsForcedExpanded
-                            || _controller.IsTransientSurfaceOpen)
-                        && !_controller.IsDragging));
+            bool immersiveExpandedSurfaceActive = IsImmersiveExpandedSurfaceActive(state);
+            bool shouldShowProgressEffect = ShouldShowIslandProgressEffect(_frameDisplayedSession, state);
             // The liquid island-level bar is behind the expanded content. Hide it
             // for the whole immersive expansion lifetime so it cannot bleed through
             // as a faint, slightly-ahead second progress line.
-            if (immersiveExpandedSurfaceActive)
-            {
-                shouldShowProgressEffect = false;
-            }
             IslandProgressBar.SetEffectVisible(shouldShowProgressEffect);
-            IslandProgressBar.SetShimmerActive(ShouldAnimateProgressShimmer(_frameDisplayedSession));
+            IslandProgressBar.SetShimmerActive(
+                shouldShowProgressEffect && ShouldAnimateProgressShimmer(_frameDisplayedSession));
 
             double progressTopBleed = isDockPeekState ? physicalPixelLogical : 0;
             if (Math.Abs(IslandProgressBar.Margin.Top + progressTopBleed) > 0.0001
@@ -441,23 +433,40 @@ namespace wisland
                 return true;
             }
 
-            if (ShouldShowProgressEffect() != IslandProgressBar.IsEffectVisible)
+            IslandState state = _controller.Current;
+            MediaSessionSnapshot? displayedSession = GetDisplayedMediaSessionSnapshot();
+            bool shouldShowProgressEffect = ShouldShowIslandProgressEffect(displayedSession, state);
+            bool shouldAnimateProgressShimmer = shouldShowProgressEffect
+                && ShouldAnimateProgressShimmer(displayedSession);
+
+            if (shouldShowProgressEffect != IslandProgressBar.IsEffectVisible)
             {
                 return true;
             }
 
-            if (ShouldAnimateProgressShimmer() != IslandProgressBar.IsShimmerActive)
+            if (shouldAnimateProgressShimmer != IslandProgressBar.IsShimmerActive)
             {
                 return true;
             }
 
-            if (_mediaService.ShouldAnimateProgress(_displayedSessionKey))
+            if (shouldShowProgressEffect && _mediaService.ShouldAnimateProgress(_displayedSessionKey))
             {
                 return true;
             }
 
             return IslandProgressBar.IsAnimationActive;
         }
+
+        private bool ShouldShowIslandProgressEffect(MediaSessionSnapshot? displayedSession, IslandState state)
+            => !IsImmersiveExpandedSurfaceActive(state) && ShouldShowProgressEffect(displayedSession);
+
+        private bool IsImmersiveExpandedSurfaceActive(IslandState state)
+            => IsImmersiveActive
+                && (state.ExpandedOpacity > 0.001
+                    || ((_controller.IsHovered
+                            || _controller.IsForcedExpanded
+                            || _controller.IsTransientSurfaceOpen)
+                        && !_controller.IsDragging));
 
     }
 }
