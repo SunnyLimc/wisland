@@ -58,6 +58,7 @@ namespace wisland.Views
         private bool _progressIsPlaying;
         private bool _progressHasTimeline;
         private string? _progressSessionKey; // Track session identity for reset-on-switch.
+        private bool _isHostExpandedActive; // True only while the immersive surface is visibly expanded.
         // Track identity for the same purpose as _progressSessionKey, but
         // extended so that an in-place track change within the same media
         // session (e.g. Spotify auto-advancing to the next song without
@@ -201,6 +202,29 @@ namespace wisland.Views
                 frame.ProgressFingerprint);
         }
 
+        public void SetHostExpandedActive(bool isActive)
+        {
+            if (_isHostExpandedActive == isActive)
+            {
+                return;
+            }
+
+            _isHostExpandedActive = isActive;
+            if (!isActive)
+            {
+                StopSessionSwitchAnimation();
+                StopProgressAnimation();
+                StopProgressTicker();
+            }
+
+            if (!_progressHasTimeline || _progressDurationSeconds <= 0 || _isSeeking)
+            {
+                return;
+            }
+
+            SnapProgressVisualToAnchor();
+        }
+
         public bool UpdateMedia(
             MediaSessionSnapshot? session,
             int displayIndex,
@@ -339,7 +363,15 @@ namespace wisland.Views
 
                 ElapsedTimeText.Text = "";
                 TotalTimeText.Text = "";
-                AnimateProgressTo(0.0, 260);
+                if (_isHostExpandedActive)
+                {
+                    AnimateProgressTo(0.0, 260);
+                }
+                else
+                {
+                    StopProgressAnimation();
+                    SetProgressVisualRatio(0.0);
+                }
                 ElapsedTimeText.Visibility = Visibility.Collapsed;
                 TotalTimeText.Visibility = Visibility.Collapsed;
                 ProgressTrack.Visibility = Visibility.Collapsed;
@@ -381,7 +413,14 @@ namespace wisland.Views
                 _progressTrackIdentity = newTrackIdentity;
                 if (!_isSeeking)
                 {
-                    StartSessionSwitchAnimation();
+                    if (_isHostExpandedActive)
+                    {
+                        StartSessionSwitchAnimation();
+                    }
+                    else
+                    {
+                        SnapProgressVisualToAnchor();
+                    }
                 }
             }
             else
@@ -391,11 +430,19 @@ namespace wisland.Views
                 if (!_isSeeking && !_isSessionSwitching)
                 {
                     ElapsedTimeText.Text = FormatTime(positionSeconds);
-                    AnimateProgressTo(progress, 260);
+                    if (_isHostExpandedActive)
+                    {
+                        AnimateProgressTo(progress, 260);
+                    }
+                    else
+                    {
+                        StopProgressAnimation();
+                        SetProgressVisualRatio(progress);
+                    }
                 }
             }
 
-            if (_progressIsPlaying && !_isSessionSwitching)
+            if (_isHostExpandedActive && _progressIsPlaying && !_isSessionSwitching)
             {
                 StartProgressTicker();
             }
@@ -423,6 +470,29 @@ namespace wisland.Views
                     "\u001f",
                     session.Value.Artist)
                 : null;
+        }
+
+        private void SnapProgressVisualToAnchor()
+        {
+            StopSessionSwitchAnimation();
+            StopProgressAnimation();
+
+            double ratio = GetAnchoredProgressRatio();
+            double positionSeconds = ratio * _progressDurationSeconds;
+            _progressAnchorPositionSeconds = positionSeconds;
+            _progressAnchorTime = DateTimeOffset.UtcNow;
+
+            ElapsedTimeText.Text = FormatTime(positionSeconds);
+            SetProgressVisualRatio(ratio);
+
+            if (_isHostExpandedActive && _progressIsPlaying)
+            {
+                StartProgressTicker();
+            }
+            else
+            {
+                StopProgressTicker();
+            }
         }
 
         private void StartSessionSwitchAnimation()
@@ -520,6 +590,11 @@ namespace wisland.Views
 
         private void StartProgressTicker()
         {
+            if (!_isHostExpandedActive)
+            {
+                return;
+            }
+
             if (_progressTimer == null)
             {
                 _progressTimer = new Microsoft.UI.Xaml.DispatcherTimer
@@ -542,7 +617,11 @@ namespace wisland.Views
 
         private void OnProgressTick(object? sender, object e)
         {
-            if (!_progressHasTimeline || !_progressIsPlaying || _isSeeking || _isSessionSwitching)
+            if (!_isHostExpandedActive
+                || !_progressHasTimeline
+                || !_progressIsPlaying
+                || _isSeeking
+                || _isSessionSwitching)
             {
                 return;
             }

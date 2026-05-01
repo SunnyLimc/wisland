@@ -230,6 +230,7 @@ namespace wisland
             {
                 ImmersiveContent.Opacity = immersiveOpacity;
             }
+            ImmersiveContent.SetHostExpandedActive(immersive && immersiveOpacity > 0.001);
 
             bool isExpandedActive = state.ExpandedOpacity > IslandConfig.HitTestOpacityThreshold;
             bool classicHitTest = isExpandedActive && !immersive;

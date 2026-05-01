@@ -223,7 +223,9 @@ All motion uses the **Composition API** — not XAML Storyboards:
 - `ImmersiveMediaView` owns a separate palette-aware media progress row. It
   animates the fill by `Width`, not a `ScaleTransform`, so skip/re-anchor
   animations cannot leave a faint retained-animation head ahead of the real
-  fill.
+  fill. While the immersive surface is hidden, progress updates only refresh
+  the anchor and snap the fill; drain/grow animations are reserved for visible
+  track switches so re-entering immersive view does not replay a progress load.
 
 When immersive media is the expanded surface, `MainWindow.Animation` hides the
 shell-level `LiquidProgressBar` for the full expansion lifetime (including
