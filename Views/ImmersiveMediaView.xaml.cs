@@ -938,7 +938,7 @@ namespace wisland.Views
                     SlideAlbumArtLayers(direction);
                 }
                 SwapBlurSurface(assets.BlurSurface, direction);
-                CrossfadeBackgroundPalette(assets.Palette, direction);
+                CrossfadeBackgroundTokens(assets.ImmersiveSurfaceTokens, direction);
                 EnsureBlurLayerVisible();
             }
             finally
@@ -1191,7 +1191,7 @@ namespace wisland.Views
         /// Crossfades the gradient background from current colors to new palette colors.
         /// Uses composition-level opacity to avoid single-frame flashes.
         /// </summary>
-        private void CrossfadeBackgroundPalette(AlbumArtPalette palette, ContentTransitionDirection direction = ContentTransitionDirection.None)
+        private void CrossfadeBackgroundTokens(ImmersiveSurfaceTokens tokens, ContentTransitionDirection direction = ContentTransitionDirection.None)
         {
             // Copy current active gradient to outgoing
             OutgoingGradientStop0.Color = GradientStop0.Color;
@@ -1199,12 +1199,12 @@ namespace wisland.Views
             OutgoingGradientStop2.Color = GradientStop2.Color;
 
             // Set new colors on active gradient
-            GradientStop0.Color = ClampBrightness(palette.Dominant, maxLuminance: 80);
-            GradientStop1.Color = ClampBrightness(palette.Secondary, maxLuminance: 55);
-            GradientStop2.Color = ClampBrightness(palette.Average, maxLuminance: 65);
+            GradientStop0.Color = tokens.GradientStartColor;
+            GradientStop1.Color = tokens.GradientMidColor;
+            GradientStop2.Color = tokens.GradientEndColor;
 
             // Update progress fill accent
-            ProgressFillBrush.Color = EnsureBright(palette.Dominant);
+            ProgressFillBrush.Color = tokens.ProgressAccentColor;
 
             if (_compositor != null)
             {
@@ -1302,16 +1302,16 @@ namespace wisland.Views
         /// </summary>
         private void ApplyDefaultBackgroundPalette()
         {
-            var palette = AlbumArtPalette.Default;
-            GradientStop0.Color = palette.Dominant;
-            GradientStop1.Color = palette.Secondary;
-            GradientStop2.Color = palette.Average;
+            var tokens = ImmersiveSurfaceTokens.Default;
+            GradientStop0.Color = tokens.GradientStartColor;
+            GradientStop1.Color = tokens.GradientMidColor;
+            GradientStop2.Color = tokens.GradientEndColor;
 
             // Also reset outgoing stops so a later crossfade doesn't briefly flash
             // stale colors if the outgoing gradient is made visible again.
-            OutgoingGradientStop0.Color = palette.Dominant;
-            OutgoingGradientStop1.Color = palette.Secondary;
-            OutgoingGradientStop2.Color = palette.Average;
+            OutgoingGradientStop0.Color = tokens.GradientStartColor;
+            OutgoingGradientStop1.Color = tokens.GradientMidColor;
+            OutgoingGradientStop2.Color = tokens.GradientEndColor;
 
             // Use composition-level opacity to avoid flashes
             if (_compositor != null)
@@ -1326,49 +1326,13 @@ namespace wisland.Views
             }
 
             _subColor = Color.FromArgb(210, 200, 200, 215);
-            ProgressFillBrush.Color = Microsoft.UI.Colors.White;
+            ProgressFillBrush.Color = tokens.ProgressAccentColor;
 
             if (IsLoaded)
             {
                 ApplyTextColors();
                 ApplyTransportColors();
             }
-        }
-
-        /// <summary>
-        /// Clamps a color's perceived luminance to a maximum, preserving hue.
-        /// Ensures gradient background is always dark enough for white text.
-        /// </summary>
-        private static Color ClampBrightness(Color c, double maxLuminance)
-        {
-            double lum = 0.299 * c.R + 0.587 * c.G + 0.114 * c.B;
-            if (lum <= maxLuminance)
-                return c;
-
-            double scale = maxLuminance / lum;
-            return Color.FromArgb(c.A,
-                (byte)(c.R * scale),
-                (byte)(c.G * scale),
-                (byte)(c.B * scale));
-        }
-
-        /// <summary>
-        /// Ensures a color is bright enough to be visible as an accent on dark backgrounds.
-        /// Used only for progress fill — not text (text is always white).
-        /// </summary>
-        private static Color EnsureBright(Color c)
-        {
-            double lum = 0.299 * c.R + 0.587 * c.G + 0.114 * c.B;
-            if (lum >= 140)
-                return c;
-            if (lum < 10)
-                return Color.FromArgb(255, 200, 200, 220); // Near-black → default light accent
-
-            double scale = Math.Min(4.0, 180.0 / lum);
-            return Color.FromArgb(255,
-                (byte)Math.Min(255, (int)(c.R * scale + 30)),
-                (byte)Math.Min(255, (int)(c.G * scale + 30)),
-                (byte)Math.Min(255, (int)(c.B * scale + 30)));
         }
 
         // --- Composition blur pipeline ---

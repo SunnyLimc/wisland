@@ -62,6 +62,10 @@ namespace wisland
 
             _mediaService.SessionsChanged -= OnMediaServiceChanged;
             _mediaService.TrackChanged -= OnTrackChanged;
+            if (_visualCache != null)
+            {
+                _visualCache.AssetsReady -= OnMediaVisualAssetsReady;
+            }
             DisposePresentationMachine();
             _mediaService.Dispose();
             _visualCache?.Dispose();

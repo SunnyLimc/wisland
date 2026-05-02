@@ -162,7 +162,12 @@ namespace wisland.Services.Media
                             // view will pick it up on the next composition pass.
                         }
 
-                        tcs.TrySetResult(new MediaVisualAssets(hash, bitmap, surface, palette));
+                        tcs.TrySetResult(new MediaVisualAssets(
+                            hash,
+                            bitmap,
+                            surface,
+                            palette,
+                            ImmersiveSurfaceTokens.FromPalette(palette)));
                     }
                     catch (Exception ex)
                     {

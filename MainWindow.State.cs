@@ -183,6 +183,7 @@ namespace wisland
             _controller.UpdateTargetState();
             _foregroundWindowMonitor.SetActive(_controller.IsDocked);
             UpdateCursorTrackerState();
+            RefreshWindowSurfaceState();
 
             if (!ShouldUseDockedLinePresentation(GetCurrentDisplayWorkArea()))
             {

@@ -220,6 +220,11 @@ namespace wisland
 
         private Color ResolveResizeBackfillColor()
         {
+            if (_hasAppliedWindowSurfaceState)
+            {
+                return _currentWindowSurfaceState.ResizeBackfillColor;
+            }
+
             Color surfaceColor = _currentVisualTokens?.SurfaceColor
                 ?? Color.FromArgb(255, 0x3F, 0x3C, 0x42);
             return CreateOpaqueBackfillColor(surfaceColor);

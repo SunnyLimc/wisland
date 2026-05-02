@@ -27,6 +27,7 @@ namespace wisland
                 // triggers prewarm for all sessions and the view picks up assets
                 // via SetVisualCache before the first frame lands.
                 _visualCache = new MediaVisualCache(_mediaService);
+                _visualCache.AssetsReady += OnMediaVisualAssetsReady;
                 ImmersiveContent.SetVisualCache(_visualCache);
 
                 _mediaService.SessionsChanged += OnMediaServiceChanged;
@@ -131,6 +132,7 @@ namespace wisland
                 // Sync immersive dimensions on the controller
                 bool immersiveActive = IsImmersiveActive;
                 _controller.UseImmersiveDimensions = immersiveActive;
+                RefreshWindowSurfaceState();
 
                 if (immersiveActive)
                 {
@@ -157,6 +159,7 @@ namespace wisland
             }
             else
             {
+                RefreshWindowSurfaceState();
                 HideSessionPickerOverlay(reconcileHover: false);
             }
 
@@ -166,6 +169,17 @@ namespace wisland
             {
                 _lastDisplayedFingerprint = nextFingerprint;
             }
+        }
+
+        private void OnMediaVisualAssetsReady(string hash)
+        {
+            DispatcherQueue?.TryEnqueue(() =>
+            {
+                if (!_isClosed)
+                {
+                    RefreshWindowSurfaceState();
+                }
+            });
         }
 
         private static ContentTransitionDirection FrameTransitionToDirection(FrameTransitionKind kind) => kind switch

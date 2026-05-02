@@ -16,18 +16,21 @@ namespace wisland.Models
         public BitmapImage Bitmap { get; }
         public LoadedImageSurface BlurSurface { get; }
         public AlbumArtPalette Palette { get; }
+        public ImmersiveSurfaceTokens ImmersiveSurfaceTokens { get; }
         private bool _disposed;
 
         public MediaVisualAssets(
             string hash,
             BitmapImage bitmap,
             LoadedImageSurface blurSurface,
-            AlbumArtPalette palette)
+            AlbumArtPalette palette,
+            ImmersiveSurfaceTokens immersiveSurfaceTokens)
         {
             Hash = hash;
             Bitmap = bitmap;
             BlurSurface = blurSurface;
             Palette = palette;
+            ImmersiveSurfaceTokens = immersiveSurfaceTokens;
         }
 
         public void Dispose()
