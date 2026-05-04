@@ -1,6 +1,7 @@
 using System;
 using System.Runtime.InteropServices;
 using Windows.UI;
+using wisland.Helpers;
 using WinRT.Interop;
 
 namespace wisland
@@ -62,7 +63,7 @@ namespace wisland
 
         private void SetNativeResizeBackfillColor(Color color)
         {
-            color = CreateOpaqueBackfillColor(color);
+            color = WindowSurfaceColorMath.CreateOpaque(color);
 
             uint colorRef = color.R
                 | ((uint)color.G << 8)

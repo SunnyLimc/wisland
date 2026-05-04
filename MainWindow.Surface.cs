@@ -1,6 +1,6 @@
 using Microsoft.UI.Xaml.Media;
-using System;
 using Windows.UI;
+using wisland.Helpers;
 using wisland.Models;
 
 namespace wisland
@@ -15,8 +15,8 @@ namespace wisland
         private WindowSurfaceState _currentWindowSurfaceState =
             WindowSurfaceState.CreateCompat(
                 DefaultCompatSurfaceColor,
-                CreateOpaqueBackfillColor(DefaultCompatSurfaceColor),
-                ResolveCompatProgressStartBackdropColor(
+                WindowSurfaceColorMath.CreateOpaque(DefaultCompatSurfaceColor),
+                WindowSurfaceColorMath.ResolveCompatProgressStartBackdropColor(
                     DefaultCompatSurfaceColor,
                     DefaultCompatProgressBaseColor,
                     isProgressVisible: false),
@@ -46,7 +46,7 @@ namespace wisland
         {
             if (!ShouldUseImmersiveWindowSurface())
             {
-                Color resizeBackfillColor = CreateOpaqueBackfillColor(_compatWindowSurfaceColor);
+                Color resizeBackfillColor = WindowSurfaceColorMath.CreateOpaque(_compatWindowSurfaceColor);
                 // In compat mode the content/backfill stay on the normal island
                 // surface. Only the window backdrop is solved to match the first
                 // visible pixel of the liquid progress bar during resize.
@@ -55,7 +55,7 @@ namespace wisland
                     _compatWindowSurfaceColor,
                     resizeBackfillColor,
                     resizeBackdropColor,
-                    $"compat:{PackColor(_compatWindowSurfaceColor):X8}:{PackColor(resizeBackfillColor):X8}:{PackColor(resizeBackdropColor):X8}");
+                    $"compat:{WindowSurfaceColorMath.Pack(_compatWindowSurfaceColor):X8}:{WindowSurfaceColorMath.Pack(resizeBackfillColor):X8}:{WindowSurfaceColorMath.Pack(resizeBackdropColor):X8}");
             }
 
             MediaSessionSnapshot? session = GetDisplayedMediaSessionSnapshot();
@@ -87,7 +87,7 @@ namespace wisland
 
             return WindowSurfaceState.CreateImmersive(
                 WindowSurfaceMode.ImmersivePending,
-                ImmersiveSurfaceTokens.Default,
+                ImmersiveSurfaceTokenFactory.Default,
                 "immersive-pending:default");
         }
 
@@ -124,51 +124,10 @@ namespace wisland
         private Color ResolveCompatResizeBackdropColor()
         {
             bool isProgressVisible = IslandProgressBar?.IsEffectVisible == true;
-            return ResolveCompatProgressStartBackdropColor(
+            return WindowSurfaceColorMath.ResolveCompatProgressStartBackdropColor(
                 _compatWindowSurfaceColor,
                 _compatProgressBaseColor,
                 isProgressVisible);
-        }
-
-        private static Color ResolveCompatProgressStartBackdropColor(
-            Color surfaceColor,
-            Color progressBaseColor,
-            bool isProgressVisible)
-        {
-            Color opaqueSurface = CreateOpaqueBackfillColor(surfaceColor);
-            if (!isProgressVisible || progressBaseColor.A == 0)
-            {
-                return opaqueSurface;
-            }
-
-            double progressAlpha = progressBaseColor.A / 255.0;
-            double surfaceAlpha = surfaceColor.A / 255.0;
-            // The progress bar sits over IslandBorder and HostSurface. Solve for
-            // the backdrop color that makes the leading progress pixel look like
-            // the palette base after those translucent surfaces are composited.
-            double uncoveredBySurfaces = Math.Pow(1.0 - surfaceAlpha, 2.0);
-            double backdropWeight = (1.0 - progressAlpha) * uncoveredBySurfaces;
-            double surfaceWeight = (1.0 - progressAlpha) * (1.0 - uncoveredBySurfaces);
-
-            return Color.FromArgb(
-                255,
-                SolveSelfConsistentChannel(progressBaseColor.R, progressAlpha, opaqueSurface.R, surfaceWeight, backdropWeight),
-                SolveSelfConsistentChannel(progressBaseColor.G, progressAlpha, opaqueSurface.G, surfaceWeight, backdropWeight),
-                SolveSelfConsistentChannel(progressBaseColor.B, progressAlpha, opaqueSurface.B, surfaceWeight, backdropWeight));
-        }
-
-        private static byte SolveSelfConsistentChannel(
-            byte progressChannel,
-            double progressAlpha,
-            byte surfaceChannel,
-            double surfaceWeight,
-            double backdropWeight)
-        {
-            double fixedPart = (progressChannel * progressAlpha) + (surfaceChannel * surfaceWeight);
-            double channel = backdropWeight >= 0.999
-                ? fixedPart
-                : fixedPart / (1.0 - backdropWeight);
-            return (byte)Math.Clamp((int)Math.Round(channel), 0, 255);
         }
     }
 }

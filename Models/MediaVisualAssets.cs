@@ -1,7 +1,6 @@
 using System;
 using Microsoft.UI.Xaml.Media;
 using Microsoft.UI.Xaml.Media.Imaging;
-using wisland.Helpers;
 
 namespace wisland.Models
 {

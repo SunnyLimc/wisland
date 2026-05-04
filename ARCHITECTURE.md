@@ -31,7 +31,8 @@ It is a **pragmatic WinUI 3 desktop app**, not a strict MVVM app. There is no DI
 │  Helpers                                                        │
 │  Logger, Loc, SafePaths, WindowInterop, NativeLineWindow,       │
 │  MediaSource{App,Icon}Resolver, CompactSurfaceLayout,           │
-│  SessionPickerPlacementResolver, SessionPickerOverlayLayout     │
+│  WindowSurfaceColorMath, SessionPickerPlacementResolver,        │
+│  SessionPickerOverlayLayout                                     │
 ├─────────────────────────────────────────────────────────────────┤
 │  Models                                                         │
 │  IslandConfig (constants), IslandState (render state),          │
@@ -251,6 +252,11 @@ edge of an expanding/shrinking island.
 - `ResizeBackfillColor` fills the XAML/composition/native backfill surfaces.
 - `ResizeBackdropColor` is used only by `ResizeSolidColorBackdrop`, a custom
   `SystemBackdrop` installed during surface resize transitions.
+
+The reusable pieces are deliberately small: `AlbumArtPalette` is the model
+returned by `AlbumArtColorExtractor`, `WindowSurfaceColorMath` lives in
+`Helpers/` and owns pure color math, and `ImmersiveSurfaceTokenFactory` stays in
+`Models/` to translate album-art palette data into `ImmersiveSurfaceTokens`.
 
 Compat mode uses the normal themed surface for host/backfill. Its resize
 backdrop color solves for the front edge of `LiquidProgressBar`, including the

@@ -40,6 +40,10 @@
     <Compile Include="..\Models\ContentTransitionDirection.cs" Link="Models\ContentTransitionDirection.cs" />
     <Compile Include="..\Models\AiSongResult.cs" Link="Models\AiSongResult.cs" />
     <Compile Include="..\Models\MediaPresentationFrame.cs" Link="Models\MediaPresentationFrame.cs" />
+    <Compile Include="..\Models\AlbumArtPalette.cs" Link="Models\AlbumArtPalette.cs" />
+    <Compile Include="..\Models\ImmersiveSurfaceTokens.cs" Link="Models\ImmersiveSurfaceTokens.cs" />
+    <Compile Include="..\Models\ImmersiveSurfaceTokenFactory.cs" Link="Models\ImmersiveSurfaceTokenFactory.cs" />
+    <Compile Include="..\Helpers\WindowSurfaceColorMath.cs" Link="Helpers\WindowSurfaceColorMath.cs" />
     <Compile Include="..\Services\Media\Presentation\SwitchIntent.cs" Link="Services\Media\Presentation\SwitchIntent.cs" />
     <Compile Include="..\Services\Media\Presentation\PresentationEvent.cs" Link="Services\Media\Presentation\PresentationEvent.cs" />
     <Compile Include="..\Services\Media\Presentation\MediaPresentationMachineContext.cs" Link="Services\Media\Presentation\MediaPresentationMachineContext.cs" />

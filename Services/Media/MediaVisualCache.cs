@@ -167,7 +167,7 @@ namespace wisland.Services.Media
                             bitmap,
                             surface,
                             palette,
-                            ImmersiveSurfaceTokens.FromPalette(palette)));
+                            ImmersiveSurfaceTokenFactory.FromPalette(palette)));
                     }
                     catch (Exception ex)
                     {

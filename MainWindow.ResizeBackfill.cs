@@ -51,19 +51,19 @@ namespace wisland
 
         private void UpdateResizeBackfillSurfaceColor(Color surfaceColor)
         {
-            Color backfillColor = CreateOpaqueBackfillColor(surfaceColor);
+            Color backfillColor = WindowSurfaceColorMath.CreateOpaque(surfaceColor);
             SetResizeBackfillColor(backfillColor);
         }
 
         private void UpdateResizeBackdropColor(Color backdropColor)
         {
-            Color resolvedBackdropColor = CreateOpaqueBackfillColor(backdropColor);
+            Color resolvedBackdropColor = WindowSurfaceColorMath.CreateOpaque(backdropColor);
             UpdateActiveResizeBackdropColor(resolvedBackdropColor);
         }
 
         private void SetResizeBackfillColor(Color backfillColor)
         {
-            uint argb = PackColor(backfillColor);
+            uint argb = WindowSurfaceColorMath.Pack(backfillColor);
             if (argb == _lastResizeBackfillArgb)
             {
                 return;
@@ -256,7 +256,7 @@ namespace wisland
 
             Color surfaceColor = _currentVisualTokens?.SurfaceColor
                 ?? Color.FromArgb(255, 0x3F, 0x3C, 0x42);
-            return CreateOpaqueBackfillColor(surfaceColor);
+            return WindowSurfaceColorMath.CreateOpaque(surfaceColor);
         }
 
         private Color ResolveResizeBackdropColor()
@@ -399,13 +399,5 @@ namespace wisland
                 && state.ExpandedOpacity <= 0.001;
         }
 
-        private static Color CreateOpaqueBackfillColor(Color color)
-            => Color.FromArgb(255, color.R, color.G, color.B);
-
-        private static uint PackColor(Color color)
-            => ((uint)color.A << 24)
-                | ((uint)color.R << 16)
-                | ((uint)color.G << 8)
-                | color.B;
     }
 }

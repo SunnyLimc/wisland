@@ -1302,7 +1302,7 @@ namespace wisland.Views
         /// </summary>
         private void ApplyDefaultBackgroundPalette()
         {
-            var tokens = ImmersiveSurfaceTokens.Default;
+            var tokens = ImmersiveSurfaceTokenFactory.Default;
             GradientStop0.Color = tokens.GradientStartColor;
             GradientStop1.Color = tokens.GradientMidColor;
             GradientStop2.Color = tokens.GradientEndColor;

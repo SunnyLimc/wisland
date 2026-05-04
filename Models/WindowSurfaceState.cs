@@ -1,4 +1,5 @@
 using Windows.UI;
+using wisland.Helpers;
 
 namespace wisland.Models
 {
@@ -55,6 +56,6 @@ namespace wisland.Models
                 versionKey);
 
         private static Color CreateOpaqueColor(Color color)
-            => Color.FromArgb(255, color.R, color.G, color.B);
+            => WindowSurfaceColorMath.CreateOpaque(color);
     }
 }
