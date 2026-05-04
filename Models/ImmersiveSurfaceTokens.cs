@@ -29,18 +29,23 @@ namespace wisland.Models
             Color gradientMid = ClampLuminance(palette.Secondary, 55);
             Color gradientEnd = ClampLuminance(palette.Average, 65);
 
-            Color baseColor = Blend(palette.Average, palette.Secondary, 0.45);
-            baseColor = Blend(baseColor, Color.FromArgb(255, 16, 18, 24), 0.38);
-            Color backfill = ClampLuminance(baseColor, 48);
-
             Color leftEdge = ResolveVisibleBackgroundColor(
                 SampleGradient(gradientStart, gradientMid, gradientEnd, 0.25),
                 palette.LeftEdge,
                 blurOpacity);
+            Color rightEdge = ResolveVisibleBackgroundColor(
+                SampleGradient(gradientStart, gradientMid, gradientEnd, 0.75),
+                palette.RightEdge,
+                blurOpacity);
+            Color bottomEdge = ResolveVisibleBackgroundColor(
+                SampleGradient(gradientStart, gradientMid, gradientEnd, 0.75),
+                palette.BottomEdge,
+                blurOpacity);
+            Color edgeSurface = ResolveBestEdgeSurfaceColor(rightEdge, bottomEdge);
 
             return new ImmersiveSurfaceTokens(
-                backfill,
-                backfill,
+                edgeSurface,
+                edgeSurface,
                 leftEdge,
                 gradientStart,
                 gradientMid,
@@ -56,6 +61,9 @@ namespace wisland.Models
             Color afterBlur = Composite(blurColor, blurOpacity, gradientColor);
             return Composite(Color.FromArgb(255, 0, 0, 0), DarkScrimOpacity, afterBlur);
         }
+
+        private static Color ResolveBestEdgeSurfaceColor(Color rightEdge, Color bottomEdge)
+            => Blend(rightEdge, bottomEdge, 0.50);
 
         private static Color SampleGradient(Color start, Color mid, Color end, double offset)
         {
