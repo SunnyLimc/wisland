@@ -47,7 +47,7 @@ namespace wisland.Models
                 mode,
                 tokens.HostSurfaceColor,
                 tokens.OpaqueBackfillColor,
-                tokens.OpaqueBackfillColor,
+                tokens.LeftEdgeBackdropColor,
                 versionKey);
 
         private static Color CreateOpaqueColor(Color color)

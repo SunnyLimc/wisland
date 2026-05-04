@@ -6,14 +6,24 @@ namespace wisland.Models
     internal readonly record struct ImmersiveSurfaceTokens(
         Color OpaqueBackfillColor,
         Color HostSurfaceColor,
+        Color LeftEdgeBackdropColor,
         Color GradientStartColor,
         Color GradientMidColor,
         Color GradientEndColor,
         Color ProgressAccentColor)
     {
-        public static readonly ImmersiveSurfaceTokens Default = FromPalette(AlbumArtPalette.Default);
+        private const double SettledBlurOpacity = 0.60;
+        private const double NoBlurOpacity = 0.0;
+        private const double DarkScrimOpacity = 0x59 / 255.0;
+
+        public static readonly ImmersiveSurfaceTokens Default = FromPalette(
+            AlbumArtPalette.Default,
+            NoBlurOpacity);
 
         public static ImmersiveSurfaceTokens FromPalette(AlbumArtPalette palette)
+            => FromPalette(palette, SettledBlurOpacity);
+
+        private static ImmersiveSurfaceTokens FromPalette(AlbumArtPalette palette, double blurOpacity)
         {
             Color gradientStart = ClampLuminance(palette.Dominant, 80);
             Color gradientMid = ClampLuminance(palette.Secondary, 55);
@@ -23,14 +33,77 @@ namespace wisland.Models
             baseColor = Blend(baseColor, Color.FromArgb(255, 16, 18, 24), 0.38);
             Color backfill = ClampLuminance(baseColor, 48);
 
+            Color leftEdge = ResolveVisibleBackgroundColor(
+                SampleGradient(gradientStart, gradientMid, gradientEnd, 0.25),
+                palette.LeftEdge,
+                blurOpacity);
+            Color rightEdge = ResolveVisibleBackgroundColor(
+                SampleGradient(gradientStart, gradientMid, gradientEnd, 0.75),
+                palette.RightEdge,
+                blurOpacity);
+            Color bottomEdge = ResolveVisibleBackgroundColor(
+                SampleGradient(gradientStart, gradientMid, gradientEnd, 0.75),
+                palette.BottomEdge,
+                blurOpacity);
+            Color edgeSurface = ResolveBestEdgeSurfaceColor(rightEdge, bottomEdge, backfill);
+
             return new ImmersiveSurfaceTokens(
-                backfill,
-                backfill,
+                edgeSurface,
+                edgeSurface,
+                leftEdge,
                 gradientStart,
                 gradientMid,
                 gradientEnd,
                 EnsureBright(palette.Dominant));
         }
+
+        private static Color ResolveVisibleBackgroundColor(
+            Color gradientColor,
+            Color blurColor,
+            double blurOpacity)
+        {
+            Color afterBlur = Composite(blurColor, blurOpacity, gradientColor);
+            return Composite(Color.FromArgb(255, 0, 0, 0), DarkScrimOpacity, afterBlur);
+        }
+
+        private static Color ResolveBestEdgeSurfaceColor(Color rightEdge, Color bottomEdge, Color fallback)
+        {
+            Color edgeAverage = Blend(rightEdge, bottomEdge, 0.50);
+            return ClampLuminance(Blend(edgeAverage, fallback, 0.18), 52);
+        }
+
+        private static Color SampleGradient(Color start, Color mid, Color end, double offset)
+        {
+            offset = System.Math.Clamp(offset, 0.0, 1.0);
+            if (offset <= 0.60)
+            {
+                return Blend(start, mid, offset / 0.60);
+            }
+
+            return Blend(mid, end, (offset - 0.60) / 0.40);
+        }
+
+        private static Color Composite(Color foreground, double foregroundOpacity, Color background)
+        {
+            foregroundOpacity = System.Math.Clamp(foregroundOpacity * (foreground.A / 255.0), 0.0, 1.0);
+            double backgroundOpacity = 1.0 - foregroundOpacity;
+
+            return Color.FromArgb(
+                255,
+                CompositeChannel(foreground.R, foregroundOpacity, background.R, backgroundOpacity),
+                CompositeChannel(foreground.G, foregroundOpacity, background.G, backgroundOpacity),
+                CompositeChannel(foreground.B, foregroundOpacity, background.B, backgroundOpacity));
+        }
+
+        private static byte CompositeChannel(
+            byte foreground,
+            double foregroundOpacity,
+            byte background,
+            double backgroundOpacity)
+            => (byte)System.Math.Clamp(
+                (int)System.Math.Round((foreground * foregroundOpacity) + (background * backgroundOpacity)),
+                0,
+                255);
 
         private static Color ClampLuminance(Color color, double maxLuminance)
         {

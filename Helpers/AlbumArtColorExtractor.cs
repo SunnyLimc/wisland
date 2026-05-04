@@ -11,7 +11,7 @@ namespace wisland.Helpers
     /// </summary>
     internal static class AlbumArtColorExtractor
     {
-        internal static AlbumArtPalette AnalyzePixels(byte[] pixels)
+        internal static AlbumArtPalette AnalyzePixels(byte[] pixels, int width, int height)
         {
             // Histogram-based dominant color extraction.
             // Quantize to 4-bit per channel (16×16×16 = 4096 buckets) for fast analysis.
@@ -78,7 +78,115 @@ namespace wisland.Helpers
                 secondary = DarkenColor(dominant, 0.4);
             }
 
-            return new AlbumArtPalette(dominant, secondary, average);
+            Color leftEdge = AverageVisibleLeftEdge(pixels, width, height, average);
+            Color rightEdge = AverageVisibleRightEdge(pixels, width, height, average);
+            Color bottomEdge = AverageVisibleBottomEdge(pixels, width, height, average);
+
+            return new AlbumArtPalette(
+                dominant,
+                secondary,
+                average,
+                leftEdge,
+                rightEdge,
+                bottomEdge);
+        }
+
+        private static Color AverageVisibleLeftEdge(byte[] pixels, int width, int height, Color fallback)
+        {
+            GetVisibleVerticalRange(width, height, out int startY, out int endY);
+            int bandWidth = Math.Max(1, width / 16);
+            return AverageRegion(pixels, width, height, 0, bandWidth, startY, endY, fallback);
+        }
+
+        private static Color AverageVisibleRightEdge(byte[] pixels, int width, int height, Color fallback)
+        {
+            GetVisibleVerticalRange(width, height, out int startY, out int endY);
+            int bandWidth = Math.Max(1, width / 16);
+            return AverageRegion(pixels, width, height, Math.Max(0, width - bandWidth), width, startY, endY, fallback);
+        }
+
+        private static Color AverageVisibleBottomEdge(byte[] pixels, int width, int height, Color fallback)
+        {
+            GetVisibleVerticalRange(width, height, out _, out int visibleBottomY);
+            int bandHeight = Math.Max(1, height / 16);
+            return AverageRegion(pixels, width, height, 0, width, Math.Max(0, visibleBottomY - bandHeight), visibleBottomY, fallback);
+        }
+
+        private static void GetVisibleVerticalRange(int width, int height, out int startY, out int endY)
+        {
+            if (width <= 0 || height <= 0)
+            {
+                startY = 0;
+                endY = 0;
+                return;
+            }
+
+            // The immersive background is roughly 2:1 and album art is usually
+            // square. UniformToFill crops the top/bottom quarters, so sample the
+            // central vertical band that actually reaches the view edges.
+            if (width == height)
+            {
+                startY = height / 4;
+                endY = Math.Max(startY + 1, (height * 3) / 4);
+                return;
+            }
+
+            startY = 0;
+            endY = height;
+        }
+
+        private static Color AverageRegion(
+            byte[] pixels,
+            int width,
+            int height,
+            int startX,
+            int endX,
+            int startY,
+            int endY,
+            Color fallback)
+        {
+            if (width <= 0 || height <= 0 || pixels.Length < width * height * 4)
+            {
+                return fallback;
+            }
+
+            startX = Math.Clamp(startX, 0, width);
+            endX = Math.Clamp(endX, startX, width);
+            startY = Math.Clamp(startY, 0, height);
+            endY = Math.Clamp(endY, startY, height);
+
+            long totalR = 0, totalG = 0, totalB = 0;
+            int count = 0;
+
+            for (int y = startY; y < endY; y++)
+            {
+                int rowOffset = y * width * 4;
+                for (int x = startX; x < endX; x++)
+                {
+                    int i = rowOffset + (x * 4);
+                    byte b = pixels[i];
+                    byte g = pixels[i + 1];
+                    byte r = pixels[i + 2];
+                    byte a = pixels[i + 3];
+                    if (a < 128) continue;
+
+                    totalR += r;
+                    totalG += g;
+                    totalB += b;
+                    count++;
+                }
+            }
+
+            if (count == 0)
+            {
+                return fallback;
+            }
+
+            return Color.FromArgb(
+                255,
+                (byte)(totalR / count),
+                (byte)(totalG / count),
+                (byte)(totalB / count));
         }
 
         private static Color BucketToColor(int bucketIndex, int bucketCount)
@@ -110,11 +218,20 @@ namespace wisland.Helpers
 
     }
 
-    internal readonly record struct AlbumArtPalette(Color Dominant, Color Secondary, Color Average)
+    internal readonly record struct AlbumArtPalette(
+        Color Dominant,
+        Color Secondary,
+        Color Average,
+        Color LeftEdge,
+        Color RightEdge,
+        Color BottomEdge)
     {
         public static readonly AlbumArtPalette Default = new(
             Color.FromArgb(255, 40, 40, 50),
             Color.FromArgb(255, 25, 25, 35),
+            Color.FromArgb(255, 32, 32, 42),
+            Color.FromArgb(255, 40, 40, 50),
+            Color.FromArgb(255, 32, 32, 42),
             Color.FromArgb(255, 32, 32, 42));
     }
 }

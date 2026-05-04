@@ -276,7 +276,10 @@ namespace wisland.Services.Media
                     transform,
                     ExifOrientationMode.IgnoreExifOrientation,
                     ColorManagementMode.DoNotColorManage);
-                return AlbumArtColorExtractor.AnalyzePixels(pixelData.DetachPixelData());
+                return AlbumArtColorExtractor.AnalyzePixels(
+                    pixelData.DetachPixelData(),
+                    (int)sampleSize,
+                    (int)sampleSize);
             }
             catch
             {
