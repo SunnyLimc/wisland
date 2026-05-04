@@ -39,6 +39,7 @@ namespace wisland
             }
 
             ApplyWindowSurfaceState(ResolveWindowSurfaceState());
+            UpdateResizeBackdropForCurrentState();
         }
 
         private WindowSurfaceState ResolveWindowSurfaceState()

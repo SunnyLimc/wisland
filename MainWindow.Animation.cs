@@ -286,6 +286,7 @@ namespace wisland
             }
 
             ApplyWindowBounds(bounds);
+            UpdateResizeBackdropForCurrentState();
 
             UpdateAnchorPhysicalPoint(displayWorkArea, state, physWidth, physHeight);
             UpdateSessionPickerOverlayPlacement();

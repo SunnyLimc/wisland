@@ -101,7 +101,7 @@ namespace wisland
             }
 
             RefreshWindowSurfaceState();
-            ApplyResizeBackdropForResize();
+            UpdateResizeBackdropForCurrentState();
             InstallResizeBackfill();
 
             _isResizeBackfillVisible = true;
@@ -220,7 +220,7 @@ namespace wisland
             _isResizeBackfillVisible = false;
             _resizeBackfillRenderedFramesRemaining = 0;
             ApplyResizeBackfillVisibility();
-            RestoreBackdropAfterResize();
+            UpdateResizeBackdropForCurrentState();
             DetachResizeBackfillRenderedHandler();
             UpdateRenderLoopState();
         }
@@ -271,7 +271,7 @@ namespace wisland
 
         private void ApplyResizeBackdropForResize()
         {
-            if (_currentBackdropType == BackdropType.None)
+            if (!ShouldUseResizeBackdropForCurrentState())
             {
                 RestoreBackdropAfterResize();
                 return;
@@ -288,6 +288,21 @@ namespace wisland
 
             SystemBackdrop = _resizeBackdrop;
             _isResizeBackdropActive = true;
+        }
+
+        private void UpdateResizeBackdropForCurrentState()
+        {
+            if (!ShouldUseResizeBackdropForCurrentState())
+            {
+                RestoreBackdropAfterResize();
+                return;
+            }
+
+            if (!_isResizeBackdropActive)
+            {
+                ApplyResizeBackdropForResize();
+                return;
+            }
         }
 
         private void UpdateActiveResizeBackdropColor(Color backdropColor)
@@ -315,6 +330,24 @@ namespace wisland
 
         private bool ShouldKeepResizeBackfillActive()
             => !_isClosed && _controller.HasPendingAnimation();
+
+        private bool ShouldUseResizeBackdropForCurrentState()
+            => !_isClosed
+                && _currentBackdropType != BackdropType.None
+                && (_isResizeBackfillVisible || _controller.HasPendingAnimation())
+                && !IsFullyCompatViewSettled();
+
+        private bool IsFullyCompatViewSettled()
+        {
+            IslandState state = _controller.Current;
+            return !_controller.IsHovered
+                && !_controller.IsTransientSurfaceOpen
+                && !_controller.IsForcedExpanded
+                && !_controller.IsDragging
+                && !_controller.HasPendingAnimation()
+                && state.Height <= IslandConfig.CompactHeight + 0.25
+                && state.ExpandedOpacity <= 0.001;
+        }
 
         private static Color CreateOpaqueBackfillColor(Color color)
             => Color.FromArgb(255, color.R, color.G, color.B);
