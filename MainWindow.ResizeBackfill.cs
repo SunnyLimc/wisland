@@ -53,7 +53,12 @@ namespace wisland
         {
             Color backfillColor = CreateOpaqueBackfillColor(surfaceColor);
             SetResizeBackfillColor(backfillColor);
-            UpdateActiveResizeBackdropColor(backfillColor);
+        }
+
+        private void UpdateResizeBackdropColor(Color backdropColor)
+        {
+            Color resolvedBackdropColor = CreateOpaqueBackfillColor(backdropColor);
+            UpdateActiveResizeBackdropColor(resolvedBackdropColor);
         }
 
         private void SetResizeBackfillColor(Color backfillColor)
@@ -164,6 +169,12 @@ namespace wisland
 
             if (_isResizeBackfillVisible)
             {
+                if (ShouldKeepResizeBackfillActive())
+                {
+                    StartResizeBackfillFallbackTimer();
+                    return;
+                }
+
                 HideResizeBackfillAfterRenderedFrame();
             }
         }
@@ -191,6 +202,12 @@ namespace wisland
             _resizeBackfillRenderedFramesRemaining--;
             if (_resizeBackfillRenderedFramesRemaining > 0)
             {
+                return;
+            }
+
+            if (ShouldKeepResizeBackfillActive())
+            {
+                _resizeBackfillRenderedFramesRemaining = ResizeBackfillRenderedFramesToHold;
                 return;
             }
 
@@ -242,6 +259,16 @@ namespace wisland
             return CreateOpaqueBackfillColor(surfaceColor);
         }
 
+        private Color ResolveResizeBackdropColor()
+        {
+            if (_hasAppliedWindowSurfaceState)
+            {
+                return _currentWindowSurfaceState.ResizeBackdropColor;
+            }
+
+            return ResolveResizeBackfillColor();
+        }
+
         private void ApplyResizeBackdropForResize()
         {
             if (_currentBackdropType == BackdropType.None)
@@ -250,14 +277,14 @@ namespace wisland
                 return;
             }
 
-            Color backdropColor = ResolveResizeBackfillColor();
-            _resizeBackdrop ??= new ResizeSolidColorBackdrop(backdropColor);
-            _resizeBackdrop.SetColor(backdropColor);
-
             if (_isResizeBackdropActive)
             {
                 return;
             }
+
+            Color backdropColor = ResolveResizeBackdropColor();
+            _resizeBackdrop ??= new ResizeSolidColorBackdrop(backdropColor);
+            _resizeBackdrop.SetColor(backdropColor);
 
             SystemBackdrop = _resizeBackdrop;
             _isResizeBackdropActive = true;
@@ -265,18 +292,14 @@ namespace wisland
 
         private void UpdateActiveResizeBackdropColor(Color backdropColor)
         {
-            if (!_isResizeBackdropActive)
-            {
-                return;
-            }
-
-            if (_currentBackdropType == BackdropType.None)
+            // Keep the window backdrop stable for the whole resize transaction.
+            // Surface-state refreshes may happen while shrinking from immersive
+            // to compat, but changing the active backdrop color mid-transaction
+            // is visible through translucent surfaces as a flicker.
+            if (_isResizeBackdropActive && _currentBackdropType == BackdropType.None)
             {
                 RestoreBackdropAfterResize();
-                return;
             }
-
-            _resizeBackdrop?.SetColor(CreateOpaqueBackfillColor(backdropColor));
         }
 
         private void RestoreBackdropAfterResize()
@@ -289,6 +312,9 @@ namespace wisland
             _isResizeBackdropActive = false;
             _appearanceService.ApplyBackdrop(this, _currentBackdropType, force: true);
         }
+
+        private bool ShouldKeepResizeBackfillActive()
+            => !_isClosed && _controller.HasPendingAnimation();
 
         private static Color CreateOpaqueBackfillColor(Color color)
             => Color.FromArgb(255, color.R, color.G, color.B);

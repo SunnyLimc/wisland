@@ -15,7 +15,8 @@ namespace wisland
         private WindowSurfaceState _currentWindowSurfaceState =
             WindowSurfaceState.CreateCompat(
                 DefaultCompatSurfaceColor,
-                ResolveCompatProgressStartBackfillColor(
+                CreateOpaqueBackfillColor(DefaultCompatSurfaceColor),
+                ResolveCompatProgressStartBackdropColor(
                     DefaultCompatSurfaceColor,
                     DefaultCompatProgressBaseColor,
                     isProgressVisible: false),
@@ -44,11 +45,13 @@ namespace wisland
         {
             if (!ShouldUseImmersiveWindowSurface())
             {
-                Color resizeBackfillColor = ResolveCompatResizeBackfillColor();
+                Color resizeBackfillColor = CreateOpaqueBackfillColor(_compatWindowSurfaceColor);
+                Color resizeBackdropColor = ResolveCompatResizeBackdropColor();
                 return WindowSurfaceState.CreateCompat(
                     _compatWindowSurfaceColor,
                     resizeBackfillColor,
-                    $"compat:{PackColor(_compatWindowSurfaceColor):X8}:{PackColor(resizeBackfillColor):X8}");
+                    resizeBackdropColor,
+                    $"compat:{PackColor(_compatWindowSurfaceColor):X8}:{PackColor(resizeBackfillColor):X8}:{PackColor(resizeBackdropColor):X8}");
             }
 
             MediaSessionSnapshot? session = GetDisplayedMediaSessionSnapshot();
@@ -74,6 +77,7 @@ namespace wisland
                     WindowSurfaceMode.ImmersivePending,
                     stable.HostSurfaceColor,
                     stable.ResizeBackfillColor,
+                    stable.ResizeBackdropColor,
                     $"immersive-pending:{stable.VersionKey}");
             }
 
@@ -107,18 +111,19 @@ namespace wisland
             HostSurface.Background = new SolidColorBrush(state.HostSurfaceColor);
             IslandBorder.Background = new SolidColorBrush(state.HostSurfaceColor);
             UpdateResizeBackfillSurfaceColor(state.ResizeBackfillColor);
+            UpdateResizeBackdropColor(state.ResizeBackdropColor);
         }
 
-        private Color ResolveCompatResizeBackfillColor()
+        private Color ResolveCompatResizeBackdropColor()
         {
             bool isProgressVisible = IslandProgressBar?.IsEffectVisible == true;
-            return ResolveCompatProgressStartBackfillColor(
+            return ResolveCompatProgressStartBackdropColor(
                 _compatWindowSurfaceColor,
                 _compatProgressBaseColor,
                 isProgressVisible);
         }
 
-        private static Color ResolveCompatProgressStartBackfillColor(
+        private static Color ResolveCompatProgressStartBackdropColor(
             Color surfaceColor,
             Color progressBaseColor,
             bool isProgressVisible)
