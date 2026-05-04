@@ -329,12 +329,12 @@ namespace wisland
         }
 
         private bool ShouldKeepResizeBackfillActive()
-            => !_isClosed && _controller.HasPendingAnimation();
+            => !_isClosed && _controller.HasPendingSurfaceAnimation();
 
         private bool ShouldUseResizeBackdropForCurrentState()
             => !_isClosed
                 && _currentBackdropType != BackdropType.None
-                && (_isResizeBackfillVisible || _controller.HasPendingAnimation())
+                && (_isResizeBackfillVisible || _controller.HasPendingSurfaceAnimation())
                 && !IsFullyCompatViewSettled();
 
         private bool IsFullyCompatViewSettled()
@@ -344,7 +344,7 @@ namespace wisland
                 && !_controller.IsTransientSurfaceOpen
                 && !_controller.IsForcedExpanded
                 && !_controller.IsDragging
-                && !_controller.HasPendingAnimation()
+                && !_controller.HasPendingSurfaceAnimation()
                 && state.Height <= IslandConfig.CompactHeight + 0.25
                 && state.ExpandedOpacity <= 0.001;
         }

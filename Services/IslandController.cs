@@ -203,9 +203,14 @@ namespace wisland.Services
         public bool HasPendingAnimation(double positionEpsilon = 0.25, double opacityEpsilon = 0.02)
         {
             return IsDragging
-                || Math.Abs(Current.Width - _targetWidth) > positionEpsilon
+                || HasPendingSurfaceAnimation(positionEpsilon, opacityEpsilon)
+                || Math.Abs(Current.Y - _targetY) > positionEpsilon;
+        }
+
+        public bool HasPendingSurfaceAnimation(double positionEpsilon = 0.25, double opacityEpsilon = 0.02)
+        {
+            return Math.Abs(Current.Width - _targetWidth) > positionEpsilon
                 || Math.Abs(Current.Height - _targetHeight) > positionEpsilon
-                || Math.Abs(Current.Y - _targetY) > positionEpsilon
                 || Math.Abs(Current.CompactOpacity - _targetCompactOpacity) > opacityEpsilon
                 || Math.Abs(Current.ExpandedOpacity - _targetExpandedOpacity) > opacityEpsilon;
         }

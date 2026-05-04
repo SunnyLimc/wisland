@@ -90,7 +90,7 @@ namespace wisland
 
         private bool ShouldUseImmersiveWindowSurface()
         {
-            if (!IsImmersiveActive || _controller.IsForcedExpanded)
+            if (!IsImmersiveActive || _controller.IsForcedExpanded || _controller.IsDragging)
             {
                 return false;
             }
