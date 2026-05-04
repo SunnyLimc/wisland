@@ -4,6 +4,8 @@ using Microsoft.UI.Xaml.Hosting;
 using Microsoft.UI.Xaml.Media;
 using System.Numerics;
 using Windows.UI;
+using wisland.Helpers;
+using wisland.Models;
 
 namespace wisland
 {
@@ -16,9 +18,11 @@ namespace wisland
         private CompositionColorBrush? _resizeBackfillBrush;
         private SolidColorBrush? _resizeBackfillXamlBrush;
         private DispatcherTimer? _resizeBackfillFallbackTimer;
+        private ResizeSolidColorBackdrop? _resizeBackdrop;
         private uint _lastResizeBackfillArgb;
         private bool _isResizeBackfillVisible;
         private bool _isResizeBackfillRenderedHandlerAttached;
+        private bool _isResizeBackdropActive;
         private int _resizeBackfillRenderedFramesRemaining;
 
         private bool IsResizeBackfillHidePending
@@ -46,7 +50,11 @@ namespace wisland
         }
 
         private void UpdateResizeBackfillSurfaceColor(Color surfaceColor)
-            => SetResizeBackfillColor(CreateOpaqueBackfillColor(surfaceColor));
+        {
+            Color backfillColor = CreateOpaqueBackfillColor(surfaceColor);
+            SetResizeBackfillColor(backfillColor);
+            UpdateActiveResizeBackdropColor(backfillColor);
+        }
 
         private void SetResizeBackfillColor(Color backfillColor)
         {
@@ -87,6 +95,8 @@ namespace wisland
                 return;
             }
 
+            RefreshWindowSurfaceState();
+            ApplyResizeBackdropForResize();
             InstallResizeBackfill();
 
             _isResizeBackfillVisible = true;
@@ -193,6 +203,7 @@ namespace wisland
             _isResizeBackfillVisible = false;
             _resizeBackfillRenderedFramesRemaining = 0;
             ApplyResizeBackfillVisibility();
+            RestoreBackdropAfterResize();
             DetachResizeBackfillRenderedHandler();
             UpdateRenderLoopState();
         }
@@ -216,6 +227,7 @@ namespace wisland
             _lastResizeBackfillArgb = 0;
             _isResizeBackfillVisible = false;
             _resizeBackfillRenderedFramesRemaining = 0;
+            RestoreBackdropAfterResize();
         }
 
         private Color ResolveResizeBackfillColor()
@@ -228,6 +240,54 @@ namespace wisland
             Color surfaceColor = _currentVisualTokens?.SurfaceColor
                 ?? Color.FromArgb(255, 0x3F, 0x3C, 0x42);
             return CreateOpaqueBackfillColor(surfaceColor);
+        }
+
+        private void ApplyResizeBackdropForResize()
+        {
+            if (_currentBackdropType == BackdropType.None)
+            {
+                RestoreBackdropAfterResize();
+                return;
+            }
+
+            Color backdropColor = ResolveResizeBackfillColor();
+            _resizeBackdrop ??= new ResizeSolidColorBackdrop(backdropColor);
+            _resizeBackdrop.SetColor(backdropColor);
+
+            if (_isResizeBackdropActive)
+            {
+                return;
+            }
+
+            SystemBackdrop = _resizeBackdrop;
+            _isResizeBackdropActive = true;
+        }
+
+        private void UpdateActiveResizeBackdropColor(Color backdropColor)
+        {
+            if (!_isResizeBackdropActive)
+            {
+                return;
+            }
+
+            if (_currentBackdropType == BackdropType.None)
+            {
+                RestoreBackdropAfterResize();
+                return;
+            }
+
+            _resizeBackdrop?.SetColor(CreateOpaqueBackfillColor(backdropColor));
+        }
+
+        private void RestoreBackdropAfterResize()
+        {
+            if (!_isResizeBackdropActive)
+            {
+                return;
+            }
+
+            _isResizeBackdropActive = false;
+            _appearanceService.ApplyBackdrop(this, _currentBackdropType, force: true);
         }
 
         private static Color CreateOpaqueBackfillColor(Color color)

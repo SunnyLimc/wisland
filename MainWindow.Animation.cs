@@ -112,7 +112,12 @@ namespace wisland
             // The liquid island-level bar is behind the expanded content. Hide it
             // for the whole immersive expansion lifetime so it cannot bleed through
             // as a faint, slightly-ahead second progress line.
+            bool wasProgressEffectVisible = IslandProgressBar.IsEffectVisible;
             IslandProgressBar.SetEffectVisible(shouldShowProgressEffect);
+            if (wasProgressEffectVisible != IslandProgressBar.IsEffectVisible)
+            {
+                RefreshWindowSurfaceState();
+            }
             IslandProgressBar.SetShimmerActive(
                 shouldShowProgressEffect && ShouldAnimateProgressShimmer(_frameDisplayedSession));
 
@@ -133,7 +138,12 @@ namespace wisland
                 if (_hideMediaProgressWhenResetCompletes && !_taskProgress.HasValue)
                 {
                     _hideMediaProgressWhenResetCompletes = false;
+                    wasProgressEffectVisible = IslandProgressBar.IsEffectVisible;
                     IslandProgressBar.SetEffectVisible(false);
+                    if (wasProgressEffectVisible != IslandProgressBar.IsEffectVisible)
+                    {
+                        RefreshWindowSurfaceState();
+                    }
                 }
                 else
                 {

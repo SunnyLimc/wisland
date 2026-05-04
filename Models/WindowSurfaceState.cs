@@ -18,10 +18,16 @@ namespace wisland.Models
         string VersionKey)
     {
         public static WindowSurfaceState CreateCompat(Color surfaceColor, string versionKey)
+            => CreateCompat(surfaceColor, surfaceColor, versionKey);
+
+        public static WindowSurfaceState CreateCompat(
+            Color surfaceColor,
+            Color resizeBackfillColor,
+            string versionKey)
             => new(
                 WindowSurfaceMode.Compat,
                 surfaceColor,
-                CreateOpaqueColor(surfaceColor),
+                CreateOpaqueColor(resizeBackfillColor),
                 versionKey);
 
         public static WindowSurfaceState CreateImmersive(
