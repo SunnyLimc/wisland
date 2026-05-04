@@ -286,6 +286,9 @@ namespace wisland
             }
 
             ApplyWindowBounds(bounds);
+            // Reconcile after target/bounds changes so re-entering during a
+            // shrink can reinstall the resize backdrop before Mica peeks
+            // through the next exposed resize strip.
             UpdateResizeBackdropForCurrentState();
 
             UpdateAnchorPhysicalPoint(displayWorkArea, state, physWidth, physHeight);

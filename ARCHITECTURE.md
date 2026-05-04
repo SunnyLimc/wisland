@@ -237,6 +237,46 @@ behind immersive content.
 
 `WindowAppearanceService` resolves `IslandVisualTokens` from (backdrop type, theme kind, accent color) and applies them to all surfaces. It manages `MicaBackdrop` / `DesktopAcrylicBackdrop` lifecycle with change-guarding and controls DWM corner preferences.
 
+### Window surface and resize backdrop
+
+WinUI 3 `Window` has no `Background` color property. The visual shell is the
+XAML content tree, while `Window.SystemBackdrop` is a separate layer behind it.
+During `AppWindow.MoveAndResize`, DWM can reveal that backdrop before XAML and
+composition surfaces have submitted the next frame, especially on the leading
+edge of an expanding/shrinking island.
+
+`WindowSurfaceState` keeps these colors intentionally separate:
+
+- `HostSurfaceColor` fills `HostSurface` and `IslandBorder`.
+- `ResizeBackfillColor` fills the XAML/composition/native backfill surfaces.
+- `ResizeBackdropColor` is used only by `ResizeSolidColorBackdrop`, a custom
+  `SystemBackdrop` installed during surface resize transitions.
+
+Compat mode uses the normal themed surface for host/backfill. Its resize
+backdrop color solves for the front edge of `LiquidProgressBar`, including the
+progress bar alpha and the two translucent island surfaces above the backdrop.
+This prevents the left resize strip from flashing white/Mica while keeping the
+rest of compat mode on the normal surface color.
+
+Immersive mode derives colors from album art edges after matching the actual
+background paint stack: gradient sample, blurred album-art layer, then the dark
+scrim. The left visible edge drives `ResizeBackdropColor`, because the window
+expands from the left edge. The right and bottom visible edges are averaged for
+`HostSurfaceColor`/`ResizeBackfillColor`, because those are the surfaces most
+visible on the right and bottom during resize.
+
+The immersive color mapping is:
+
+- left edge visible color -> `ResizeBackdropColor`
+- right edge visible color + bottom edge visible color, 50/50 -> `HostSurfaceColor`
+  and `ResizeBackfillColor`
+
+The custom backdrop is a resize-only tool. It is never used while dragging, is
+kept through active width/height/opacity transitions and the short backfill
+hold, refreshes if a shrinking immersive island is re-expanded mid-animation,
+and is restored to the user's configured Mica/Acrylic/None backdrop once the
+surface transition settles.
+
 ### Window system
 
 | Window | Type | Purpose |

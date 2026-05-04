@@ -15,6 +15,10 @@ namespace wisland.Models
         WindowSurfaceMode Mode,
         Color HostSurfaceColor,
         Color ResizeBackfillColor,
+        // This may intentionally differ from ResizeBackfillColor. The window
+        // backdrop is only visible through the resize gap/transparent content,
+        // so it is matched to the left edge that DWM exposes during resize.
+        // Immersive host/backfill instead use the averaged right+bottom edges.
         Color ResizeBackdropColor,
         string VersionKey)
     {

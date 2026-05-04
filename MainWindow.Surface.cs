@@ -47,6 +47,9 @@ namespace wisland
             if (!ShouldUseImmersiveWindowSurface())
             {
                 Color resizeBackfillColor = CreateOpaqueBackfillColor(_compatWindowSurfaceColor);
+                // In compat mode the content/backfill stay on the normal island
+                // surface. Only the window backdrop is solved to match the first
+                // visible pixel of the liquid progress bar during resize.
                 Color resizeBackdropColor = ResolveCompatResizeBackdropColor();
                 return WindowSurfaceState.CreateCompat(
                     _compatWindowSurfaceColor,
@@ -90,6 +93,9 @@ namespace wisland
 
         private bool ShouldUseImmersiveWindowSurface()
         {
+            // Dragging forces compact targets and should not keep the album-art
+            // surface/backdrop active; otherwise translucent compat surfaces can
+            // pick up stale immersive colors while the user moves the island.
             if (!IsImmersiveActive || _controller.IsForcedExpanded || _controller.IsDragging)
             {
                 return false;
@@ -137,6 +143,9 @@ namespace wisland
 
             double progressAlpha = progressBaseColor.A / 255.0;
             double surfaceAlpha = surfaceColor.A / 255.0;
+            // The progress bar sits over IslandBorder and HostSurface. Solve for
+            // the backdrop color that makes the leading progress pixel look like
+            // the palette base after those translucent surfaces are composited.
             double uncoveredBySurfaces = Math.Pow(1.0 - surfaceAlpha, 2.0);
             double backdropWeight = (1.0 - progressAlpha) * uncoveredBySurfaces;
             double surfaceWeight = (1.0 - progressAlpha) * (1.0 - uncoveredBySurfaces);

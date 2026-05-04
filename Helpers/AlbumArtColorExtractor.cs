@@ -78,6 +78,9 @@ namespace wisland.Helpers
                 secondary = DarkenColor(dominant, 0.4);
             }
 
+            // Edge colors feed resize-time window surfaces. They are sampled
+            // from the area that remains visible after ImmersiveMediaView's
+            // UniformToFill crop, then composited later with gradient/scrim.
             Color leftEdge = AverageVisibleLeftEdge(pixels, width, height, average);
             Color rightEdge = AverageVisibleRightEdge(pixels, width, height, average);
             Color bottomEdge = AverageVisibleBottomEdge(pixels, width, height, average);

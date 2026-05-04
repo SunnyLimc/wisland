@@ -209,6 +209,10 @@ namespace wisland.Services
 
         public bool HasPendingSurfaceAnimation(double positionEpsilon = 0.25, double opacityEpsilon = 0.02)
         {
+            // Resize backfill/backdrop logic needs only the visual surface
+            // transition. Dragging and Y settling keep the render loop alive,
+            // but treating them as resize work tints compat mode with the
+            // temporary solid backdrop.
             return Math.Abs(Current.Width - _targetWidth) > positionEpsilon
                 || Math.Abs(Current.Height - _targetHeight) > positionEpsilon
                 || Math.Abs(Current.CompactOpacity - _targetCompactOpacity) > opacityEpsilon

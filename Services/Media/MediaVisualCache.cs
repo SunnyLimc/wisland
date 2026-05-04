@@ -276,6 +276,8 @@ namespace wisland.Services.Media
                     transform,
                     ExifOrientationMode.IgnoreExifOrientation,
                     ColorManagementMode.DoNotColorManage);
+                // Preserve sample dimensions so the palette pass can estimate
+                // the visible UniformToFill edge colors for resize surfaces.
                 return AlbumArtColorExtractor.AnalyzePixels(
                     pixelData.DetachPixelData(),
                     (int)sampleSize,

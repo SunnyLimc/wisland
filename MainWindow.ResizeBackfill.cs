@@ -263,6 +263,8 @@ namespace wisland
         {
             if (_hasAppliedWindowSurfaceState)
             {
+                // The window backdrop is not the same as the resize backfill:
+                // it is the color DWM can expose before XAML catches up.
                 return _currentWindowSurfaceState.ResizeBackdropColor;
             }
 
@@ -271,6 +273,9 @@ namespace wisland
 
         private void ApplyResizeBackdropForResize()
         {
+            // WinUI's SystemBackdrop is the only layer behind Window.Content.
+            // Temporarily replacing Mica/Acrylic with a solid backdrop removes
+            // the white/Mica strip that can appear while AppWindow resizes.
             if (!ShouldUseResizeBackdropForCurrentState())
             {
                 RestoreBackdropAfterResize();
@@ -340,6 +345,9 @@ namespace wisland
         private bool ShouldUseResizeBackdropForCurrentState()
             => !_isClosed
                 && _currentBackdropType != BackdropType.None
+                // Drag updates may keep the render loop alive, but they are not
+                // a resize gap. Installing a solid backdrop here visibly tints
+                // compat surfaces during fast drags from immersive mode.
                 && !_controller.IsDragging
                 && ShouldUseResizeBackdropForSurfaceTransition();
 
@@ -352,6 +360,8 @@ namespace wisland
 
             return _isResizeBackfillVisible
                 || _controller.HasPendingSurfaceAnimation()
+                // Covers the reversal case: mouse re-enters while an immersive
+                // shrink is in flight, before the next resize backfill pass.
                 || IsExpandingSurfaceTransitionVisible();
         }
 

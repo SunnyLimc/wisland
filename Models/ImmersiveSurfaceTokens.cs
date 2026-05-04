@@ -29,6 +29,11 @@ namespace wisland.Models
             Color gradientMid = ClampLuminance(palette.Secondary, 55);
             Color gradientEnd = ClampLuminance(palette.Average, 65);
 
+            // Match the actual immersive background stack before deriving
+            // window colors: gradient plane, blurred art, then the dark scrim.
+            // Mapping:
+            // - leftEdge -> ResizeBackdropColor
+            // - rightEdge + bottomEdge -> HostSurfaceColor/ResizeBackfillColor
             Color leftEdge = ResolveVisibleBackgroundColor(
                 SampleGradient(gradientStart, gradientMid, gradientEnd, 0.25),
                 palette.LeftEdge,
@@ -62,6 +67,9 @@ namespace wisland.Models
             return Composite(Color.FromArgb(255, 0, 0, 0), DarkScrimOpacity, afterBlur);
         }
 
+        // Do not clamp this darker like the old ambient backfill. During
+        // immersive resize the surface needs to visually meet the right/bottom
+        // artwork edges, so use the visible edge colors directly.
         private static Color ResolveBestEdgeSurfaceColor(Color rightEdge, Color bottomEdge)
             => Blend(rightEdge, bottomEdge, 0.50);
 
