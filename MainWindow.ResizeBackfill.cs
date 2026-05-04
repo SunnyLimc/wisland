@@ -314,6 +314,12 @@ namespace wisland
             if (_isResizeBackdropActive && _currentBackdropType == BackdropType.None)
             {
                 RestoreBackdropAfterResize();
+                return;
+            }
+
+            if (_isResizeBackdropActive && IsExpandedSurfaceRequested())
+            {
+                _resizeBackdrop?.SetColor(backdropColor);
             }
         }
 
@@ -334,8 +340,42 @@ namespace wisland
         private bool ShouldUseResizeBackdropForCurrentState()
             => !_isClosed
                 && _currentBackdropType != BackdropType.None
-                && (_isResizeBackfillVisible || _controller.HasPendingSurfaceAnimation())
-                && !IsFullyCompatViewSettled();
+                && !_controller.IsDragging
+                && ShouldUseResizeBackdropForSurfaceTransition();
+
+        private bool ShouldUseResizeBackdropForSurfaceTransition()
+        {
+            if (IsFullyCompatViewSettled())
+            {
+                return false;
+            }
+
+            return _isResizeBackfillVisible
+                || _controller.HasPendingSurfaceAnimation()
+                || IsExpandingSurfaceTransitionVisible();
+        }
+
+        private bool IsExpandingSurfaceTransitionVisible()
+        {
+            if (!IsExpandedSurfaceRequested())
+            {
+                return false;
+            }
+
+            IslandState state = _controller.Current;
+            double expandedHeight = _controller.UseImmersiveDimensions
+                ? IslandConfig.ImmersiveExpandedHeight
+                : IslandConfig.ExpandedHeight;
+
+            return state.Height < expandedHeight - 0.25
+                || state.ExpandedOpacity < 0.999;
+        }
+
+        private bool IsExpandedSurfaceRequested()
+            => !_controller.IsDragging
+                && (_controller.IsHovered
+                    || _controller.IsTransientSurfaceOpen
+                    || _controller.IsForcedExpanded);
 
         private bool IsFullyCompatViewSettled()
         {
